@@ -1,0 +1,28 @@
+# https://pre-commit.com
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.16
+    hooks:
+      - id: ruff
+        name: ruff (backend)
+        files: ^backend/
+        args: [--fix]
+      - id: ruff-format
+        name: ruff format (backend)
+        files: ^backend/
+
+  - repo: local
+    hooks:
+      - id: eslint-frontend
+        name: eslint (frontend)
+        entry: npx --prefix frontend eslint --fix
+        language: system
+        files: ^frontend/
+        types_or: [javascript, jsx, ts, tsx]
+
+      - id: eslint-extension
+        name: eslint (extension)
+        entry: npx --prefix extension eslint --fix
+        language: system
+        files: ^extension/
+        types_or: [javascript, jsx, ts, tsx]
