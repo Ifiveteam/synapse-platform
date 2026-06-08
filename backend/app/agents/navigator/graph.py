@@ -1,9 +1,14 @@
 """
-Navigator Agent - LangGraph Workflow
-이상향 설계 전체 플로우:
-  init → analyze_profile → generate_ideals → chat_design
-       → confirm_ideal → generate_guide → generate_quest
-       → build_playlist → complete
+Navigator Agent - LangGraph Workflow (Dual-Layer)
+
+init → analyze_profile (Layer A + Layer B 파생)
+     → generate_ideals (12차원 기반 이상향 3종)
+     → chat_design
+     → confirm_ideal
+     → generate_guide
+     → generate_quest
+     → build_playlist
+     → complete
 """
 
 import json
@@ -32,6 +37,8 @@ from .schemas import (
 from .state import NavigatorState, NavigatorStep
 from .tool import (
     compare_radar,
+    compute_dominant_weak,
+    enrich_quests_with_layer_b,
     generate_all_ideals,
     generate_guide,
     generate_quests,
@@ -54,7 +61,6 @@ def _get_llm(temperature: float = 0.7) -> ChatOpenAI:
 
 def _safe_parse_json(text: str) -> dict:
     """LLM 응답에서 JSON 블록 추출"""
-    # ```json ... ``` 블록 우선
     if "```json" in text:
         start = text.index("```json") + 7
         end = text.index("```", start)
@@ -73,24 +79,39 @@ def _safe_parse_json(text: str) -> dict:
 
 def node_analyze_profile(state: NavigatorState) -> dict:
     """
-    현재 레이더 차트 수신 확인 + 프로필 분석 메시지 생성
+    Layer A 수신 확인 + dominant/weak 런타임 계산 (v1.1)
+    Layer B는 Profiler가 산출 — Navigator는 읽기만 함
     """
     if not state.current_radar:
-        return {"error": "current_radar 데이터가 없습니다. 프로파일러 에이전트 확인 필요."}
+        return {"error": "current_radar 데이터가 없습니다. Profiler 에이전트 확인 필요."}
 
     radar = state.current_radar
-    scores = radar.to_dict()
+    dominant, weak = compute_dominant_weak(radar)
 
-    # 편향 축 찾기
+    # ── 분석 요약 ──
+    scores = radar.to_dict()
     bias_axes = []
     for key, score in scores.items():
         if score < 30:
-            bias_axes.append(f"{key.value}({score:.0f}점, 낮음)")
+            bias_axes.append(f"{key.value}({score:.0f}점↓)")
         elif score > 70:
-            bias_axes.append(f"{key.value}({score:.0f}점, 높음)")
+            bias_axes.append(f"{key.value}({score:.0f}점↑)")
 
-    summary = f"프로필 분석 완료. 편향 축: {', '.join(bias_axes) if bias_axes else '없음'}"
+    lines = [
+        f"【Layer A 분석】 편향 축: {', '.join(bias_axes) if bias_axes else '없음'}",
+        f"【dominant】 {', '.join(dominant) or '없음'}",
+        f"【weak】 {', '.join(weak) or '없음'}",
+    ]
+    if state.layer_b:
+        lb = state.layer_b
+        lines.append(
+            f"【Layer B】 주체성={lb.search_active_ratio:.2f} / "
+            f"채널편중={lb.viewing_concentration:.2f}(↑나쁨) / "
+            f"취향다양성={lb.taste_diversity_index} / "
+            f"탐색깊이={lb.exploration_depth:.2f}"
+        )
 
+    summary = "\n".join(lines)
     return {
         "current_step": NavigatorStep.ANALYZE_PROFILE,
         "messages": [AIMessage(content=summary)],
@@ -99,18 +120,33 @@ def node_analyze_profile(state: NavigatorState) -> dict:
 
 def node_generate_ideals(state: NavigatorState) -> dict:
     """
-    수식 기반으로 3가지 이상향 자동 생성 + LLM 메시지 작성
+    12차원 기반으로 3가지 이상향 자동 생성 + LLM 소개 메시지
+    Layer A 8각 + ProfilerMeta(dominant/weak axes) 반영
     """
     if not state.current_radar:
         return {"error": "current_radar 없음"}
 
-    # 수식 기반 이상향 3종 생성
-    proposals = generate_all_ideals(state.current_radar)
+    dominant, weak = compute_dominant_weak(state.current_radar)
 
-    # LLM으로 소개 메시지 생성
+    # 수식 기반 이상향 3종 생성 (Layer A + dominant/weak 반영)
+    proposals = generate_all_ideals(state.current_radar, dominant, weak)
+
+    # LLM으로 소개 메시지
     llm = _get_llm(temperature=0.7)
+
+    indices_json = (
+        state.layer_b.model_dump_json()
+        if state.layer_b else "{}"
+    )
+
     prompt = IDEAL_DESIGN_PROMPT.format(
-        current_radar=json.dumps(state.current_radar.to_dict(), ensure_ascii=False),
+        current_radar=json.dumps(
+            {k.value: v for k, v in state.current_radar.to_dict().items()},
+            ensure_ascii=False,
+        ),
+        navigator_indices=indices_json,
+        dominant_axes=", ".join(dominant) or "없음",
+        weak_axes=", ".join(weak) or "없음",
         top5_interests=", ".join(state.top5_interests),
     )
 
@@ -135,23 +171,28 @@ def node_generate_ideals(state: NavigatorState) -> dict:
 
 def node_chat_design(state: NavigatorState) -> dict:
     """
-    대화형 이상향 설계 노드
-    유저 메시지에 응답하고, 이상향을 조율함
+    대화형 이상향 설계 노드 — Layer B 인지주권 4지수 컨텍스트 포함
     """
     llm = _get_llm(temperature=0.8)
 
     proposals_json = ""
     if state.ideal_proposals:
         proposals_json = json.dumps(
-            [p.to_dict() for p in state.ideal_proposals.proposals],
+            [{k.value: v for k, v in p.to_dict().items()} for p in state.ideal_proposals.proposals],
             ensure_ascii=False,
         )
 
+    indices_json = (
+        state.layer_b.model_dump_json()
+        if state.layer_b else "{}"
+    )
+
     system = CHAT_DESIGN_PROMPT.format(
         current_radar=json.dumps(
-            state.current_radar.to_dict() if state.current_radar else {},
+            {k.value: v for k, v in state.current_radar.to_dict().items()} if state.current_radar else {},
             ensure_ascii=False,
         ),
+        navigator_indices=indices_json,
         ideal_proposals=proposals_json,
     )
 
@@ -167,13 +208,12 @@ def node_chat_design(state: NavigatorState) -> dict:
 
 def node_confirm_ideal(state: NavigatorState) -> dict:
     """
-    이상향 확정 + gap 계산
-    selected_ideal이 없으면 adjacent(인접형) 기본 선택
+    이상향 확정 + Layer A gap 계산
+    selected_ideal이 없으면 ADJACENT(인접형) 기본 선택
     """
     if not state.selected_ideal and state.ideal_proposals:
-        # 기본값: ADJACENT
         for p in state.ideal_proposals.proposals:
-            if p.ideal_type == IdealType.ADJACENT:
+            if p.ideal_type == IdealType.EXPANSION:
                 selected = p
                 break
         else:
@@ -195,33 +235,44 @@ def node_confirm_ideal(state: NavigatorState) -> dict:
 
 def node_generate_guide(state: NavigatorState) -> dict:
     """
-    gap 분석 기반 30일 가이드 생성
-    수식 기반 우선, LLM으로 자연어 보강
+    12차원 gap 기반 30일 가이드 생성
+    Layer B 주체성 낮으면 알고리즘 OFF 액션 자동 추가
     """
     if not state.comparison:
         return {"error": "comparison 없음"}
 
     guide = generate_guide(state.comparison, state.top5_interests)
 
-    # LLM으로 가이드 메시지 자연어화
+    indices_json = (
+        state.layer_b.model_dump_json()
+        if state.layer_b else "{}"
+    )
+
     llm = _get_llm(temperature=0.6)
     prompt = GUIDE_PROMPT.format(
         comparison=json.dumps({
-            "gap": state.comparison.gap,
+            "gap": {k.value: v for k, v in state.comparison.gap.items()},
             "total_gap": state.comparison.total_gap,
         }, ensure_ascii=False),
+        navigator_indices=indices_json,
         top5_interests=", ".join(state.top5_interests),
     )
 
-    response = llm.invoke([
+    llm.invoke([
         HumanMessage(content=SYSTEM_PROMPT),
         HumanMessage(content=prompt),
     ])
 
-    # LLM 응답으로 가이드 메시지 보강
     guide_message = f"📋 **{guide.title}**\n\n"
     for step in guide.steps:
         guide_message += f"• {step}\n"
+
+    # Layer B 주체성 경고
+    if state.layer_b and state.layer_b.search_active_ratio < 0.4:
+        guide_message += (
+            "\n⚠️ **주체성 지수가 낮습니다.** "
+            "홈 피드 대신 검색 탭 사용 습관을 우선 들여보세요."
+        )
 
     return {
         "current_step": NavigatorStep.GENERATE_GUIDE,
@@ -232,12 +283,16 @@ def node_generate_guide(state: NavigatorState) -> dict:
 
 def node_generate_quest(state: NavigatorState) -> dict:
     """
-    오늘의 퀘스트 3개 생성
+    오늘의 퀘스트 3개 생성 + Layer B 가중치 보강
     """
     if not state.comparison:
         return {"error": "comparison 없음"}
 
     quests = generate_quests(state.comparison, state.top5_interests, count=3)
+
+    # Layer B 기반 보강
+    if state.layer_b:
+        quests = enrich_quests_with_layer_b(quests, state.layer_b)
 
     quest_message = "🎯 **오늘의 퀘스트**\n\n"
     for i, q in enumerate(quests, 1):
@@ -262,7 +317,10 @@ async def node_build_playlist(state: NavigatorState) -> dict:
 
     llm = _get_llm(temperature=0.7)
     prompt = PLAYLIST_PROMPT.format(
-        ideal_radar=json.dumps(state.selected_ideal.to_dict(), ensure_ascii=False),
+        ideal_radar=json.dumps(
+            {k.value: v for k, v in state.selected_ideal.to_dict().items()},
+            ensure_ascii=False,
+        ),
         top5_interests=", ".join(state.top5_interests),
     )
 
@@ -273,12 +331,12 @@ async def node_build_playlist(state: NavigatorState) -> dict:
 
     try:
         parsed = _safe_parse_json(response.content)
-        playlist_title = parsed.get("playlist_title", "나의 이상향 플레이리스트")
+        playlist_title       = parsed.get("playlist_title", "나의 이상향 플레이리스트")
         playlist_description = parsed.get("playlist_description", "")
-        search_queries = parsed.get("search_queries", [])
+        search_queries       = parsed.get("search_queries", [])
     except (json.JSONDecodeError, ValueError):
-        search_queries = [{"query": interest, "reason": "관심사 기반"} for interest in state.top5_interests]
-        playlist_title = "나의 이상향 플레이리스트"
+        search_queries       = [{"query": i, "reason": "관심사 기반"} for i in state.top5_interests]
+        playlist_title       = "나의 이상향 플레이리스트"
         playlist_description = "Synapse Navigator가 설계한 버블 탈출 재생목록"
 
     playlist = await build_playlist_from_ideal(
@@ -312,20 +370,14 @@ def node_complete(state: NavigatorState) -> dict:
 
 
 # ──────────────────────────────────────────
-# 라우팅 함수
+# 라우팅
 # ──────────────────────────────────────────
 
 
 def route_after_chat(state: NavigatorState) -> str:
-    """대화 완료 여부에 따라 라우팅"""
     if state.is_ideal_confirmed:
         return "confirm_ideal"
-    return "chat_design"  # 계속 대화
-
-
-def route_after_confirm(state: NavigatorState) -> str:
-    """확정 후 가이드 생성으로"""
-    return "generate_guide"
+    return "chat_design"
 
 
 # ──────────────────────────────────────────
@@ -334,45 +386,36 @@ def route_after_confirm(state: NavigatorState) -> str:
 
 
 def build_navigator_graph() -> StateGraph:
-    """Navigator LangGraph 워크플로우 빌드"""
-
     graph = StateGraph(NavigatorState)
 
-    # 노드 등록
     graph.add_node("analyze_profile", node_analyze_profile)
     graph.add_node("generate_ideals", node_generate_ideals)
-    graph.add_node("chat_design", node_chat_design)
-    graph.add_node("confirm_ideal", node_confirm_ideal)
-    graph.add_node("generate_guide", node_generate_guide)
-    graph.add_node("generate_quest", node_generate_quest)
-    graph.add_node("build_playlist", node_build_playlist)
-    graph.add_node("complete", node_complete)
+    graph.add_node("chat_design",     node_chat_design)
+    graph.add_node("confirm_ideal",   node_confirm_ideal)
+    graph.add_node("generate_guide",  node_generate_guide)
+    graph.add_node("generate_quest",  node_generate_quest)
+    graph.add_node("build_playlist",  node_build_playlist)
+    graph.add_node("complete",        node_complete)
 
-    # 엣지 연결
     graph.add_edge(START, "analyze_profile")
     graph.add_edge("analyze_profile", "generate_ideals")
     graph.add_edge("generate_ideals", "chat_design")
 
-    # 대화 → 이상향 확정 또는 계속 대화
     graph.add_conditional_edges(
         "chat_design",
         route_after_chat,
-        {
-            "confirm_ideal": "confirm_ideal",
-            "chat_design": "chat_design",
-        },
+        {"confirm_ideal": "confirm_ideal", "chat_design": "chat_design"},
     )
 
-    graph.add_edge("confirm_ideal", "generate_guide")
+    graph.add_edge("confirm_ideal",  "generate_guide")
     graph.add_edge("generate_guide", "generate_quest")
     graph.add_edge("generate_quest", "build_playlist")
     graph.add_edge("build_playlist", "complete")
-    graph.add_edge("complete", END)
+    graph.add_edge("complete",       END)
 
     return graph
 
 
-# 컴파일된 그래프 (싱글톤)
 _compiled_graph = None
 
 

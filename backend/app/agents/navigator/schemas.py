@@ -1,11 +1,9 @@
 """
 Navigator Agent - Schemas
-8각 레이더 차트 축 데이터 구조 정의
+Dual-Layer 아키텍처 v1.1 (2026-06-08)
 
-축 타입:
-  A (성장축)     - 높을수록 좋음, 항상 높은 방향으로 유도
-  B (스펙트럼축) - 양극단 스펙트럼, 치우치면 반대 방향으로 유도
-  C (확장축)     - 인접 영역으로 뻗어나감
+Layer A: Profiler 8각 (행동 측정 · Profiler v1.1)
+Layer B: 인지주권 4지표 (Profiler v1.1 산출 · Navigator 읽기 전용)
 """
 
 from enum import Enum
@@ -15,145 +13,162 @@ from pydantic import BaseModel, Field
 
 
 # ──────────────────────────────────────────
-# 축 정의
+# Layer A 축 정의
 # ──────────────────────────────────────────
-
-
-class AxisType(str, Enum):
-    GROWTH = "growth"        # A: 성장축 - 높을수록 좋음
-    SPECTRUM = "spectrum"    # B: 스펙트럼축 - 반대 방향 유도
-    EXPANSION = "expansion"  # C: 확장축 - 인접 영역 탐색
 
 
 class AxisKey(str, Enum):
-    PERSPECTIVE_BALANCE = "perspective_balance"    # 1. 관점 균형 (A)
-    AUTONOMY = "autonomy"                           # 2. 주체성 (A)
-    EXPLORATION_WIDTH = "exploration_width"         # 3. 탐색의 넓이 (C)
-    DEPTH_IMMERSION = "depth_immersion"             # 4. 몰입의 깊이 (C)
-    EMOTIONAL_CHALLENGE = "emotional_challenge"     # 5. 정서 ↔ 도전 (B)
-    PRACTICAL_REFLECTION = "practical_reflection"   # 6. 실용 ↔ 성찰 (B)
-    INDIVIDUAL_SOCIAL = "individual_social"         # 7. 개인 ↔ 사회 (B)
-    CONSUME_CREATE = "consume_create"               # 8. 소비 ↔ 창조 (B)
+    INTELLECTUAL_CURIOSITY = "intellectual_curiosity"   # 1. 지적 호기심
+    SELF_IMPROVEMENT       = "self_improvement"         # 2. 자기계발
+    SOCIAL_AWARENESS       = "social_awareness"         # 3. 사회·시선
+    DEPTH_IMMERSION        = "depth_immersion"          # 4. 깊이·몰입
+    PRACTICAL_ORIENTATION  = "practical_orientation"    # 5. 실용 지향
+    EMOTIONAL_COMFORT      = "emotional_comfort"        # 6. 정서·위로
+    CREATIVE_EXPRESSION    = "creative_expression"      # 7. 창의·표현
+    ENTERTAINMENT_RELEASE  = "entertainment_release"    # 8. 오락·해방
 
 
-# ──────────────────────────────────────────
-# 축 메타데이터
-# ──────────────────────────────────────────
-
-
+# 각 축별 반대·확장 방향 설명 (UI·프롬프트용)
 AXIS_META: dict = {
-    AxisKey.PERSPECTIVE_BALANCE: {
-        "name": "관점 균형",
-        "type": AxisType.GROWTH,
-        "description": "같은 주제에서 반대 입장을 얼마나 보는가",
-        "low_label": "편향",
-        "high_label": "균형",
-        "measure": "입장 분포 비율",
-        "ideal_direction": "항상 균형 방향",
-        "recommend_hint": "반대 입장 콘텐츠 추천",
+    AxisKey.INTELLECTUAL_CURIOSITY: {
+        "name": "지적 호기심",
+        "description": "새 채널·낯선 주제를 넓게 탐색하는 성향",
+        "low_label": "좁은 탐색",
+        "high_label": "넓은 탐색",
+        "opposite_desc": "한 주제 깊은 몰입 (breadth → depth)",
+        "expansion_desc": "타문화·이종학문으로 더 넓게",
     },
-    AxisKey.AUTONOMY: {
-        "name": "주체성",
-        "type": AxisType.GROWTH,
-        "description": "내가 선택하는가, 알고리즘이 선택하는가",
-        "low_label": "수동",
-        "high_label": "능동",
-        "measure": "검색 vs 추천 비율",
-        "ideal_direction": "항상 능동 방향",
-        "recommend_hint": "직접 탐색 유도, 새로운 검색어 제안",
+    AxisKey.SELF_IMPROVEMENT: {
+        "name": "자기계발",
+        "description": "습관·목표·생산성 콘텐츠 소비 성향",
+        "low_label": "낮음",
+        "high_label": "높음",
+        "opposite_desc": "무목적 여유·놀이 소비",
+        "expansion_desc": "철학적 성찰·삶의 의미 탐구",
     },
-    AxisKey.EXPLORATION_WIDTH: {
-        "name": "탐색의 넓이",
-        "type": AxisType.EXPANSION,
-        "description": "얼마나 다양한 분야를 탐색하는가",
-        "low_label": "좁다",
-        "high_label": "넓다",
-        "measure": "카테고리 분산도 + 신규 채널 비율",
-        "ideal_direction": "현재 관심사 인접 영역으로 확장",
-        "recommend_hint": "현재 관심사와 연결된 새로운 분야",
-    },
-    AxisKey.DEPTH_IMMERSION: {
-        "name": "몰입의 깊이",
-        "type": AxisType.EXPANSION,
-        "description": "얼마나 집중해서 한 주제를 깊게 파고드는가",
-        "low_label": "얕다",
-        "high_label": "깊다",
-        "measure": "체류시간 + 연속시청 + 콘텐츠 길이",
-        "ideal_direction": "현재 관심 분야 심화 탐색",
-        "recommend_hint": "현재 소비 중인 주제의 심층 콘텐츠",
-    },
-    AxisKey.EMOTIONAL_CHALLENGE: {
-        "name": "정서 ↔ 도전",
-        "type": AxisType.SPECTRUM,
-        "description": "정서적 위로를 추구하는가, 도전적 자극을 추구하는가",
-        "low_label": "정서/위로",
-        "high_label": "도전/자극",
-        "measure": "힐링/ASMR vs 도전/비판 콘텐츠 비율",
-        "ideal_direction": "치우친 반대 방향으로 유도",
-        "recommend_hint": "정서 치우침→도전 콘텐츠 / 도전 치우침→힐링 콘텐츠",
-    },
-    AxisKey.PRACTICAL_REFLECTION: {
-        "name": "실용 ↔ 성찰",
-        "type": AxisType.SPECTRUM,
-        "description": "실용적 방법을 추구하는가, 철학적 성찰을 추구하는가",
-        "low_label": "실용/방법",
-        "high_label": "성찰/철학",
-        "measure": "튜토리얼/How-to vs 철학/인문 콘텐츠 비율",
-        "ideal_direction": "치우친 반대 방향으로 유도",
-        "recommend_hint": "실용 치우침→성찰 콘텐츠 / 성찰 치우침→실용 콘텐츠",
-    },
-    AxisKey.INDIVIDUAL_SOCIAL: {
-        "name": "개인 ↔ 사회",
-        "type": AxisType.SPECTRUM,
-        "description": "내면/개인적 콘텐츠를 보는가, 사회/세상을 바라보는가",
+    AxisKey.SOCIAL_AWARENESS: {
+        "name": "사회·시선",
+        "description": "타인·세상·이슈에 관심을 갖는 성향",
         "low_label": "내면/솔로",
         "high_label": "사회/세상",
-        "measure": "개인 취미/일상 vs 뉴스/다큐/시사 비율",
-        "ideal_direction": "치우친 반대 방향으로 유도",
-        "recommend_hint": "개인 치우침→사회 이슈 / 사회 치우침→내면 성장",
+        "opposite_desc": "내면·솔로·명상 콘텐츠",
+        "expansion_desc": "글로벌 시각·다문화 이해",
     },
-    AxisKey.CONSUME_CREATE: {
-        "name": "소비 ↔ 창조",
-        "type": AxisType.SPECTRUM,
-        "description": "수동적으로 받아먹는가, 능동적으로 탐구/창작하는가",
-        "low_label": "수동소비",
-        "high_label": "능동창조",
-        "measure": "검색 + 스크랩 + 창작 콘텐츠 소비 비율",
-        "ideal_direction": "치우친 반대 방향으로 유도",
-        "recommend_hint": "소비 치우침→창작/DIY / 창조 치우침→큐레이션 휴식",
+    AxisKey.DEPTH_IMMERSION: {
+        "name": "깊이·몰입",
+        "description": "길게·연속으로·한 주제 깊게 소비하는 성향",
+        "low_label": "얕다",
+        "high_label": "깊다",
+        "opposite_desc": "가볍고 다양한 탐색",
+        "expansion_desc": "전문가·학문적 깊이",
+    },
+    AxisKey.PRACTICAL_ORIENTATION: {
+        "name": "실용 지향",
+        "description": "문제 해결·스킬·How-to 콘텐츠 소비 성향",
+        "low_label": "낮음",
+        "high_label": "높음",
+        "opposite_desc": "순수 성찰·인문학",
+        "expansion_desc": "고급 스킬·전문 기술 마스터리",
+    },
+    AxisKey.EMOTIONAL_COMFORT: {
+        "name": "정서·위로",
+        "description": "힐링·감성·스트레스 해소 콘텐츠 소비 성향",
+        "low_label": "낮음",
+        "high_label": "높음",
+        "opposite_desc": "도전·비판·불편한 진실",
+        "expansion_desc": "다양한 감정 스펙트럼·예술",
+    },
+    AxisKey.CREATIVE_EXPRESSION: {
+        "name": "창의·표현",
+        "description": "만들기·실험·예술 콘텐츠 소비 성향",
+        "low_label": "낮음",
+        "high_label": "높음",
+        "opposite_desc": "수용·감상·분석 위주",
+        "expansion_desc": "다른 매체·협업 창작",
+    },
+    AxisKey.ENTERTAINMENT_RELEASE: {
+        "name": "오락·해방",
+        "description": "가볍고 해방적인 콘텐츠 소비 성향",
+        "low_label": "낮음",
+        "high_label": "높음",
+        "opposite_desc": "깊이·집중·진지한 콘텐츠",
+        "expansion_desc": "다양한 장르·문화 오락",
     },
 }
 
 
 # ──────────────────────────────────────────
-# 점수 모델
+# Layer A — Profiler 8각 점수 모델
 # ──────────────────────────────────────────
 
 
 class RadarChart(BaseModel):
-    """8각 레이더 차트 전체 데이터"""
+    """Layer A — Profiler 8각 레이더 차트 (Profiler v1.1)"""
 
     user_id: str
-    perspective_balance: float = Field(..., ge=0, le=100, description="관점 균형")
-    autonomy: float = Field(..., ge=0, le=100, description="주체성")
-    exploration_width: float = Field(..., ge=0, le=100, description="탐색의 넓이")
-    depth_immersion: float = Field(..., ge=0, le=100, description="몰입의 깊이")
-    emotional_challenge: float = Field(..., ge=0, le=100, description="정서 ↔ 도전")
-    practical_reflection: float = Field(..., ge=0, le=100, description="실용 ↔ 성찰")
-    individual_social: float = Field(..., ge=0, le=100, description="개인 ↔ 사회")
-    consume_create: float = Field(..., ge=0, le=100, description="소비 ↔ 창조")
+    intellectual_curiosity: float = Field(..., ge=0, le=100, description="지적 호기심")
+    self_improvement:       float = Field(..., ge=0, le=100, description="자기계발")
+    social_awareness:       float = Field(..., ge=0, le=100, description="사회·시선")
+    depth_immersion:        float = Field(..., ge=0, le=100, description="깊이·몰입")
+    practical_orientation:  float = Field(..., ge=0, le=100, description="실용 지향")
+    emotional_comfort:      float = Field(..., ge=0, le=100, description="정서·위로")
+    creative_expression:    float = Field(..., ge=0, le=100, description="창의·표현")
+    entertainment_release:  float = Field(..., ge=0, le=100, description="오락·해방")
 
     def to_dict(self) -> dict:
         return {
-            AxisKey.PERSPECTIVE_BALANCE: self.perspective_balance,
-            AxisKey.AUTONOMY: self.autonomy,
-            AxisKey.EXPLORATION_WIDTH: self.exploration_width,
-            AxisKey.DEPTH_IMMERSION: self.depth_immersion,
-            AxisKey.EMOTIONAL_CHALLENGE: self.emotional_challenge,
-            AxisKey.PRACTICAL_REFLECTION: self.practical_reflection,
-            AxisKey.INDIVIDUAL_SOCIAL: self.individual_social,
-            AxisKey.CONSUME_CREATE: self.consume_create,
+            AxisKey.INTELLECTUAL_CURIOSITY: self.intellectual_curiosity,
+            AxisKey.SELF_IMPROVEMENT:       self.self_improvement,
+            AxisKey.SOCIAL_AWARENESS:       self.social_awareness,
+            AxisKey.DEPTH_IMMERSION:        self.depth_immersion,
+            AxisKey.PRACTICAL_ORIENTATION:  self.practical_orientation,
+            AxisKey.EMOTIONAL_COMFORT:      self.emotional_comfort,
+            AxisKey.CREATIVE_EXPRESSION:    self.creative_expression,
+            AxisKey.ENTERTAINMENT_RELEASE:  self.entertainment_release,
         }
+
+
+# ──────────────────────────────────────────
+# Layer B — 인지주권 4지표 (Profiler v1.1 산출)
+# ──────────────────────────────────────────
+
+
+class ProfilerLayerB(BaseModel):
+    """
+    Layer B — 인지주권 4지표 (Profiler v1.1 산출)
+
+    ⚠️ viewing_concentration: 높을수록 나쁨 (소수 채널 편중)
+       나머지 3개: 높을수록 좋음
+    """
+    search_active_ratio:    float = Field(default=0.0, ge=0, le=1,   description="주체성 — 직접 검색 비율 (높을수록 좋음)")
+    viewing_concentration:  float = Field(default=0.0, ge=0, le=1,   description="채널 편중도 — 소수 채널 집중도 (높을수록 나쁨)")
+    taste_diversity_index:  float = Field(default=50.0, ge=0, le=100, description="취향 다양성 — 4종 취향 분산 (높을수록 좋음)")
+    exploration_depth:      float = Field(default=0.0, ge=0, le=1,   description="탐색 깊이 — 새 주제 진입 시 깊이 (높을수록 좋음)")
+
+    @property
+    def average_health(self) -> float:
+        """인지주권 건강도 평균 (viewing_concentration 역전 후 0~100 환산)"""
+        return round((
+            self.search_active_ratio * 100
+            + (1 - self.viewing_concentration) * 100   # 방향 반전
+            + self.taste_diversity_index
+            + self.exploration_depth * 100
+        ) / 4, 1)
+
+
+# ──────────────────────────────────────────
+# Profiler 전체 출력 (v1.1 JSON 계약)
+# ──────────────────────────────────────────
+
+
+class ProfilerData(BaseModel):
+    """Profiler v1.1 출력 전체 — Navigator 수신 인터페이스"""
+    user_id:        str
+    computed_at:    Optional[str] = None
+    layer_a:        RadarChart
+    layer_b:        ProfilerLayerB     = Field(default_factory=ProfilerLayerB)
+    top5_interests: list[str]          = Field(default_factory=list)
+    summary:        str                = ""
 
 
 # ──────────────────────────────────────────
@@ -162,52 +177,55 @@ class RadarChart(BaseModel):
 
 
 class IdealType(str, Enum):
-    OPPOSITE = "opposite"    # 반대 성향형 - 필터버블 완전 탈출
-    ADJACENT = "adjacent"    # 인접 확장형 - 자연스러운 성장
-    BALANCED = "balanced"    # 밸런스형   - 균형 잡힌 자아
-    CUSTOM = "custom"        # 유저 커스텀
+    OPPOSITE  = "opposite"   # 반대 방향형 — 필터버블 탈출
+    EXPANSION = "expansion"  # 확장 방향형 — 자연스러운 성장  ← 기본 추천
+    BALANCED  = "balanced"   # 균형형      — 균형 잡힌 자아
+    CUSTOM    = "custom"     # 유저 커스텀
 
 
 class IdealRadarChart(BaseModel):
-    """이상향 8각 레이더 차트"""
+    """Layer A 기반 이상향 8각 레이더 차트"""
 
-    user_id: str
+    user_id:    str
     ideal_type: IdealType
-    perspective_balance: float = Field(..., ge=0, le=100)
-    autonomy: float = Field(..., ge=0, le=100)
-    exploration_width: float = Field(..., ge=0, le=100)
-    depth_immersion: float = Field(..., ge=0, le=100)
-    emotional_challenge: float = Field(..., ge=0, le=100)
-    practical_reflection: float = Field(..., ge=0, le=100)
-    individual_social: float = Field(..., ge=0, le=100)
-    consume_create: float = Field(..., ge=0, le=100)
-    summary: str = Field(default="", description="이상향 한 줄 요약")
+    intellectual_curiosity: float = Field(..., ge=0, le=100)
+    self_improvement:       float = Field(..., ge=0, le=100)
+    social_awareness:       float = Field(..., ge=0, le=100)
+    depth_immersion:        float = Field(..., ge=0, le=100)
+    practical_orientation:  float = Field(..., ge=0, le=100)
+    emotional_comfort:      float = Field(..., ge=0, le=100)
+    creative_expression:    float = Field(..., ge=0, le=100)
+    entertainment_release:  float = Field(..., ge=0, le=100)
+    summary:    str = Field(default="", description="이상향 한 줄 요약")
+    direction:  str = Field(default="", description="방향 요약 (예: practical_orientation→OPPOSITE)")
+    alpha:      float = Field(default=0.55, description="적용 강도 α")
+    reasoning:  str = Field(default="", description="AI 설계 근거 (AUTO 모드 전용)")
 
     def to_dict(self) -> dict:
         return {
-            AxisKey.PERSPECTIVE_BALANCE: self.perspective_balance,
-            AxisKey.AUTONOMY: self.autonomy,
-            AxisKey.EXPLORATION_WIDTH: self.exploration_width,
-            AxisKey.DEPTH_IMMERSION: self.depth_immersion,
-            AxisKey.EMOTIONAL_CHALLENGE: self.emotional_challenge,
-            AxisKey.PRACTICAL_REFLECTION: self.practical_reflection,
-            AxisKey.INDIVIDUAL_SOCIAL: self.individual_social,
-            AxisKey.CONSUME_CREATE: self.consume_create,
+            AxisKey.INTELLECTUAL_CURIOSITY: self.intellectual_curiosity,
+            AxisKey.SELF_IMPROVEMENT:       self.self_improvement,
+            AxisKey.SOCIAL_AWARENESS:       self.social_awareness,
+            AxisKey.DEPTH_IMMERSION:        self.depth_immersion,
+            AxisKey.PRACTICAL_ORIENTATION:  self.practical_orientation,
+            AxisKey.EMOTIONAL_COMFORT:      self.emotional_comfort,
+            AxisKey.CREATIVE_EXPRESSION:    self.creative_expression,
+            AxisKey.ENTERTAINMENT_RELEASE:  self.entertainment_release,
         }
 
 
 class RadarComparison(BaseModel):
-    """현재 vs 이상향 비교"""
+    """Layer A 현재 vs 이상향 gap"""
 
-    user_id: str
-    current: RadarChart
-    ideal: IdealRadarChart
-    gap: dict = Field(default_factory=dict, description="각 축별 gap")
-    total_gap: float = Field(default=0.0, description="전체 gap 합계")
+    user_id:   str
+    current:   RadarChart
+    ideal:     IdealRadarChart
+    gap:       dict  = Field(default_factory=dict, description="각 축별 gap (이상향 - 현재)")
+    total_gap: float = Field(default=0.0, description="전체 gap 절댓값 합계")
 
     def calculate_gap(self) -> "RadarComparison":
         current_dict = self.current.to_dict()
-        ideal_dict = self.ideal.to_dict()
+        ideal_dict   = self.ideal.to_dict()
         self.gap = {
             key: round(ideal_dict[key] - current_dict[key], 2)
             for key in current_dict
@@ -217,25 +235,21 @@ class RadarComparison(BaseModel):
 
 
 # ──────────────────────────────────────────
-# 이상향 설계 요청/응답
+# 이상향 설계 요청 / 응답
 # ──────────────────────────────────────────
 
 
 class IdealDesignRequest(BaseModel):
-    """이상향 설계 요청"""
-
-    user_id: str
-    current_radar: RadarChart
-    top5_interests: list[str] = Field(default_factory=list)
-    user_message: Optional[str] = None
+    user_id:        str
+    profiler_data:  ProfilerData
+    top5_interests: list[str]      = Field(default_factory=list)
+    user_message:   Optional[str]  = None
 
 
 class IdealDesignResponse(BaseModel):
-    """이상향 설계 응답 - 3가지 제안"""
-
-    user_id: str
-    proposals: list[IdealRadarChart] = Field(description="반대/인접/밸런스 3가지 제안")
-    selected: Optional[IdealRadarChart] = None
+    user_id:       str
+    proposals:     list[IdealRadarChart] = Field(description="반대/확장/균형 3가지 제안")
+    selected:      Optional[IdealRadarChart] = None
     agent_message: str = ""
 
 
@@ -245,24 +259,20 @@ class IdealDesignResponse(BaseModel):
 
 
 class Guide(BaseModel):
-    """버블 탈출 가이드"""
-
-    user_id: str
-    title: str
-    steps: list[str]
-    target_axes: list[AxisKey]
+    user_id:        str
+    title:          str
+    steps:          list[str]
+    target_axes:    list[AxisKey]
     estimated_days: int = Field(default=30)
 
 
 class Quest(BaseModel):
-    """일일 퀘스트"""
-
-    user_id: str
-    title: str
-    description: str
-    target_axis: AxisKey
-    action: str
-    reward_point: int = Field(default=10)
+    user_id:      str
+    title:        str
+    description:  str
+    target_axis:  AxisKey
+    action:       str
+    reward_point: int  = Field(default=10)
     is_completed: bool = False
 
 
@@ -272,21 +282,17 @@ class Quest(BaseModel):
 
 
 class PlaylistItem(BaseModel):
-    """재생목록 아이템"""
-
-    video_id: str
-    title: str
-    channel: str
+    video_id:         str
+    title:            str
+    channel:          str
     duration_seconds: int
-    reason: str = Field(description="이 영상을 추천한 이유")
+    reason:           str = Field(description="이 영상을 추천한 이유")
 
 
 class Playlist(BaseModel):
-    """이상향 기반 재생목록"""
-
-    user_id: str
-    title: str
-    description: str
-    items: list[PlaylistItem] = Field(default_factory=list)
-    youtube_playlist_id: Optional[str] = None
-    ideal_type: IdealType = IdealType.ADJACENT
+    user_id:             str
+    title:               str
+    description:         str
+    items:               list[PlaylistItem] = Field(default_factory=list)
+    youtube_playlist_id: Optional[str]      = None
+    ideal_type:          IdealType          = IdealType.EXPANSION

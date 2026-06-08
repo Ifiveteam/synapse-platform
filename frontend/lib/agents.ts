@@ -5,10 +5,14 @@ export type AgentId =
   | "navigator"
   | "profiler";
 
+export type AgentStatus = "stable" | "dev" | "planned";
+
 export interface Agent {
   id: AgentId;
   name: string;
   description: string;
+  status: AgentStatus;
+  statusLabel?: string;
 }
 
 export const AGENTS: Agent[] = [
@@ -16,26 +20,32 @@ export const AGENTS: Agent[] = [
     id: "aggregator",
     name: "Aggregator",
     description: "여러 소스의 데이터를 수집하고 통합합니다.",
+    status: "planned",
   },
   {
     id: "archiver",
     name: "Archiver",
     description: "데이터를 아카이브하고 장기 보관을 관리합니다.",
+    status: "planned",
   },
   {
     id: "indexer",
     name: "Indexer",
     description: "콘텐츠를 인덱싱하여 빠른 검색을 지원합니다.",
+    status: "planned",
   },
   {
     id: "navigator",
     name: "Navigator",
-    description: "정보 탐색과 경로 안내를 수행합니다.",
+    description: "이상향 설계 및 버블 탈출 행동 유도 에이전트.",
+    status: "dev",
+    statusLabel: "개발 중",
   },
   {
     id: "profiler",
     name: "Profiler",
-    description: "프로파일링과 성능 분석을 담당합니다.",
+    description: "YouTube 소비 패턴을 8각 레이더 차트로 분석합니다.",
+    status: "planned",
   },
 ];
 
