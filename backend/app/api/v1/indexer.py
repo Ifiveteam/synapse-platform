@@ -1,5 +1,6 @@
 import os
 import tempfile
+from collections import Counter
 
 from fastapi import APIRouter, File, UploadFile
 
@@ -31,10 +32,15 @@ async def analyze(file: UploadFile = File(...)):  # noqa: B008
     if result["error"]:
         return {"status": "error", "message": result["error"]}
 
+    # 카테고리 통계
+    categories = [item.get("category", "") for item in result["cleaned_data"]]
+    category_stats = dict(Counter(categories).most_common())
+
     return {
         "status": "success",
         "total": len(result["raw_data"]),
         "processed": result["saved_count"],
+        "category_stats": category_stats,
     }
 
 

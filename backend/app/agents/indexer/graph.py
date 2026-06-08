@@ -28,7 +28,7 @@ def node_classify(state: IndexerState) -> IndexerState:
     """노드 3: 카테고리 분류 (20개씩 배치)"""
     try:
         cleaned_data = state["cleaned_data"][:100]
-        batch_size = 20
+        batch_size = 50
         result = []
 
         for i in range(0, len(cleaned_data), batch_size):
