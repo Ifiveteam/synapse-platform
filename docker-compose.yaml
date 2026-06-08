@@ -1,0 +1,58 @@
+# ─────────────────────────────────────────────────────────
+# Synapse Platform — docker-compose (Structure 2)
+#
+# 구조:
+#   Amplify  → 프론트엔드 (Amplify 자동 배포)
+#   EC2      → Nginx(:80) → FastAPI(:8000)
+#
+# 필요한 환경변수 (.env 또는 GitHub Secrets):
+#   DOCKER_HUB_USERNAME, IMAGE_TAG
+#   OPENAI_API_KEY, YOUTUBE_API_KEY
+# ─────────────────────────────────────────────────────────
+
+services:
+
+  # ── FastAPI 백엔드 ────────────────────────────────────
+  backend:
+    image: ${DOCKER_HUB_USERNAME}/synapse-backend:${IMAGE_TAG:-latest}
+    container_name: synapse-backend
+    restart: unless-stopped
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - NAVIGATOR_MODEL=${NAVIGATOR_MODEL:-gpt-4o}
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+    expose:
+      - "8000"          # Nginx에서만 접근, 외부 직접 노출 없음
+    networks:
+      - synapse-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Nginx (보안 앞단) ─────────────────────────────────
+  nginx:
+    image: ${DOCKER_HUB_USERNAME}/synapse-nginx:${IMAGE_TAG:-latest}
+    container_name: synapse-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"         # HTTP (운영 초기)
+      - "443:443"       # HTTPS (SSL 인증서 발급 후)
+    volumes:
+      # SSL 인증서 마운트 (Let's Encrypt 설정 후 활성화)
+      # - /etc/letsencrypt:/etc/letsencrypt:ro
+      - nginx-logs:/var/log/nginx
+    networks:
+      - synapse-net
+    depends_on:
+      backend:
+        condition: service_healthy
+
+networks:
+  synapse-net:
+    driver: bridge
+
+volumes:
+  nginx-logs:
