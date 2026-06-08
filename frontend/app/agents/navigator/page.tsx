@@ -1,42 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import {
-  MOCK_GUIDE,
-  MOCK_IDEAL_BALANCED,
-  MOCK_IDEAL_EXPANSION,
-  MOCK_IDEAL_OPPOSITE,
-  MOCK_PROFILER_DATA,
-  MOCK_QUESTS,
-} from "@/lib/navigator-mock";
-import type { IdealType, IdealRadarChart } from "@/lib/navigator-types";
+import { MOCK_PROFILER_DATA } from "@/lib/navigator-mock";
+import type { IdealType, IdealRadarChart, Guide, Quest } from "@/lib/navigator-types";
 import { NavigatorRadarChart } from "@/components/navigator/radar-chart";
 import { LayerBGauge } from "@/components/navigator/layer-b-gauge";
 import { AXIS_LABELS } from "@/lib/navigator-types";
 import { IdealSelector } from "@/components/navigator/ideal-selector";
 import { GuideRoadmap, QuestCard } from "@/components/navigator/quest-card";
 import { ROUTES } from "@/lib/routes";
+import {
+  designIdeal,
+  confirmIdeal,
+} from "@/lib/navigator-api";
+import type { IdealDesignResponse } from "@/lib/navigator-api";
 
 // ── 탭 정의 ──────────────────────────────────
 
 type Tab = "profile" | "ideal" | "guide";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: "profile", label: "현재 프로필", icon: "📊" },
-  { id: "ideal",   label: "이상향 선택", icon: "🎯" },
+  { id: "profile", label: "현재 프로필",    icon: "📊" },
+  { id: "ideal",   label: "이상향 선택",    icon: "🎯" },
   { id: "guide",   label: "가이드 & 퀘스트", icon: "🗺️" },
 ];
 
-const ALL_IDEALS: IdealRadarChart[] = [
-  MOCK_IDEAL_OPPOSITE,
-  MOCK_IDEAL_EXPANSION,
-  MOCK_IDEAL_BALANCED,
-];
+// ── Profiler 데이터 (Profiler Agent 연동 전 임시) ──
+// TODO: Profiler Agent 완성 후 실제 API로 교체
+const PROFILER_DATA = MOCK_PROFILER_DATA;
 
-// ── 프로필 섹션 ──────────────────────────────
+// ── dominant/weak 계산 ──────────────────────
 
-/** layer_a 점수에서 dominant / weak 축 계산 (threshold=15) */
 function computeDominantWeak(layerA: Record<string, number>, threshold = 15) {
   const entries = Object.entries(layerA).filter(([k]) => k !== "user_id");
   const mean    = entries.reduce((s, [, v]) => s + v, 0) / entries.length;
@@ -47,8 +42,10 @@ function computeDominantWeak(layerA: Record<string, number>, threshold = 15) {
   return { dominant, weak };
 }
 
+// ── 프로필 섹션 ──────────────────────────────
+
 function ProfileSection() {
-  const data = MOCK_PROFILER_DATA;
+  const data = PROFILER_DATA;
   const { dominant, weak } = computeDominantWeak(data.layer_a as unknown as Record<string, number>);
 
   const dominantLabels = dominant.map((a) => AXIS_LABELS[a as keyof typeof AXIS_LABELS] ?? a).join(", ");
@@ -56,35 +53,22 @@ function ProfileSection() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
-      {/* 레이더 차트 */}
       <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h3 className="mb-1 text-sm font-semibold text-gray-700">
-          Layer A — Profiler 8각
-        </h3>
-        <p className="mb-4 text-[11px] text-gray-400">
-          YouTube 콘텐츠 소비 행동 측정값 (Profiler v1.1)
-        </p>
+        <h3 className="mb-1 text-sm font-semibold text-gray-700">Layer A — Profiler 8각</h3>
+        <p className="mb-4 text-[11px] text-gray-400">YouTube 콘텐츠 소비 행동 측정값 (Profiler v1.1)</p>
         <NavigatorRadarChart current={data.layer_a} size={340} />
       </div>
 
-      {/* 우측 패널 */}
       <div className="flex flex-col gap-4">
-        {/* Profiler 메타 (v1.1: layer_a 기반 런타임 계산) */}
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-          <h4 className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500">
-            프로필 분석
-          </h4>
+          <h4 className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500">프로필 분석</h4>
           <div className="space-y-1.5">
             <div>
-              <span className="text-[10px] font-semibold text-rose-500">
-                주 성향축 ▲
-              </span>
+              <span className="text-[10px] font-semibold text-rose-500">주 성향축 ▲</span>
               <p className="text-xs text-gray-600">{dominantLabels || "—"}</p>
             </div>
             <div>
-              <span className="text-[10px] font-semibold text-blue-500">
-                공백축 ▽
-              </span>
+              <span className="text-[10px] font-semibold text-blue-500">공백축 ▽</span>
               <p className="text-xs text-gray-600">{weakLabels || "—"}</p>
             </div>
           </div>
@@ -110,7 +94,6 @@ function ProfileSection() {
           </div>
         </div>
 
-        {/* Layer B 게이지 */}
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
           <LayerBGauge layerB={data.layer_b} />
         </div>
@@ -122,25 +105,57 @@ function ProfileSection() {
 // ── 이상향 섹션 ──────────────────────────────
 
 function IdealSection({
+  ideals,
   selected,
   onSelect,
+  isLoading,
+  error,
+  agentMessage,
 }: {
-  selected: IdealType | null;
-  onSelect: (t: IdealType) => void;
+  ideals:        IdealRadarChart[];
+  selected:      IdealType | null;
+  onSelect:      (t: IdealType) => void;
+  isLoading:     boolean;
+  error:         string | null;
+  agentMessage:  string;
 }) {
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[300px] flex-col items-center justify-center gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+        <p className="text-sm text-gray-500">AI가 이상향을 분석하고 있습니다...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
+        <p className="text-sm font-semibold text-red-700">이상향 생성 실패</p>
+        <p className="mt-1 text-xs text-red-500">{error}</p>
+        <p className="mt-2 text-xs text-gray-500">백엔드 서버가 실행 중인지 확인하세요.</p>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="mb-4">
-        <h3 className="text-sm font-semibold text-gray-700">
-          이상향 3가지 제안
-        </h3>
+        <h3 className="text-sm font-semibold text-gray-700">이상향 3가지 제안</h3>
         <p className="text-[11px] text-gray-400">
           12차원 추론 (Layer A 8각 + dominant/weak 메타) 기반 자동 생성
         </p>
       </div>
+
+      {agentMessage && (
+        <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+          <p className="text-xs text-blue-700 whitespace-pre-line">{agentMessage}</p>
+        </div>
+      )}
+
       <IdealSelector
-        current={MOCK_PROFILER_DATA.layer_a}
-        ideals={ALL_IDEALS}
+        current={PROFILER_DATA.layer_a}
+        ideals={ideals}
         selected={selected}
         onSelect={onSelect}
       />
@@ -148,26 +163,61 @@ function IdealSection({
   );
 }
 
-// ── 가이드 & 퀘스트 섹션 ──────────────────────
+// ── 가이드 & 퀘스트 섹션 ────────────────────
 
-function GuideSection() {
+function GuideSection({
+  guide,
+  quests,
+  isLoading,
+  error,
+}: {
+  guide:     Guide | null;
+  quests:    Quest[];
+  isLoading: boolean;
+  error:     string | null;
+}) {
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[300px] flex-col items-center justify-center gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+        <p className="text-sm text-gray-500">가이드와 퀘스트를 생성하고 있습니다...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
+        <p className="text-sm font-semibold text-red-700">가이드 생성 실패</p>
+        <p className="mt-1 text-xs text-red-500">{error}</p>
+      </div>
+    );
+  }
+
+  if (!guide) {
+    return (
+      <div className="flex min-h-[300px] flex-col items-center justify-center gap-2 text-center">
+        <p className="text-sm text-gray-500">이상향을 선택하고 확정하면 가이드가 생성됩니다.</p>
+        <p className="text-xs text-gray-400">이상향 선택 탭으로 이동하세요.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-      {/* 로드맵 */}
       <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-        <GuideRoadmap guide={MOCK_GUIDE} />
+        <GuideRoadmap guide={guide} />
       </div>
 
-      {/* 오늘의 퀘스트 */}
       <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-bold text-gray-800">🎯 오늘의 퀘스트</h3>
           <span className="text-[11px] text-gray-400">
-            총 {MOCK_QUESTS.reduce((s, q) => s + q.reward_point, 0)}pt 획득 가능
+            총 {quests.reduce((s, q) => s + q.reward_point, 0)}pt 획득 가능
           </span>
         </div>
         <div className="space-y-3">
-          {MOCK_QUESTS.map((q, i) => (
+          {quests.map((q, i) => (
             <QuestCard key={i} quest={q} index={i + 1} />
           ))}
         </div>
@@ -180,7 +230,67 @@ function GuideSection() {
 
 export default function NavigatorPage() {
   const [tab,      setTab]      = useState<Tab>("profile");
-  const [selected, setSelected] = useState<IdealType | null>("expansion");
+  const [selected, setSelected] = useState<IdealType | null>(null);
+
+  // 이상향 제안 상태
+  const [designResult,  setDesignResult]  = useState<IdealDesignResponse | null>(null);
+  const [designLoading, setDesignLoading] = useState(false);
+  const [designError,   setDesignError]   = useState<string | null>(null);
+
+  // 가이드/퀘스트 상태
+  const [guide,         setGuide]         = useState<Guide | null>(null);
+  const [quests,        setQuests]        = useState<Quest[]>([]);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [confirmError,  setConfirmError]  = useState<string | null>(null);
+  const [confirmMsg,    setConfirmMsg]    = useState("");
+
+  // ── 마운트 시 이상향 자동 생성 ──
+  useEffect(() => {
+    async function fetchDesign() {
+      setDesignLoading(true);
+      setDesignError(null);
+      try {
+        const result = await designIdeal(PROFILER_DATA, PROFILER_DATA.top5_interests);
+        setDesignResult(result);
+        // expansion 타입이 있으면 기본 선택
+        const expansion = result.proposals.find((p) => p.ideal_type === "expansion");
+        if (expansion) setSelected("expansion");
+      } catch (e) {
+        setDesignError(e instanceof Error ? e.message : "이상향 생성 중 오류가 발생했습니다.");
+      } finally {
+        setDesignLoading(false);
+      }
+    }
+    fetchDesign();
+  }, []);
+
+  // ── 이상향 확정 ──
+  const handleConfirm = useCallback(async () => {
+    if (!selected || !designResult) return;
+    const selectedIdeal = designResult.proposals.find((p) => p.ideal_type === selected);
+    if (!selectedIdeal) return;
+
+    setConfirmLoading(true);
+    setConfirmError(null);
+    try {
+      const result = await confirmIdeal(PROFILER_DATA, selectedIdeal, PROFILER_DATA.top5_interests);
+      setGuide(result.guide);
+      setQuests(result.quests);
+      setConfirmMsg(result.message);
+      setTab("guide");
+    } catch (e) {
+      setConfirmError(e instanceof Error ? e.message : "가이드 생성 중 오류가 발생했습니다.");
+    } finally {
+      setConfirmLoading(false);
+    }
+  }, [selected, designResult]);
+
+  const cognitiveScore = Math.round(
+    (PROFILER_DATA.layer_b.search_active_ratio * 100
+      + (1 - PROFILER_DATA.layer_b.viewing_concentration) * 100
+      + PROFILER_DATA.layer_b.taste_diversity_index
+      + PROFILER_DATA.layer_b.exploration_depth * 100) / 4
+  );
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-6 py-12">
@@ -196,37 +306,17 @@ export default function NavigatorPage() {
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-gray-400">
-                Agent 4
-              </span>
-              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
-                Dual-Layer
-              </span>
-              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                🚧 개발 중
-              </span>
+              <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Agent 4</span>
+              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">Dual-Layer</span>
+              <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">🔗 API 연결</span>
             </div>
-            <h1 className="mt-0.5 text-3xl font-bold tracking-tight text-gray-900">
-              Navigator
-            </h1>
-            <p className="mt-1 text-sm text-gray-500">
-              이상향 설계 및 버블 탈출 행동 유도 에이전트
-            </p>
+            <h1 className="mt-0.5 text-3xl font-bold tracking-tight text-gray-900">Navigator</h1>
+            <p className="mt-1 text-sm text-gray-500">이상향 설계 및 버블 탈출 행동 유도 에이전트</p>
           </div>
 
-          {/* Layer B 평균 뱃지 */}
           <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-center">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-blue-400">
-              인지주권 평균
-            </p>
-            <p className="text-2xl font-bold text-blue-700">
-              {Math.round(
-                (MOCK_PROFILER_DATA.layer_b.search_active_ratio * 100
-                  + (1 - MOCK_PROFILER_DATA.layer_b.viewing_concentration) * 100
-                  + MOCK_PROFILER_DATA.layer_b.taste_diversity_index
-                  + MOCK_PROFILER_DATA.layer_b.exploration_depth * 100) / 4
-              )}
-            </p>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-blue-400">인지주권 평균</p>
+            <p className="text-2xl font-bold text-blue-700">{cognitiveScore}</p>
             <p className="text-[10px] text-blue-400">/ 100</p>
           </div>
         </div>
@@ -239,9 +329,7 @@ export default function NavigatorPage() {
             key={t.id}
             onClick={() => setTab(t.id)}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-medium transition-all duration-150 ${
-              tab === t.id
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-500 hover:text-gray-700"
+              tab === t.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
             }`}
           >
             <span>{t.icon}</span>
@@ -254,48 +342,64 @@ export default function NavigatorPage() {
       <div className="min-h-[500px]">
         {tab === "profile" && <ProfileSection />}
         {tab === "ideal" && (
-          <IdealSection selected={selected} onSelect={setSelected} />
+          <IdealSection
+            ideals={designResult?.proposals ?? []}
+            selected={selected}
+            onSelect={setSelected}
+            isLoading={designLoading}
+            error={designError}
+            agentMessage={designResult?.agent_message ?? ""}
+          />
         )}
-        {tab === "guide" && <GuideSection />}
+        {tab === "guide" && (
+          <GuideSection
+            guide={guide}
+            quests={quests}
+            isLoading={confirmLoading}
+            error={confirmError}
+          />
+        )}
       </div>
 
-      {/* 하단 - 이상향 선택 시 다음 단계 유도 */}
-      {tab === "ideal" && selected && (
+      {/* 이상향 확정 버튼 */}
+      {tab === "ideal" && selected && !guide && (
         <div className="mt-6 flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 px-5 py-4">
           <div>
-            <p className="text-sm font-semibold text-blue-800">
-              이상향이 선택되었습니다 ✓
-            </p>
-            <p className="text-xs text-blue-500">
-              가이드와 퀘스트를 확인해보세요
-            </p>
+            <p className="text-sm font-semibold text-blue-800">이상향이 선택되었습니다 ✓</p>
+            <p className="text-xs text-blue-500">확정하면 30일 가이드와 퀘스트가 생성됩니다</p>
+          </div>
+          <button
+            onClick={handleConfirm}
+            disabled={confirmLoading}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            {confirmLoading ? "생성 중..." : "이상향 확정 →"}
+          </button>
+        </div>
+      )}
+
+      {/* 가이드 생성 완료 메시지 */}
+      {confirmMsg && tab === "guide" && (
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3">
+          <p className="text-sm text-emerald-700">{confirmMsg}</p>
+        </div>
+      )}
+
+      {/* 가이드 이미 있을 때 이상향 탭에서 안내 */}
+      {tab === "ideal" && selected && guide && (
+        <div className="mt-6 flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50 px-5 py-4">
+          <div>
+            <p className="text-sm font-semibold text-emerald-800">가이드가 생성되었습니다 ✓</p>
+            <p className="text-xs text-emerald-500">가이드 & 퀘스트 탭에서 확인하세요</p>
           </div>
           <button
             onClick={() => setTab("guide")}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 transition-colors"
           >
             가이드 보기 →
           </button>
         </div>
       )}
-
-      {/* 개발 중 안내 배너 */}
-      <div className="mt-8 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 text-lg">🚧</span>
-          <div>
-            <p className="text-sm font-semibold text-amber-800">
-              현재 개발 중인 기능입니다
-            </p>
-            <ul className="mt-1.5 space-y-0.5 text-[11px] text-amber-700">
-              <li>• 화면의 모든 데이터는 Mock(임시) 데이터입니다 — 실제 분석 결과가 아닙니다</li>
-              <li>• DB 저장 기능 미구현 — 새로고침 시 초기화됩니다</li>
-              <li>• 대화형 이상향 설계(Chat)는 OpenAI API 키 연결 후 동작합니다</li>
-              <li>• YouTube 알고리즘 변형 기능은 Extension 개발 완료 후 활성화됩니다</li>
-            </ul>
-          </div>
-        </div>
-      </div>
     </main>
   );
 }

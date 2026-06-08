@@ -66,7 +66,7 @@ function IdealCard({
       </div>
 
       <p className="mb-3 text-[11px] text-gray-500">{meta.description}</p>
-      <p className="mb-3 text-xs italic text-gray-600">"{ideal.summary}"</p>
+      <p className="mb-3 text-xs italic text-gray-600">&ldquo;{ideal.summary}&rdquo;</p>
 
       {/* gap 요약 */}
       <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
