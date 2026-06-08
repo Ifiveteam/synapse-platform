@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -21,11 +21,20 @@ interface AgentDetailProps {
   index: number;
 }
 
+interface VideoItem {
+  title: string;
+  channel: string;
+  category: string;
+  watched_at: string;
+}
+
 interface AnalyzeResult {
   status: string;
-  total: number;
-  processed: number;
+  total?: number;
+  processed?: number;
   category_stats?: Record<string, number>;
+  videos?: VideoItem[];
+  message?: string;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -46,12 +55,39 @@ export function AgentDetail({ agent, index }: AgentDetailProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalyzeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     setSelectedAgentId(agent.id);
   }, [agent.id, setSelectedAgentId]);
 
-  const handleAnalyze = async () => {
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, []);
+
+  const pollResult = (taskId: string) => {
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `http://localhost:8000/api/v1/indexer/analyze/${taskId}`
+        );
+        const data = await res.json();
+        if (data.status === "success" || data.status === "error") {
+          clearInterval(pollingRef.current!);
+          setResult(data);
+          setLoading(false);
+        }
+      } catch {
+        clearInterval(pollingRef.current!);
+        setError("결과 조회 실패");
+        setLoading(false);
+      }
+    }, 3000);
+  };
+
+  const handleAnalyze = async (sample = false) => {
     if (!file) return;
     setLoading(true);
     setError(null);
@@ -60,16 +96,16 @@ export function AgentDetail({ agent, index }: AgentDetailProps) {
     const formData = new FormData();
     formData.append("file", file);
 
+    const endpoint = sample
+      ? "http://localhost:8000/api/v1/indexer/analyze/sample"
+      : "http://localhost:8000/api/v1/indexer/analyze";
+
     try {
-      const res = await fetch("http://localhost:8000/api/v1/indexer/analyze", {
-        method: "POST",
-        body: formData,
-      });
+      const res = await fetch(endpoint, { method: "POST", body: formData });
       const data = await res.json();
-      setResult(data);
+      if (data.task_id) pollResult(data.task_id);
     } catch {
       setError("API 연결 실패. FastAPI 서버가 실행 중인지 확인해주세요.");
-    } finally {
       setLoading(false);
     }
   };
@@ -85,13 +121,9 @@ export function AgentDetail({ agent, index }: AgentDetailProps) {
 
       <Card>
         <CardHeader>
-          <p className="text-muted-foreground text-sm font-medium">
-            Agent {index}
-          </p>
+          <p className="text-muted-foreground text-sm font-medium">Agent {index}</p>
           <CardTitle className="text-3xl">{agent.name}</CardTitle>
-          <CardDescription className="text-base">
-            {agent.description}
-          </CardDescription>
+          <CardDescription className="text-base">{agent.description}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="bg-muted rounded-lg p-4 text-sm">
@@ -124,22 +156,38 @@ export function AgentDetail({ agent, index }: AgentDetailProps) {
                     variant="outline"
                     className="mt-2"
                     type="button"
-                    onClick={() =>
-                      document.getElementById("file-upload")?.click()
-                    }
+                    onClick={() => document.getElementById("file-upload")?.click()}
                   >
                     파일 선택
                   </Button>
                 </label>
               </div>
 
-              <Button
-                className="w-full"
-                onClick={handleAnalyze}
-                disabled={!file || loading}
-              >
-                {loading ? "분석 중..." : "분석 시작"}
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Button
+                  className="w-full"
+                  onClick={() => handleAnalyze(false)}
+                  disabled={!file || loading}
+                >
+                  {loading ? "분석 중..." : "전체 분석"}
+                </Button>
+                <Button
+                  className="w-full"
+                  variant="outline"
+                  onClick={() => handleAnalyze(true)}
+                  disabled={!file || loading}
+                >
+                  ⚡ 샘플 분석 (20개)
+                </Button>
+              </div>
+
+              {loading && (
+                <div className="bg-muted rounded-lg p-4 text-sm text-center">
+                  <p className="text-muted-foreground">
+                    ⏳ 백그라운드에서 분석 중이에요. 잠시만 기다려주세요...
+                  </p>
+                </div>
+              )}
 
               {error && (
                 <div className="bg-destructive/10 text-destructive rounded-lg p-4 text-sm">
@@ -147,33 +195,52 @@ export function AgentDetail({ agent, index }: AgentDetailProps) {
                 </div>
               )}
 
-              {result && (
-                <div className="bg-green-50 rounded-lg p-4 space-y-2">
-                  <p className="font-medium text-green-800">✅ 분석 완료!</p>
-                  <p className="text-sm text-green-700">
-                    전체 항목: {result.total}개
-                  </p>
-                  <p className="text-sm text-green-700">
-                    처리 완료: {result.processed}개
-                  </p>
-                  {result.category_stats && (
-                    <div className="mt-3 border-t border-green-200 pt-3 space-y-1">
-                      <p className="font-medium text-green-800 mb-2">
-                        📊 카테고리 분포
-                      </p>
-                      {Object.entries(result.category_stats).map(
-                        ([key, count]) => (
-                          <div
-                            key={key}
-                            className="flex justify-between text-sm text-green-700"
-                          >
+              {result?.status === "success" && (
+                <div className="space-y-3">
+                  <div className="bg-green-50 rounded-lg p-4 space-y-2">
+                    <p className="font-medium text-green-800">✅ 분석 완료!</p>
+                    <p className="text-sm text-green-700">전체 항목: {result.total}개</p>
+                    <p className="text-sm text-green-700">처리 완료: {result.processed}개</p>
+
+                    {result.category_stats && (
+                      <div className="border-t border-green-200 pt-3 space-y-1">
+                        <p className="font-medium text-green-800 mb-2">📊 카테고리 분포</p>
+                        {Object.entries(result.category_stats).map(([key, count]) => (
+                          <div key={key} className="flex justify-between text-sm text-green-700">
                             <span>{CATEGORY_LABELS[key] ?? key}</span>
                             <span>{count}개</span>
                           </div>
-                        )
-                      )}
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {result.videos && result.videos.length > 0 && (
+                    <div className="rounded-lg border p-4 space-y-2">
+                      <p className="font-medium text-sm">🎬 분석된 영상 목록</p>
+                      <div className="max-h-72 overflow-y-auto space-y-2">
+                        {result.videos.map((video, i) => (
+                          <div key={i} className="bg-muted rounded p-3 text-sm">
+                            <p className="font-medium truncate">{video.title}</p>
+                            <div className="flex justify-between mt-1">
+                              <span className="text-muted-foreground text-xs truncate">
+                                {video.channel}
+                              </span>
+                              <span className="text-xs font-medium text-green-600 ml-2 shrink-0">
+                                {CATEGORY_LABELS[video.category] ?? video.category}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {result?.status === "error" && (
+                <div className="bg-destructive/10 text-destructive rounded-lg p-4 text-sm">
+                  {result.message}
                 </div>
               )}
             </div>
@@ -181,8 +248,7 @@ export function AgentDetail({ agent, index }: AgentDetailProps) {
 
           {agent.id !== "indexer" && (
             <p className="text-muted-foreground text-sm">
-              이 화면에서 {agent.name} 에이전트와의 상호작용 UI를 확장할 수
-              있습니다.
+              이 화면에서 {agent.name} 에이전트와의 상호작용 UI를 확장할 수 있습니다.
             </p>
           )}
         </CardContent>

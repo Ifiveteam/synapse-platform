@@ -27,9 +27,10 @@ def node_preprocess(state: IndexerState) -> IndexerState:
 def node_classify(state: IndexerState) -> IndexerState:
     """노드 3: 카테고리 분류 (20개씩 배치)"""
     try:
-        cleaned_data = state["cleaned_data"][:100]
+        limit = state.get("limit", 100)
+        cleaned_data = state["cleaned_data"][:limit]
         batch_size = 50
-        result = []
+        result = []  # ← 이거 빠져있었어요!
 
         for i in range(0, len(cleaned_data), batch_size):
             batch = cleaned_data[i : i + batch_size]

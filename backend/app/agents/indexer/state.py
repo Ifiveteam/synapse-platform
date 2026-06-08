@@ -26,3 +26,5 @@ class IndexerState(TypedDict):
 
     # DB 저장 결과
     saved_count: int | None
+
+    limit: int | None
