@@ -1,0 +1,492 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="980" viewBox="0 0 820 980">
+  <defs>
+    <style>
+      .t-title   { font: 800 20px 'Apple SD Gothic Neo',sans-serif; fill:#0f172a; }
+      .t-sub     { font: 400 12px 'Apple SD Gothic Neo',sans-serif; fill:#64748b; }
+      .t-section { font: 700 13px 'Apple SD Gothic Neo',sans-serif; }
+      .t-axis    { font: 700 12px 'Apple SD Gothic Neo',sans-serif; }
+      .t-axissub { font: 400 9px  'Apple SD Gothic Neo',sans-serif; fill:#94a3b8; }
+      .t-badge   { font: 700 9px  'Apple SD Gothic Neo',sans-serif; }
+      .t-score   { font: 700 11px 'Apple SD Gothic Neo',sans-serif; }
+      .t-pct     { font: 400 9px  'Apple SD Gothic Neo',sans-serif; fill:#cbd5e1; }
+      .t-formula { font: 400 9px  'Apple SD Gothic Neo',sans-serif; fill:#64748b; }
+      .t-chip    { font: 700 10px 'Apple SD Gothic Neo',sans-serif; }
+      .t-arrow   { font: 700 14px 'Apple SD Gothic Neo',sans-serif; fill:#475569; }
+      .t-out     { font: 700 12px 'Apple SD Gothic Neo',sans-serif; }
+      .t-person  { font: 600 11px 'Apple SD Gothic Neo',sans-serif; fill:#475569; }
+      .t-legend  { font: 700 11px 'Apple SD Gothic Neo',sans-serif; fill:#334155; }
+      .t-legsub  { font: 400 10px 'Apple SD Gothic Neo',sans-serif; fill:#64748b; }
+      .t-metav   { font: 800 18px 'Apple SD Gothic Neo',sans-serif; }
+      .t-metalbl { font: 400 10px 'Apple SD Gothic Neo',sans-serif; fill:#64748b; }
+      .t-dim     { font: 700 9px  'Apple SD Gothic Neo',sans-serif; }
+    </style>
+    <radialGradient id="g-cur" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.05"/>
+    </radialGradient>
+    <radialGradient id="g-ideal" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#ef4444" stop-opacity="0.02"/>
+    </radialGradient>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#64748b"/>
+    </marker>
+    <marker id="arr-b" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#3b82f6"/>
+    </marker>
+  </defs>
+
+  <!-- ════ 배경 ════ -->
+  <rect width="820" height="980" fill="#f1f5f9" rx="20"/>
+  <rect x="14" y="14" width="792" height="952" fill="white" rx="14" stroke="#e2e8f0"/>
+
+  <!-- ════ 헤더 ════ -->
+  <text x="410" y="52" class="t-title" text-anchor="middle">Synapse 8 — Dual-Layer Navigator</text>
+  <text x="410" y="72" class="t-sub"   text-anchor="middle">제안 3 · Layer A(Profiler 행동 측정) + Layer B(Navigator 인지주권 파생) → 12차원 이상향 추론</text>
+  <rect x="261" y="82" width="298" height="26" rx="13" fill="#f1f5f9"/>
+  <text x="410" y="99" class="t-person" text-anchor="middle">📱 30대 직장인 · IT·자기계발 관심 · 유튜브 헤비 유저</text>
+
+  <!-- ════ 분리선 ════ -->
+  <line x1="410" y1="118" x2="410" y2="580" stroke="#e2e8f0" stroke-width="1.5" stroke-dasharray="5,4"/>
+
+  <!-- ──────────────────────────────────────────────────────────
+       LEFT PANEL — Layer A : Profiler 8각 (행동 측정)
+       center: (205, 360)  r_max: 140   0.707×140 ≈ 99
+       축 순서(시계방향, 위=0):
+         0 top      지적 호기심   (205, 220)
+         1 TR       자기계발      (304, 261)
+         2 right    사회·시선     (345, 360)
+         3 BR       깊이·몰입     (304, 459)
+         4 bottom   실용 지향     (205, 500)
+         5 BL       정서·위로     (106, 459)
+         6 left     창의·표현     ( 65, 360)
+         7 TL       오락·해방     (106, 261)
+  ────────────────────────────────────────────────────────── -->
+
+  <!-- 패널 배경 -->
+  <rect x="26" y="118" width="370" height="470" rx="10" fill="#fafafa" stroke="#e2e8f0"/>
+
+  <!-- 패널 레이블 -->
+  <rect x="38" y="128" width="86" height="20" rx="10" fill="#dbeafe"/>
+  <text x="81" y="141" class="t-section" text-anchor="middle" fill="#1d4ed8">Layer A</text>
+  <text x="134" y="141" class="t-section" fill="#1e293b">Profiler 8각 — 행동 측정</text>
+  <text x="38" y="160" class="t-sub">intellectual_curiosity ~ depth_immersion (Profiler v1.0 그대로)</text>
+
+  <!-- Grid rings -->
+  <!-- r=28(20%) -->
+  <polygon points="205,332 225,340 233,360 225,380 205,388 185,380 177,360 185,340"
+           fill="none" stroke="#f1f5f9" stroke-width="1.5"/>
+  <!-- r=56(40%) -->
+  <polygon points="205,304 245,320 261,360 245,400 205,416 165,400 149,360 165,320"
+           fill="none" stroke="#e2e8f0" stroke-width="1"/>
+  <!-- r=84(60%) -->
+  <polygon points="205,276 264,301 289,360 264,419 205,444 146,419 121,360 146,301"
+           fill="none" stroke="#e2e8f0" stroke-width="1.2"/>
+  <!-- r=112(80%) -->
+  <polygon points="205,248 284,281 317,360 284,439 205,472 126,439 93,360 126,281"
+           fill="none" stroke="#e2e8f0" stroke-width="1"/>
+  <!-- r=140(100%) -->
+  <polygon points="205,220 304,261 345,360 304,459 205,500 106,459 65,360 106,261"
+           fill="none" stroke="#cbd5e1" stroke-width="1.5"/>
+
+  <!-- 축 라인 -->
+  <line x1="205" y1="360" x2="205" y2="220" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="205" y1="360" x2="304" y2="261" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="205" y1="360" x2="345" y2="360" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="205" y1="360" x2="304" y2="459" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="205" y1="360" x2="205" y2="500" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="205" y1="360" x2="106" y2="459" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="205" y1="360" x2="65"  y2="360" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="205" y1="360" x2="106" y2="261" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,3"/>
+
+  <!-- % 눈금 -->
+  <text x="212" y="335" class="t-pct">20</text>
+  <text x="212" y="307" class="t-pct">40</text>
+  <text x="212" y="279" class="t-pct">60</text>
+  <text x="212" y="251" class="t-pct">80</text>
+
+  <!-- ── 현재 (파란 실선) ──
+    scores: 지적호기심=72, 자기계발=65, 사회시선=35, 깊이몰입=40,
+            실용지향=78,   정서위로=55,  창의표현=28, 오락해방=62
+    r = score/100*140
+
+    0 top(72%)  r=100.8 → (205, 259)
+    1 TR(65%)   r=91    → 0.707*91=64  → (269,296)
+    2 right(35%)r=49    → (254,360)
+    3 BR(40%)   r=56    → 0.707*56=40  → (245,400)
+    4 bottom(78%)r=109  → (205,469)  (실용지향, 아래쪽으로 큰값)
+    5 BL(55%)   r=77    → 0.707*77=54  → (151,414)
+    6 left(28%) r=39    → (166,360)
+    7 TL(62%)   r=87    → 0.707*87=62  → (143,298)
+  -->
+  <polygon
+    points="205,259 269,296 254,360 245,400 205,469 151,414 166,360 143,298"
+    fill="url(#g-cur)"
+    stroke="#3b82f6"
+    stroke-width="2.5"
+    stroke-linejoin="round"/>
+
+  <!-- ── 이상향 (빨간 점선, ADJACENT) ──
+    scores: 지적호기심=87, 자기계발=82, 사회시선=55, 깊이몰입=60,
+            실용지향=62, 정서위로=55, 창의표현=48, 오락해방=50
+    0 top(87%)   r=122 → (205, 238)
+    1 TR(82%)    r=115 → 0.707*115=81 → (286,279)
+    2 right(55%) r=77  → (282,360)
+    3 BR(60%)    r=84  → 0.707*84=59  → (264,419)
+    4 bottom(62%)r=87  → (205,447)
+    5 BL(55%)    r=77  → 0.707*77=54  → (151,414)
+    6 left(48%)  r=67  → (138,360)
+    7 TL(50%)    r=70  → 0.707*70=50  → (155,310)
+  -->
+  <polygon
+    points="205,238 286,279 282,360 264,419 205,447 151,414 138,360 155,310"
+    fill="url(#g-ideal)"
+    stroke="#ef4444"
+    stroke-width="2"
+    stroke-dasharray="7,4"
+    stroke-linejoin="round"/>
+
+  <!-- 현재 점 -->
+  <circle cx="205" cy="259" r="4" fill="#3b82f6" stroke="white" stroke-width="1.5"/>
+  <circle cx="269" cy="296" r="4" fill="#3b82f6" stroke="white" stroke-width="1.5"/>
+  <circle cx="254" cy="360" r="4" fill="#3b82f6" stroke="white" stroke-width="1.5"/>
+  <circle cx="245" cy="400" r="4" fill="#3b82f6" stroke="white" stroke-width="1.5"/>
+  <circle cx="205" cy="469" r="4" fill="#3b82f6" stroke="white" stroke-width="1.5"/>
+  <circle cx="151" cy="414" r="4" fill="#3b82f6" stroke="white" stroke-width="1.5"/>
+  <circle cx="166" cy="360" r="4" fill="#3b82f6" stroke="white" stroke-width="1.5"/>
+  <circle cx="143" cy="298" r="4" fill="#3b82f6" stroke="white" stroke-width="1.5"/>
+
+  <!-- 이상향 점 -->
+  <circle cx="205" cy="238" r="4" fill="#ef4444" stroke="white" stroke-width="1.5"/>
+  <circle cx="286" cy="279" r="4" fill="#ef4444" stroke="white" stroke-width="1.5"/>
+  <circle cx="282" cy="360" r="4" fill="#ef4444" stroke="white" stroke-width="1.5"/>
+  <circle cx="264" cy="419" r="4" fill="#ef4444" stroke="white" stroke-width="1.5"/>
+  <circle cx="205" cy="447" r="4" fill="#ef4444" stroke="white" stroke-width="1.5"/>
+  <circle cx="151" cy="414" r="4" fill="#ef4444" stroke="white" stroke-width="1.5"/>
+  <circle cx="138" cy="360" r="4" fill="#ef4444" stroke="white" stroke-width="1.5"/>
+  <circle cx="155" cy="310" r="4" fill="#ef4444" stroke="white" stroke-width="1.5"/>
+
+  <!-- 중심 -->
+  <circle cx="205" cy="360" r="3" fill="#94a3b8"/>
+
+  <!-- ── 축 라벨 (Layer A) ── -->
+  <!-- 0: 지적호기심 top -->
+  <text x="205" y="208" class="t-axis" text-anchor="middle" fill="#0d9488">지적 호기심</text>
+  <text x="205" y="218" class="t-axissub" text-anchor="middle">new channel · topic diversity</text>
+  <text x="193" y="257" class="t-score" fill="#3b82f6" text-anchor="end">72</text>
+  <text x="208" y="237" class="t-score" fill="#ef4444">87</text>
+
+  <!-- 1: 자기계발 TR -->
+  <text x="308" y="250" class="t-axis" text-anchor="start" fill="#16a34a">자기계발</text>
+  <text x="308" y="260" class="t-axissub" text-anchor="start">습관·루틴·생산성</text>
+  <text x="272" y="294" class="t-score" fill="#3b82f6">65</text>
+  <text x="289" y="277" class="t-score" fill="#ef4444">82</text>
+
+  <!-- 2: 사회시선 right -->
+  <text x="350" y="356" class="t-axis" text-anchor="start" fill="#16a34a">사회·시선</text>
+  <text x="350" y="367" class="t-axissub" text-anchor="start">뉴스·이슈</text>
+  <text x="256" y="358" class="t-score" fill="#3b82f6">35</text>
+  <text x="284" y="358" class="t-score" fill="#ef4444">55</text>
+
+  <!-- 3: 깊이몰입 BR -->
+  <text x="308" y="472" class="t-axis" text-anchor="start" fill="#0d9488">깊이·몰입</text>
+  <text x="308" y="482" class="t-axissub" text-anchor="start">장편·binge</text>
+  <text x="248" y="398" class="t-score" fill="#3b82f6">40</text>
+  <text x="266" y="418" class="t-score" fill="#ef4444">60</text>
+
+  <!-- 4: 실용지향 bottom -->
+  <text x="205" y="512" class="t-axis" text-anchor="middle" fill="#ea580c">실용 지향 ▼dominant</text>
+  <text x="205" y="522" class="t-axissub" text-anchor="middle">How-to · 튜토리얼</text>
+  <text x="192" y="467" class="t-score" fill="#3b82f6" text-anchor="end">78</text>
+  <text x="192" y="446" class="t-score" fill="#ef4444" text-anchor="end">62</text>
+
+  <!-- 5: 정서위로 BL -->
+  <text x="100" y="472" class="t-axis" text-anchor="end" fill="#7c3aed">정서·위로</text>
+  <text x="100" y="482" class="t-axissub" text-anchor="end">ASMR·힐링</text>
+  <text x="149" y="413" class="t-score" fill="#3b82f6" text-anchor="end">55</text>
+
+  <!-- 6: 창의표현 left (weak) -->
+  <text x="60" y="356" class="t-axis" text-anchor="end" fill="#ea580c">창의·표현 ▼weak</text>
+  <text x="60" y="367" class="t-axissub" text-anchor="end">DIY·메이킹</text>
+  <text x="164" y="358" class="t-score" fill="#3b82f6" text-anchor="end">28</text>
+  <text x="136" y="358" class="t-score" fill="#ef4444" text-anchor="end">48</text>
+
+  <!-- 7: 오락해방 TL -->
+  <text x="100" y="250" class="t-axis" text-anchor="end" fill="#7c3aed">오락·해방</text>
+  <text x="100" y="260" class="t-axissub" text-anchor="end">예능·밈·엔터</text>
+  <text x="141" y="296" class="t-score" fill="#3b82f6" text-anchor="end">62</text>
+  <text x="153" y="308" class="t-score" fill="#ef4444" text-anchor="end">50</text>
+
+  <!-- dominant/weak 표시 원 -->
+  <circle cx="205" cy="469" r="8" fill="none" stroke="#f97316" stroke-width="2" stroke-dasharray="3,2"/>
+  <circle cx="166" cy="360" r="8" fill="none" stroke="#f97316" stroke-width="2" stroke-dasharray="3,2"/>
+
+
+  <!-- ──────────────────────────────────────────────────────────
+       RIGHT PANEL — Layer B : Navigator 인지주권 4지수 (파생)
+  ────────────────────────────────────────────────────────── -->
+
+  <rect x="420" y="118" width="376" height="470" rx="10" fill="#fafafa" stroke="#e2e8f0"/>
+
+  <!-- 패널 레이블 -->
+  <rect x="432" y="128" width="86" height="20" rx="10" fill="#fce7f3"/>
+  <text x="475" y="141" class="t-section" text-anchor="middle" fill="#9d174d">Layer B</text>
+  <text x="528" y="141" class="t-section" fill="#1e293b">Navigator 인지주권 4지수</text>
+  <text x="432" y="160" class="t-sub">Layer A 8각 + Layer 3 보조 KPI로 파생 계산</text>
+
+  <!-- ─── 산출 공식 범례 ─── -->
+  <rect x="432" y="168" width="352" height="38" rx="7" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="608" y="183" class="t-formula" text-anchor="middle">축 점수 = f(Profiler 8각 값, Layer3 보조KPI) → 0~100</text>
+  <text x="608" y="197" class="t-formula" text-anchor="middle" fill="#94a3b8">현재(파란 바) vs 이상향(빨간 마커 ▼) · 괄호=gap</text>
+
+  <!-- 각 지수: y 간격 76px, 시작 y=218 -->
+
+  <!-- ──── 1. 관점 균형 지수 (y=218) ──── -->
+  <!-- current=52, ideal=68, gap=+16 -->
+  <text x="432" y="232" class="t-axis" fill="#1e293b">관점 균형 지수</text>
+  <rect x="432" y="236" width="76" height="13" rx="6" fill="#ede9fe"/>
+  <text x="470" y="246" class="t-badge" text-anchor="middle" fill="#7c3aed">파생 | Layer 3</text>
+
+  <!-- 바 배경 -->
+  <rect x="432" y="254" width="260" height="22" rx="11" fill="#e2e8f0"/>
+  <!-- 현재 바 (52% of 260 = 135) -->
+  <rect x="432" y="254" width="135" height="22" rx="11" fill="#3b82f6"/>
+  <!-- 이상향 마커 (68% of 260 = 177) -->
+  <polygon points="609,250 616,262 602,262" fill="#ef4444"/>
+  <!-- 이상향 마커 선 -->
+  <line x1="609" y1="262" x2="609" y2="276" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="3,2"/>
+
+  <text x="569" y="268" class="t-score" fill="#3b82f6" text-anchor="end">52</text>
+  <text x="613" y="268" class="t-score" fill="#ef4444">68</text>
+  <rect x="626" y="252" width="30" height="16" rx="8" fill="#fef9c3"/>
+  <text x="641" y="263" class="t-dim" text-anchor="middle" fill="#a16207">+16</text>
+
+  <!-- 공식 -->
+  <text x="432" y="285" class="t-formula">
+    = 100 − normalize(std[ 지적호기심(72), 사회시선(35), 실용지향(78), 정서위로(55) ])
+  </text>
+  <!-- std 계산 표시 -->
+  <text x="432" y="295" class="t-formula" fill="#94a3b8">  std([72,35,78,55]) = 16.7 → polarization 58 → balance 42</text>
+
+  <!-- ──── 2. 주체성 지수 (y=310) ──── -->
+  <!-- current=31, ideal=55, gap=+24 -->
+  <text x="432" y="316" class="t-axis" fill="#1e293b">주체성 지수</text>
+  <rect x="432" y="320" width="76" height="13" rx="6" fill="#fef3c7"/>
+  <text x="470" y="330" class="t-badge" text-anchor="middle" fill="#b45309">파생 | search ratio</text>
+
+  <rect x="432" y="338" width="260" height="22" rx="11" fill="#e2e8f0"/>
+  <!-- 현재 바 (31% of 260 = 81) -->
+  <rect x="432" y="338" width="81" height="22" rx="11" fill="#3b82f6"/>
+  <!-- 이상향 마커 (55% of 260 = 143) -->
+  <polygon points="575,334 582,346 568,346" fill="#ef4444"/>
+  <line x1="575" y1="346" x2="575" y2="360" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="3,2"/>
+
+  <text x="515" y="352" class="t-score" fill="#3b82f6" text-anchor="end">31</text>
+  <text x="579" y="352" class="t-score" fill="#ef4444">55</text>
+  <rect x="592" y="336" width="30" height="16" rx="8" fill="#fef9c3"/>
+  <text x="607" y="347" class="t-dim" text-anchor="middle" fill="#a16207">+24</text>
+
+  <text x="432" y="369" class="t-formula">
+    = search_active_ratio × 100 · (검색 후 시청 0.31 / 전체)
+  </text>
+  <text x="432" y="379" class="t-formula" fill="#dc2626">  ⚠ 낮음 — 추천 피드 의존도 높음. Navigator 핵심 개선 타깃.</text>
+
+  <!-- ──── 3. 탐색 넓이 (y=394) ──── -->
+  <!-- current=70, ideal=82, gap=+12 -->
+  <text x="432" y="400" class="t-axis" fill="#1e293b">탐색 넓이</text>
+  <rect x="432" y="404" width="76" height="13" rx="6" fill="#ccfbf1"/>
+  <text x="470" y="414" class="t-badge" text-anchor="middle" fill="#0d9488">파생 | 확장 시드</text>
+
+  <rect x="432" y="422" width="260" height="22" rx="11" fill="#e2e8f0"/>
+  <!-- 현재 바 (70% of 260 = 182) -->
+  <rect x="432" y="422" width="182" height="22" rx="11" fill="#3b82f6"/>
+  <!-- 이상향 마커 (82% of 260 = 213) -->
+  <polygon points="645,418 652,430 638,430" fill="#ef4444"/>
+  <line x1="645" y1="430" x2="645" y2="444" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="3,2"/>
+
+  <text x="616" y="436" class="t-score" fill="#3b82f6" text-anchor="end">70</text>
+  <text x="649" y="436" class="t-score" fill="#ef4444">82</text>
+  <rect x="662" y="420" width="28" height="16" rx="8" fill="#fef9c3"/>
+  <text x="676" y="431" class="t-dim" text-anchor="middle" fill="#a16207">+12</text>
+
+  <text x="432" y="453" class="t-formula">
+    = 지적호기심(72) × 0.7 + weak_axes수(2개) × 10 = 70.4
+  </text>
+  <text x="432" y="463" class="t-formula" fill="#0d9488">  weak_axes: [창의·표현, 사회·시선] → Navigator 확장 방향 시드</text>
+
+  <!-- ──── 4. 성장 잠재력 (y=478) ──── -->
+  <!-- current=55, ideal=72, gap=+17 -->
+  <text x="432" y="484" class="t-axis" fill="#1e293b">성장 잠재력</text>
+  <rect x="432" y="488" width="76" height="13" rx="6" fill="#dcfce7"/>
+  <text x="470" y="498" class="t-badge" text-anchor="middle" fill="#16a34a">파생 | 이상향 핵심</text>
+
+  <rect x="432" y="506" width="260" height="22" rx="11" fill="#e2e8f0"/>
+  <!-- 현재 바 (55% of 260 = 143) -->
+  <rect x="432" y="506" width="143" height="22" rx="11" fill="#3b82f6"/>
+  <!-- 이상향 마커 (72% of 260 = 187) -->
+  <polygon points="619,502 626,514 612,514" fill="#ef4444"/>
+  <line x1="619" y1="514" x2="619" y2="528" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="3,2"/>
+
+  <text x="577" y="520" class="t-score" fill="#3b82f6" text-anchor="end">55</text>
+  <text x="623" y="520" class="t-score" fill="#ef4444">72</text>
+  <rect x="636" y="504" width="28" height="16" rx="8" fill="#fef9c3"/>
+  <text x="650" y="515" class="t-dim" text-anchor="middle" fill="#a16207">+17</text>
+
+  <text x="432" y="537" class="t-formula">
+    = 자기계발(65) × 0.6 + 깊이몰입(40) × 0.4 = 55.0
+  </text>
+  <text x="432" y="547" class="t-formula" fill="#16a34a">  자기계발 + 깊이 몰입이 함께 올라야 진정한 성장 달성</text>
+
+  <!-- ── Layer B 범례 ── -->
+  <rect x="432" y="558" width="352" height="22" rx="7" fill="#f1f5f9"/>
+  <circle cx="448" cy="569" r="5" fill="#3b82f6"/>
+  <text x="458" y="573" class="t-legsub">현재</text>
+  <polygon points="480,564 487,576 473,576" fill="#ef4444"/>
+  <text x="492" y="573" class="t-legsub">이상향 목표 ▼</text>
+  <rect x="540" y="561" width="28" height="16" rx="8" fill="#fef9c3"/>
+  <text x="554" y="572" class="t-dim" text-anchor="middle" fill="#a16207">+N</text>
+  <text x="573" y="573" class="t-legsub">= gap (이상향 추론 거리)</text>
+
+
+  <!-- ════════════════════════════════════════════════════════
+       COMBINATION SECTION — 12차원 이상향 추론 흐름
+  ════════════════════════════════════════════════════════ -->
+
+  <rect x="26" y="600" width="770" height="130" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="411" y="618" class="t-section" text-anchor="middle" fill="#1e293b">12차원 이상향 추론 인풋 (Layer A 8개 + Layer B 4개)</text>
+
+  <!-- Layer A 칩들 (8개) -->
+  <text x="38" y="638" class="t-formula" fill="#1d4ed8">Layer A →</text>
+
+  <!-- 칩 1: 지적호기심=72 -->
+  <rect x="100" y="626" width="68" height="20" rx="10" fill="#dbeafe"/>
+  <text x="134" y="639" class="t-chip" text-anchor="middle" fill="#1d4ed8">호기심 72</text>
+
+  <!-- 칩 2: 자기계발=65 -->
+  <rect x="173" y="626" width="66" height="20" rx="10" fill="#dcfce7"/>
+  <text x="206" y="639" class="t-chip" text-anchor="middle" fill="#15803d">자기계발 65</text>
+
+  <!-- 칩 3: 사회시선=35 (weak) -->
+  <rect x="244" y="626" width="66" height="20" rx="10" fill="#fee2e2"/>
+  <text x="277" y="639" class="t-chip" text-anchor="middle" fill="#b91c1c">사회시선 35↓</text>
+
+  <!-- 칩 4: 깊이몰입=40 -->
+  <rect x="315" y="626" width="62" height="20" rx="10" fill="#dbeafe"/>
+  <text x="346" y="639" class="t-chip" text-anchor="middle" fill="#1d4ed8">깊이몰입 40</text>
+
+  <!-- 칩 5: 실용지향=78 (dominant) -->
+  <rect x="382" y="626" width="70" height="20" rx="10" fill="#ffedd5"/>
+  <text x="417" y="639" class="t-chip" text-anchor="middle" fill="#c2410c">실용지향 78↑</text>
+
+  <!-- 칩 6: 정서위로=55 -->
+  <rect x="457" y="626" width="62" height="20" rx="10" fill="#ede9fe"/>
+  <text x="488" y="639" class="t-chip" text-anchor="middle" fill="#6d28d9">정서위로 55</text>
+
+  <!-- 칩 7: 창의표현=28 (weak) -->
+  <rect x="524" y="626" width="70" height="20" rx="10" fill="#fee2e2"/>
+  <text x="559" y="639" class="t-chip" text-anchor="middle" fill="#b91c1c">창의표현 28↓</text>
+
+  <!-- 칩 8: 오락해방=62 -->
+  <rect x="599" y="626" width="68" height="20" rx="10" fill="#ede9fe"/>
+  <text x="633" y="639" class="t-chip" text-anchor="middle" fill="#6d28d9">오락해방 62</text>
+
+  <!-- Layer B 칩들 (4개) -->
+  <text x="38" y="670" class="t-formula" fill="#9d174d">Layer B →</text>
+
+  <!-- 관점균형=52 -->
+  <rect x="100" y="658" width="82" height="20" rx="10" fill="#fce7f3"/>
+  <text x="141" y="671" class="t-chip" text-anchor="middle" fill="#9d174d">관점균형 52</text>
+
+  <!-- 주체성=31 (낮음) -->
+  <rect x="188" y="658" width="70" height="20" rx="10" fill="#fee2e2"/>
+  <text x="223" y="671" class="t-chip" text-anchor="middle" fill="#b91c1c">주체성 31↓</text>
+
+  <!-- 탐색넓이=70 -->
+  <rect x="264" y="658" width="74" height="20" rx="10" fill="#ccfbf1"/>
+  <text x="301" y="671" class="t-chip" text-anchor="middle" fill="#0d9488">탐색넓이 70</text>
+
+  <!-- 성장잠재력=55 -->
+  <rect x="344" y="658" width="86" height="20" rx="10" fill="#dcfce7"/>
+  <text x="387" y="671" class="t-chip" text-anchor="middle" fill="#15803d">성장잠재력 55</text>
+
+  <!-- 화살표 + ADJACENT -->
+  <line x1="440" y1="668" x2="510" y2="668" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="518" y="655" width="132" height="28" rx="14" fill="#0f172a"/>
+  <text x="584" y="673" class="t-chip" text-anchor="middle" fill="white">ADJACENT 이상향 추론</text>
+
+  <!-- 12차원 표시 -->
+  <text x="38" y="718" class="t-formula" fill="#94a3b8">
+    NavigatorInput(profiler_axes×8 + navigator_indices×4) → dominant:[실용지향,오락해방] · weak:[창의표현,사회시선] · low_autonomy:주체성
+  </text>
+
+
+  <!-- ════════════════════════════════════════════════════════
+       OUTPUT SECTION — Navigator 이상향 출력
+  ════════════════════════════════════════════════════════ -->
+
+  <rect x="26" y="744" width="770" height="196" rx="10" fill="#fafafa" stroke="#e2e8f0"/>
+  <text x="411" y="762" class="t-section" text-anchor="middle" fill="#1e293b">Navigator 이상향 출력 — ADJACENT (인접 확장형)</text>
+
+  <!-- Profiler 이상향 변화 카드들 (4열 2행) -->
+  <!-- 상승 카드들 -->
+  <!-- 지적호기심 72→87 -->
+  <rect x="38" y="770" width="116" height="56" rx="8" fill="white" stroke="#bbf7d0" stroke-width="1.5"/>
+  <text x="96" y="787" class="t-metalbl" text-anchor="middle">지적 호기심</text>
+  <text x="96" y="806" class="t-metav" text-anchor="middle" fill="#15803d">72 → 87</text>
+  <text x="96" y="820" class="t-metalbl" text-anchor="middle">+15 ↑ (확장C)</text>
+
+  <!-- 자기계발 65→82 -->
+  <rect x="162" y="770" width="116" height="56" rx="8" fill="white" stroke="#bbf7d0" stroke-width="1.5"/>
+  <text x="220" y="787" class="t-metalbl" text-anchor="middle">자기계발</text>
+  <text x="220" y="806" class="t-metav" text-anchor="middle" fill="#15803d">65 → 82</text>
+  <text x="220" y="820" class="t-metalbl" text-anchor="middle">+17 ↑ (성장A)</text>
+
+  <!-- 사회시선 35→55 (weak → expand) -->
+  <rect x="286" y="770" width="116" height="56" rx="8" fill="white" stroke="#bbf7d0" stroke-width="1.5"/>
+  <text x="344" y="787" class="t-metalbl" text-anchor="middle">사회·시선</text>
+  <text x="344" y="806" class="t-metav" text-anchor="middle" fill="#15803d">35 → 55</text>
+  <text x="344" y="820" class="t-metalbl" text-anchor="middle">+20 ↑ weak→확장</text>
+
+  <!-- 창의표현 28→48 (weak → expand) -->
+  <rect x="410" y="770" width="116" height="56" rx="8" fill="white" stroke="#bbf7d0" stroke-width="1.5"/>
+  <text x="468" y="787" class="t-metalbl" text-anchor="middle">창의·표현</text>
+  <text x="468" y="806" class="t-metav" text-anchor="middle" fill="#15803d">28 → 48</text>
+  <text x="468" y="820" class="t-metalbl" text-anchor="middle">+20 ↑ weak→확장</text>
+
+  <!-- 하락/조정 카드들 -->
+  <!-- 실용지향 78→62 (dominant → 반대) -->
+  <rect x="534" y="770" width="116" height="56" rx="8" fill="white" stroke="#fed7aa" stroke-width="1.5"/>
+  <text x="592" y="787" class="t-metalbl" text-anchor="middle">실용 지향</text>
+  <text x="592" y="806" class="t-metav" text-anchor="middle" fill="#c2410c">78 → 62</text>
+  <text x="592" y="820" class="t-metalbl" text-anchor="middle">−16 ↓ dominant→조정</text>
+
+  <!-- 오락해방 62→50 -->
+  <rect x="658" y="770" width="116" height="56" rx="8" fill="white" stroke="#fed7aa" stroke-width="1.5"/>
+  <text x="716" y="787" class="t-metalbl" text-anchor="middle">오락·해방</text>
+  <text x="716" y="806" class="t-metav" text-anchor="middle" fill="#c2410c">62 → 50</text>
+  <text x="716" y="820" class="t-metalbl" text-anchor="middle">−12 ↓ dominant→조정</text>
+
+  <!-- Layer B 인지주권 목표 -->
+  <rect x="38" y="836" width="740" height="50" rx="8" fill="white" stroke="#e0e7ff" stroke-width="1.5"/>
+  <text x="411" y="852" class="t-out" text-anchor="middle" fill="#3730a3">인지주권 4지수 목표 (Layer B)</text>
+  <text x="130" y="874" class="t-score" text-anchor="middle" fill="#9d174d">관점 균형  52 → 68</text>
+  <line x1="220" y1="860" x2="220" y2="882" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="310" y="874" class="t-score" text-anchor="middle" fill="#b91c1c">주체성  31 → 55  🎯핵심</text>
+  <line x1="400" y1="860" x2="400" y2="882" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="490" y="874" class="t-score" text-anchor="middle" fill="#0d9488">탐색 넓이  70 → 82</text>
+  <line x1="578" y1="860" x2="578" y2="882" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="680" y="874" class="t-score" text-anchor="middle" fill="#15803d">성장 잠재력  55 → 72</text>
+
+  <!-- ════ 하단 범례 ════ -->
+  <rect x="26" y="950" width="770" height="26" rx="8" fill="#f1f5f9"/>
+  <circle cx="54" cy="963" r="5" fill="#3b82f6"/>
+  <text x="64" y="967" class="t-legsub">현재 (파란 실선·바)</text>
+  <line x1="160" y1="957" x2="180" y2="957" stroke="#ef4444" stroke-width="2" stroke-dasharray="5,3"/>
+  <text x="186" y="967" class="t-legsub">이상향 ADJACENT (빨간 점선·마커)</text>
+  <circle cx="340" cy="963" r="5" fill="#f97316"/>
+  <text x="350" y="967" class="t-legsub">dominant(높음·조정 대상)</text>
+  <circle cx="470" cy="963" r="5" fill="#ef4444"/>
+  <text x="480" y="967" class="t-legsub">weak(낮음·확장 대상)</text>
+  <text x="600" y="967" class="t-legsub" fill="#9d174d">■ Layer B는 직접 측정 아닌 파생값</text>
+
+</svg>
