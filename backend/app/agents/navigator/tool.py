@@ -119,16 +119,25 @@ def compute_dominant_weak(
     scores: dict[str, float] = {k.value: v for k, v in layer_a.to_dict().items()}
     mean = sum(scores.values()) / len(scores)
 
+    sorted_desc = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    sorted_asc  = sorted(scores.items(), key=lambda x: x[1])
+
     # 평균보다 threshold/2 이상 높은 상위 2개
     dominant = [
-        k for k, v in sorted(scores.items(), key=lambda x: x[1], reverse=True)[:2]
+        k for k, v in sorted_desc[:2]
         if v >= mean + threshold / 2
     ]
     # 평균보다 threshold/2 이상 낮은 하위 2개
     weak = [
-        k for k, v in sorted(scores.items(), key=lambda x: x[1])[:2]
+        k for k, v in sorted_asc[:2]
         if v <= mean - threshold / 2
     ]
+
+    # 폴백: threshold 조건 미충족 시 상위/하위 1개씩 무조건 선택
+    if not dominant:
+        dominant = [sorted_desc[0][0]]
+    if not weak:
+        weak = [sorted_asc[0][0]]
 
     return dominant, weak
 
@@ -193,26 +202,23 @@ def generate_opposite_ideal(
     current:       RadarChart,
     dominant_axes: list[str] | None = None,
     weak_axes:     list[str] | None = None,
-    alpha:         float = ALPHA_LEVELS[2],   # Level 2 기본
+    layer_b=None,
+    top5_interests: list[str] | None = None,
 ) -> IdealRadarChart:
     """
-    반대 방향형 이상향 — 필터버블 탈출
-    dominant 축에 OPPOSITE 벡터 적용 (기본 α=0.55)
+    반대 방향형 이상향 — gpt-4o 기반 철학적 반대 방향 설계
+    단순 수치 반전이 아닌 콘텐츠 소비 정체성의 대비를 표현.
     """
+    from .modifier import generate_opposite_by_llm
+
     if dominant_axes is None:
         dominant_axes, _ = compute_dominant_weak(current)
 
-    scores = _apply_vectors(
-        current.to_dict(), dominant_axes, "opposite", alpha
-    )
-    dir_str = ", ".join(
-        f"{a}→OPPOSITE"
-        for a in dominant_axes
-    )
-    return _build_ideal(
-        current.user_id, IdealType.OPPOSITE, scores,
-        "현재와 반대 방향 — 필터버블 탈출, 새로운 자아 발견",
-        direction=dir_str, alpha=alpha,
+    return generate_opposite_by_llm(
+        current_radar  = current,
+        layer_b        = layer_b,
+        top5_interests = top5_interests or [],
+        dominant_axes  = dominant_axes,
     )
 
 
@@ -220,11 +226,11 @@ def generate_expansion_ideal(
     current:       RadarChart,
     dominant_axes: list[str] | None = None,
     weak_axes:     list[str] | None = None,
-    alpha:         float = ALPHA_LEVELS[1],   # Level 1 기본
+    alpha:         float = ALPHA_LEVELS[2],   # Level 2 — 뚜렷한 확장
 ) -> IdealRadarChart:
     """
     확장 방향형 이상향 — 자연스러운 성장 (기본 추천)
-    weak 축에 EXPANSION 벡터 적용 (기본 α=0.25)
+    weak 축에 EXPANSION 벡터 적용 (α=0.55 — 뚜렷한 변화)
     """
     if weak_axes is None:
         _, weak_axes = compute_dominant_weak(current)
@@ -268,9 +274,11 @@ def generate_balanced_ideal(
 
 
 def generate_all_ideals(
-    current:       RadarChart,
-    dominant_axes: list[str] | None = None,
-    weak_axes:     list[str] | None = None,
+    current:        RadarChart,
+    dominant_axes:  list[str] | None = None,
+    weak_axes:      list[str] | None = None,
+    layer_b=None,
+    top5_interests: list[str] | None = None,
 ) -> list[IdealRadarChart]:
     """이상향 3종 동시 생성 (반대 / 확장 / 균형)"""
     if dominant_axes is None or weak_axes is None:
@@ -279,7 +287,7 @@ def generate_all_ideals(
         weak_axes     = weak_axes     or _weak
 
     return [
-        generate_opposite_ideal(current,  dominant_axes, weak_axes),
+        generate_opposite_ideal(current, dominant_axes, weak_axes, layer_b, top5_interests),
         generate_expansion_ideal(current, dominant_axes, weak_axes),
         generate_balanced_ideal(current),
     ]

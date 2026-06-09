@@ -128,8 +128,12 @@ def node_generate_ideals(state: NavigatorState) -> dict:
 
     dominant, weak = compute_dominant_weak(state.current_radar)
 
-    # 수식 기반 이상향 3종 생성 (Layer A + dominant/weak 반영)
-    proposals = generate_all_ideals(state.current_radar, dominant, weak)
+    # 이상향 3종 생성 (반대방향형=LLM, 확장/균형=수식)
+    proposals = generate_all_ideals(
+        state.current_radar, dominant, weak,
+        layer_b        = state.layer_b,
+        top5_interests = state.top5_interests,
+    )
 
     # LLM으로 소개 메시지
     llm = _get_llm(temperature=0.7)

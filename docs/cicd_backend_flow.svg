@@ -1,0 +1,176 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 620" font-family="'Segoe UI', Arial, sans-serif">
+
+  <!-- 배경 -->
+  <rect width="900" height="620" fill="#f8fafc" rx="16"/>
+
+  <!-- 제목 -->
+  <text x="450" y="40" text-anchor="middle" font-size="18" font-weight="bold" fill="#1e293b">CI/CD Backend Pipeline — Synapse Platform</text>
+  <text x="450" y="62" text-anchor="middle" font-size="12" fill="#94a3b8">GitHub Actions → Docker Hub → EC2 (Structure 2)</text>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- STEP 1: Developer -->
+  <!-- ══════════════════════════════════════════ -->
+  <rect x="30" y="100" width="130" height="80" rx="12" fill="#e0f2fe" stroke="#38bdf8" stroke-width="2"/>
+  <text x="95" y="130" text-anchor="middle" font-size="22">💻</text>
+  <text x="95" y="152" text-anchor="middle" font-size="12" font-weight="bold" fill="#0369a1">Developer</text>
+  <text x="95" y="168" text-anchor="middle" font-size="10" fill="#0284c7">git push origin main</text>
+
+  <!-- Arrow 1 -->
+  <line x1="160" y1="140" x2="210" y2="140" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="185" y="132" text-anchor="middle" font-size="9" fill="#64748b">push</text>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- STEP 2: GitHub -->
+  <!-- ══════════════════════════════════════════ -->
+  <rect x="210" y="100" width="130" height="80" rx="12" fill="#f3e8ff" stroke="#a855f7" stroke-width="2"/>
+  <text x="275" y="130" text-anchor="middle" font-size="22">🐙</text>
+  <text x="275" y="152" text-anchor="middle" font-size="12" font-weight="bold" fill="#7e22ce">GitHub</text>
+  <text x="275" y="168" text-anchor="middle" font-size="10" fill="#9333ea">main 브랜치</text>
+
+  <!-- Arrow 2 -->
+  <line x1="340" y1="140" x2="390" y2="140" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="365" y="132" text-anchor="middle" font-size="9" fill="#64748b">trigger</text>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- STEP 3: GitHub Actions (CI/CD) -->
+  <!-- ══════════════════════════════════════════ -->
+  <rect x="390" y="80" width="160" height="290" rx="12" fill="#fff7ed" stroke="#f97316" stroke-width="2"/>
+  <text x="470" y="108" text-anchor="middle" font-size="11" font-weight="bold" fill="#c2410c">⚙️ GitHub Actions</text>
+
+  <!-- CI Job -->
+  <rect x="405" y="118" width="130" height="55" rx="8" fill="#fef3c7" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="470" y="136" text-anchor="middle" font-size="10" font-weight="bold" fill="#92400e">CI (PR / dev push)</text>
+  <text x="470" y="150" text-anchor="middle" font-size="9" fill="#78350f">• Backend 테스트</text>
+  <text x="470" y="163" text-anchor="middle" font-size="9" fill="#78350f">• Frontend 빌드 검증</text>
+
+  <!-- 구분선 -->
+  <line x1="405" y1="183" x2="535" y2="183" stroke="#fed7aa" stroke-width="1" stroke-dasharray="4"/>
+
+  <!-- CD Job -->
+  <rect x="405" y="190" width="130" height="160" rx="8" fill="#ffedd5" stroke="#fb923c" stroke-width="1.5"/>
+  <text x="470" y="208" text-anchor="middle" font-size="10" font-weight="bold" fill="#c2410c">CD (main push)</text>
+
+  <rect x="415" y="215" width="110" height="28" rx="5" fill="#fff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="470" y="233" text-anchor="middle" font-size="9" fill="#dc2626">① Backend 이미지 빌드</text>
+
+  <line x1="470" y1="243" x2="470" y2="250" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowOrange)"/>
+
+  <rect x="415" y="250" width="110" height="28" rx="5" fill="#fff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="470" y="268" text-anchor="middle" font-size="9" fill="#dc2626">② Nginx 이미지 빌드</text>
+
+  <line x1="470" y1="278" x2="470" y2="285" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowOrange)"/>
+
+  <rect x="415" y="285" width="110" height="28" rx="5" fill="#fff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="470" y="303" text-anchor="middle" font-size="9" fill="#dc2626">③ Docker Hub Push</text>
+
+  <line x1="470" y1="313" x2="470" y2="320" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrowOrange)"/>
+
+  <rect x="415" y="320" width="110" height="28" rx="5" fill="#fff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="470" y="338" text-anchor="middle" font-size="9" fill="#dc2626">④ EC2 SSH 배포</text>
+
+  <!-- Arrow 3 -->
+  <line x1="550" y1="250" x2="600" y2="250" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="575" y="242" text-anchor="middle" font-size="9" fill="#64748b">push</text>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- STEP 4: Docker Hub -->
+  <!-- ══════════════════════════════════════════ -->
+  <rect x="600" y="190" width="140" height="120" rx="12" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+  <text x="670" y="218" text-anchor="middle" font-size="22">🐳</text>
+  <text x="670" y="242" text-anchor="middle" font-size="12" font-weight="bold" fill="#1d4ed8">Docker Hub</text>
+
+  <rect x="615" y="252" width="110" height="20" rx="4" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="670" y="266" text-anchor="middle" font-size="9" fill="#1e40af">synapse-backend:latest</text>
+
+  <rect x="615" y="276" width="110" height="20" rx="4" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="670" y="290" text-anchor="middle" font-size="9" fill="#1e40af">synapse-nginx:latest</text>
+
+  <!-- Arrow 4 -->
+  <line x1="670" y1="310" x2="670" y2="370" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="688" y="345" text-anchor="middle" font-size="9" fill="#64748b">pull</text>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- STEP 5: EC2 -->
+  <!-- ══════════════════════════════════════════ -->
+  <rect x="560" y="370" width="260" height="200" rx="12" fill="#f0fdf4" stroke="#22c55e" stroke-width="2"/>
+  <text x="690" y="398" text-anchor="middle" font-size="12" font-weight="bold" fill="#15803d">🖥️ EC2 (ap-northeast-2 서울)</text>
+  <text x="690" y="414" text-anchor="middle" font-size="10" fill="#16a34a">3.37.217.120 · t3.micro · Ubuntu 24.04</text>
+
+  <!-- Docker Compose -->
+  <rect x="575" y="422" width="230" height="130" rx="8" fill="#dcfce7" stroke="#86efac" stroke-width="1.5"/>
+  <text x="690" y="440" text-anchor="middle" font-size="10" font-weight="bold" fill="#166534">docker compose up -d</text>
+
+  <!-- Nginx container -->
+  <rect x="588" y="448" width="95" height="90" rx="6" fill="#fff" stroke="#4ade80" stroke-width="1"/>
+  <text x="635" y="466" text-anchor="middle" font-size="9" font-weight="bold" fill="#15803d">Nginx</text>
+  <text x="635" y="480" text-anchor="middle" font-size="8" fill="#166534">:80 / :443</text>
+  <text x="635" y="494" text-anchor="middle" font-size="8" fill="#6b7280">Rate Limit</text>
+  <text x="635" y="507" text-anchor="middle" font-size="8" fill="#6b7280">보안 헤더</text>
+  <text x="635" y="520" text-anchor="middle" font-size="8" fill="#6b7280">CORS</text>
+  <text x="635" y="533" text-anchor="middle" font-size="8" fill="#6b7280">SSE 지원</text>
+
+  <!-- Arrow inside EC2 -->
+  <line x1="683" y1="490" x2="696" y2="490" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrowGreen)"/>
+
+  <!-- FastAPI container -->
+  <rect x="697" y="448" width="95" height="90" rx="6" fill="#fff" stroke="#4ade80" stroke-width="1"/>
+  <text x="744" y="466" text-anchor="middle" font-size="9" font-weight="bold" fill="#15803d">FastAPI</text>
+  <text x="744" y="480" text-anchor="middle" font-size="8" fill="#166534">:8000 (내부)</text>
+  <text x="744" y="494" text-anchor="middle" font-size="8" fill="#6b7280">Navigator</text>
+  <text x="744" y="507" text-anchor="middle" font-size="8" fill="#6b7280">Agent API</text>
+  <text x="744" y="520" text-anchor="middle" font-size="8" fill="#6b7280">LangGraph</text>
+  <text x="744" y="533" text-anchor="middle" font-size="8" fill="#6b7280">OpenAI</text>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- Amplify (Frontend) -->
+  <!-- ══════════════════════════════════════════ -->
+  <rect x="30" y="370" width="160" height="100" rx="12" fill="#fdf4ff" stroke="#c084fc" stroke-width="2"/>
+  <text x="110" y="398" text-anchor="middle" font-size="20">⚡</text>
+  <text x="110" y="418" text-anchor="middle" font-size="12" font-weight="bold" fill="#7e22ce">AWS Amplify</text>
+  <text x="110" y="434" text-anchor="middle" font-size="10" fill="#9333ea">프론트엔드</text>
+  <text x="110" y="450" text-anchor="middle" font-size="9" fill="#a855f7">Next.js (자동 배포)</text>
+  <text x="110" y="464" text-anchor="middle" font-size="9" fill="#a855f7">GitHub 연동</text>
+
+  <!-- Arrow Amplify → EC2 -->
+  <line x1="190" y1="420" x2="555" y2="460" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#arrowPurple)"/>
+  <text x="370" y="430" text-anchor="middle" font-size="9" fill="#9333ea">HTTPS API 호출 (/api/*)</text>
+
+  <!-- GitHub → Amplify 화살표 -->
+  <line x1="275" y1="180" x2="275" y2="340" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="4" marker-end="url(#arrowPurple)"/>
+  <line x1="275" y1="340" x2="110" y2="370" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="4" marker-end="url(#arrowPurple)"/>
+  <text x="185" y="358" text-anchor="middle" font-size="9" fill="#9333ea">main push → 자동 빌드</text>
+
+  <!-- GitHub Secrets 박스 -->
+  <rect x="210" y="420" width="155" height="110" rx="10" fill="#fefce8" stroke="#eab308" stroke-width="1.5"/>
+  <text x="287" y="440" text-anchor="middle" font-size="10" font-weight="bold" fill="#854d0e">🔐 GitHub Secrets</text>
+  <text x="225" y="458" font-size="9" fill="#713f12">DOCKER_HUB_USERNAME</text>
+  <text x="225" y="472" font-size="9" fill="#713f12">DOCKER_HUB_TOKEN</text>
+  <text x="225" y="486" font-size="9" fill="#713f12">EC2_HOST · EC2_USER</text>
+  <text x="225" y="500" font-size="9" fill="#713f12">EC2_SSH_KEY</text>
+  <text x="225" y="514" font-size="9" fill="#713f12">OPENAI_API_KEY</text>
+
+  <!-- Secrets → Actions 화살표 -->
+  <line x1="365" y1="475" x2="393" y2="310" stroke="#eab308" stroke-width="1.5" stroke-dasharray="4" marker-end="url(#arrowYellow)"/>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- 화살표 마커 정의 -->
+  <!-- ══════════════════════════════════════════ -->
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#f97316"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#22c55e"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#a855f7"/>
+    </marker>
+    <marker id="arrowYellow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#eab308"/>
+    </marker>
+  </defs>
+
+</svg>

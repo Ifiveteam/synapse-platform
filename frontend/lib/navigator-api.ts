@@ -13,7 +13,7 @@ import type {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${API_BASE}/api/v1${path}`, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
@@ -168,7 +168,7 @@ export async function streamChat(options: ChatStreamOptions): Promise<void> {
     onChunk, onDone, onError,
   } = options;
 
-  const res = await fetch(`${API_BASE}/navigator/chat`, {
+  const res = await fetch(`${API_BASE}/api/v1/navigator/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

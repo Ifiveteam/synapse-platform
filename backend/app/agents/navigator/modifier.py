@@ -4,12 +4,15 @@ Navigator — 이상향 수정 3모드
 Mode 1. DIRECT  유저가 직접 축 수치 변경         (모델 없음)
 Mode 2. CHAT    자연어 대화로 조금씩 조율          (gpt-4o-mini)
 Mode 3. AUTO    LLM이 프로필 종합 분석 → 최적 설계  (gpt-4o)
+
+반대방향형: 페르소나 분류 → Gemini LLM → 반대 페르소나 → 8축 수치
 """
 
 import os
 from typing import Optional
 
 from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
 
 from .schemas import (
@@ -54,6 +57,212 @@ class AutoIdealResult(BaseModel):
     reasoning: str = Field(description="설계 근거 (2~3줄)")
 
 
+class OppositeIdealResult(BaseModel):
+    """Gemini 구조화 출력 — 반대방향형 이상향 (페르소나 기반)"""
+    intellectual_curiosity: float = Field(ge=0, le=100)
+    self_improvement:       float = Field(ge=0, le=100)
+    social_awareness:       float = Field(ge=0, le=100)
+    depth_immersion:        float = Field(ge=0, le=100)
+    practical_orientation:  float = Field(ge=0, le=100)
+    emotional_comfort:      float = Field(ge=0, le=100)
+    creative_expression:    float = Field(ge=0, le=100)
+    entertainment_release:  float = Field(ge=0, le=100)
+    opposite_persona_name:  str   = Field(description="반대 페르소나 이름 (예: 무목적 탐험가)")
+    opposite_persona_desc:  str   = Field(description="반대 페르소나 설명 (1~2문장)")
+    summary:   str = Field(description="반대 이상향 한 줄 요약 (한국어)")
+    reasoning: str = Field(description="왜 이 페르소나가 반대인지 설명 (2~3줄, 한국어)")
+
+
+# ──────────────────────────────────────────
+# 반대방향형 이상향 — 페르소나 기반 LLM (Gemini)
+# ──────────────────────────────────────────
+
+# 페르소나 분류표 (수식 기반, 순서 중요 — 위에서부터 매칭)
+_PERSONA_TABLE = [
+    {
+        "name": "실용적 성취자",
+        "desc": (
+            "목표 달성과 효율을 위해 콘텐츠를 소비하는 사람. "
+            "실생활에 바로 쓸 수 있는 정보와 자기계발을 추구한다."
+        ),
+        "condition": lambda s: s["practical_orientation"] >= 65 or s["self_improvement"] >= 65,
+    },
+    {
+        "name": "지적 탐험가",
+        "desc": (
+            "새로운 지식과 개념을 깊이 파고드는 사람. "
+            "분석적이고 호기심 주도적인 소비 패턴을 가진다."
+        ),
+        "condition": lambda s: s["intellectual_curiosity"] >= 65 or s["depth_immersion"] >= 65,
+    },
+    {
+        "name": "감성 창조자",
+        "desc": (
+            "감정·예술·창의적 표현에 몰입하는 사람. "
+            "아름다움과 감동을 통해 자신을 표현하고 힐링한다."
+        ),
+        "condition": lambda s: s["creative_expression"] >= 65 or s["emotional_comfort"] >= 65,
+    },
+    {
+        "name": "사회적 공감자",
+        "desc": (
+            "사회 이슈와 타인의 관점에 관심이 많은 사람. "
+            "공감과 연대를 통해 콘텐츠를 소비한다."
+        ),
+        "condition": lambda s: s["social_awareness"] >= 65,
+    },
+    {
+        "name": "가벼운 소비자",
+        "desc": (
+            "오락과 휴식을 위해 부담 없이 콘텐츠를 즐기는 사람. "
+            "스트레스 해소와 즐거움이 주된 동기다."
+        ),
+        "condition": lambda s: s["entertainment_release"] >= 65 and max(s.values()) < 75,
+    },
+    {
+        "name": "균형 추구자",
+        "desc": (
+            "특정 편향 없이 다양한 영역을 고르게 소비하는 사람. "
+            "안정적이고 넓은 관심사를 가진다."
+        ),
+        "condition": lambda s: True,  # fallback
+    },
+]
+
+
+def classify_persona(radar: RadarChart) -> dict:
+    """
+    8각 데이터 → 페르소나 분류 (수식 기반, LLM 불필요).
+    Returns: {"name": str, "desc": str}
+    """
+    scores = {k.value: v for k, v in radar.to_dict().items()}
+    for persona in _PERSONA_TABLE:
+        if persona["condition"](scores):
+            return {"name": persona["name"], "desc": persona["desc"]}
+    return {"name": "균형 추구자", "desc": _PERSONA_TABLE[-1]["desc"]}
+
+
+_OPPOSITE_SYSTEM = """당신은 개인 미디어 소비 패턴 전문가이자 철학적 사고를 갖춘 큐레이터입니다.
+
+유저의 현재 콘텐츠 소비 페르소나를 보고, 그 정체성과 진정한 의미의 반대 페르소나를 도출한 뒤,
+그 반대 페르소나에 맞는 8축 이상향 수치를 설계해주세요.
+
+【페르소나 반대의 의미】
+단순히 점수를 뒤집는 것이 아닙니다.
+현재 페르소나가 추구하는 삶의 방식·가치관·소비 철학과 대비되는 새로운 정체성입니다.
+
+페르소나 반대 예시:
+- 실용적 성취자 → 무목적 탐험가 (결과보다 과정, 효율보다 우연한 발견을 즐김)
+- 지적 탐험가 → 감각적 몰입자 (분석 없이 감정과 감각으로만 체험하는 사람)
+- 감성 창조자 → 냉철한 분석가 (감정 배제, 논리·구조·데이터로 세계를 이해)
+- 사회적 공감자 → 고독한 내면 탐구자 (타인 시선 배제, 자신만의 내면 세계에 집중)
+- 가벼운 소비자 → 깊이 몰입 탐구자 (가볍게 소비하지 않고 한 주제를 완전히 정복)
+- 균형 추구자 → 극단적 전문가 (모든 것을 조금씩이 아닌 하나에 완전히 올인)
+
+【8축 설명】
+- intellectual_curiosity (지적 호기심): 새로운 지식·개념 탐구 욕구
+- self_improvement (자기계발): 성장·목표 달성 지향
+- social_awareness (사회·시선): 사회 이슈·타인 관점 관심
+- depth_immersion (깊이·몰입): 한 주제에 깊이 파고드는 성향
+- practical_orientation (실용 지향): 실생활 적용 가능한 것 선호
+- emotional_comfort (정서·위로): 힐링·공감·감성 콘텐츠 선호
+- creative_expression (창의·표현): 창작·예술·독창적 표현 관심
+- entertainment_release (오락·해방): 즐거움·스트레스 해소 추구
+
+【설계 규칙】
+1. 반대 페르소나 이름과 설명을 먼저 정한 뒤, 그 성격에 맞는 수치를 역산할 것
+2. 반대 페르소나의 핵심 축(높은 축)이 현재 dominant 축과 달라야 함
+3. 수치는 반대 페르소나의 성격을 충실히 반영할 것 (15~90 범위)
+4. 단순 수치 반전 금지 — 반드시 페르소나 정체성에서 수치를 도출할 것
+5. opposite_persona_name과 opposite_persona_desc을 반드시 반환할 것
+"""
+
+
+def generate_opposite_by_llm(
+    current_radar:  RadarChart,
+    layer_b:        Optional[ProfilerLayerB],
+    top5_interests: list[str],
+    dominant_axes:  list[str],
+) -> IdealRadarChart:
+    """
+    페르소나 기반 3단계 반대방향 이상향 생성:
+    ① 8각 데이터 → 페르소나 분류 (수식)
+    ② 반대 페르소나 도출 + 수치 설계 (Gemini LLM)
+    ③ IdealRadarChart 반환
+    """
+    # ① 페르소나 분류 (수식)
+    current_persona = classify_persona(current_radar)
+
+    # ② Gemini LLM 호출
+    llm = ChatGoogleGenerativeAI(
+        model          = "gemini-2.5-flash",
+        temperature    = 0.7,
+        google_api_key = os.getenv("GEMINI_API_KEY"),
+    ).with_structured_output(OppositeIdealResult)
+
+    current_str = "\n".join(
+        f"  {k.value} ({AXIS_META[k]['name']}): {v:.0f}"
+        for k, v in current_radar.to_dict().items()
+    )
+    dominant_str = ", ".join(
+        f"{a}({AXIS_META[AxisKey(a)]['name']})" for a in dominant_axes
+    ) or "없음"
+    interests_str = ", ".join(top5_interests) if top5_interests else "미지정"
+
+    layer_b_str = ""
+    if layer_b:
+        layer_b_str = (
+            f"\n\n【Layer B 인지주권 지표】\n"
+            f"  주체성: {layer_b.search_active_ratio:.2f} (낮으면 알고리즘 의존)\n"
+            f"  채널편중도: {layer_b.viewing_concentration:.2f} (높을수록 나쁨)\n"
+            f"  취향다양성: {layer_b.taste_diversity_index}\n"
+            f"  탐색깊이: {layer_b.exploration_depth:.2f}"
+        )
+
+    user_prompt = (
+        f"【현재 페르소나】\n"
+        f"  이름: {current_persona['name']}\n"
+        f"  설명: {current_persona['desc']}\n\n"
+        f"【현재 8축 수치】\n{current_str}\n\n"
+        f"【현재 dominant 축】 {dominant_str}\n"
+        f"【TOP5 관심사】 {interests_str}"
+        f"{layer_b_str}\n\n"
+        f"'{current_persona['name']}' 페르소나와 삶의 방식·가치관이 반대인 페르소나를 정의하고, "
+        f"그 반대 페르소나에 맞는 이상향 8축 수치를 설계해주세요."
+    )
+
+    result: OppositeIdealResult = llm.invoke([
+        {"role": "system", "content": _OPPOSITE_SYSTEM},
+        {"role": "user",   "content": user_prompt},
+    ])
+
+    scores = {
+        AxisKey.INTELLECTUAL_CURIOSITY: _clamp(result.intellectual_curiosity),
+        AxisKey.SELF_IMPROVEMENT:       _clamp(result.self_improvement),
+        AxisKey.SOCIAL_AWARENESS:       _clamp(result.social_awareness),
+        AxisKey.DEPTH_IMMERSION:        _clamp(result.depth_immersion),
+        AxisKey.PRACTICAL_ORIENTATION:  _clamp(result.practical_orientation),
+        AxisKey.EMOTIONAL_COMFORT:      _clamp(result.emotional_comfort),
+        AxisKey.CREATIVE_EXPRESSION:    _clamp(result.creative_expression),
+        AxisKey.ENTERTAINMENT_RELEASE:  _clamp(result.entertainment_release),
+    }
+
+    # ③ 페르소나 전환 정보를 summary와 direction에 반영
+    persona_summary = f"[{result.opposite_persona_name}] {result.summary}"
+    direction = f"PERSONA:{current_persona['name']}→{result.opposite_persona_name}"
+
+    ideal = _build_ideal(
+        current_radar.user_id,
+        IdealType.OPPOSITE,
+        scores,
+        summary   = persona_summary,
+        direction = direction,
+        alpha     = 1.0,
+    )
+    ideal = ideal.model_copy(update={"reasoning": result.reasoning})
+    return ideal
+
+
 # ──────────────────────────────────────────
 # Mode 1 — DIRECT
 # ──────────────────────────────────────────
@@ -88,7 +297,6 @@ def modify_direct(
     # 연관 축 제안 (AXIS_VECTORS 기반, 모델 없이)
     suggestions: list[str] = []
     vectors = AXIS_VECTORS.get(axis_key, {})
-    # 현재 ideal_type 방향에서 연관 축 확인
     direction = "expansion" if ideal.ideal_type == IdealType.EXPANSION else "opposite"
     related   = vectors.get(direction, {})
     for related_key, delta_sign in related.items():
@@ -272,6 +480,5 @@ def optimize_auto(
         direction = "AUTO_OPTIMAL",
         alpha     = 1.0,
     )
-    # reasoning은 별도 필드에 저장 (direction 필드 오용 방지)
     ideal = ideal.model_copy(update={"reasoning": result.reasoning})
     return ideal

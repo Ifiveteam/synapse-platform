@@ -61,7 +61,11 @@ class NavigatorAgent:
         layer_a에서 dominant/weak 런타임 계산 후 이중 방향 적용
         """
         dominant, weak = compute_dominant_weak(profiler_data.layer_a)
-        proposals = generate_all_ideals(profiler_data.layer_a, dominant, weak)
+        proposals = generate_all_ideals(
+            profiler_data.layer_a, dominant, weak,
+            layer_b        = profiler_data.layer_b,
+            top5_interests = top5_interests,
+        )
         return IdealDesignResponse(
             user_id=user_id,
             proposals=proposals,
@@ -101,7 +105,11 @@ class NavigatorAgent:
     ) -> NavigatorState:
         """Navigator 전체 워크플로우 실행"""
         dominant, weak = compute_dominant_weak(profiler_data.layer_a)
-        proposals      = generate_all_ideals(profiler_data.layer_a, dominant, weak)
+        proposals      = generate_all_ideals(
+            profiler_data.layer_a, dominant, weak,
+            layer_b        = profiler_data.layer_b,
+            top5_interests = top5_interests,
+        )
         target_type    = selected_ideal_type or IdealType.EXPANSION
         selected       = next((p for p in proposals if p.ideal_type == target_type), proposals[0])
 
