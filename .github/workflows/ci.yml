@@ -65,7 +65,7 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8000
 
-  # ── Docker 빌드 검증 (이미지 push 없이) ───────────────
+  # ── Docker 빌드 검증 (Backend + Nginx만 — Frontend는 Amplify 배포) ───────────────
   docker-build-check:
     name: Docker 빌드 검증
     runs-on: ubuntu-latest
@@ -83,16 +83,6 @@ jobs:
         with:
           context: ./backend
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Frontend 이미지 빌드 (push 없음)
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          push: false
-          build-args: |
-            NEXT_PUBLIC_API_URL=http://localhost:8000
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
