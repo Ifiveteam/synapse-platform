@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,11 +14,12 @@ import {
 } from "@/components/ui/card";
 import type { Agent } from "@/lib/agents";
 import { ROUTES } from "@/lib/routes";
-import { useAgentStore } from "@/stores/use-agent-store";
+import { useAgentSelection } from "@/stores/shell/agent-selection";
 
 interface AgentDetailProps {
   agent: Agent;
   index: number;
+  action?: ReactNode;
 }
 
 interface VideoItem {
@@ -58,9 +59,11 @@ const formatDuration = (seconds: number) => {
   return `${m}:${s.toString().padStart(2, "0")}`;
 };
 
-export function AgentDetail({ agent, index }: AgentDetailProps) {
-  const selectedAgentId = useAgentStore((state) => state.selectedAgentId);
-  const setSelectedAgentId = useAgentStore((state) => state.setSelectedAgentId);
+export function AgentDetail({ agent, index, action }: AgentDetailProps) {
+  const selectedAgentId = useAgentSelection((state) => state.selectedAgentId);
+  const setSelectedAgentId = useAgentSelection(
+    (state) => state.setSelectedAgentId,
+  );
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalyzeResult | null>(null);
@@ -148,7 +151,7 @@ export function AgentDetail({ agent, index }: AgentDetailProps) {
             )}
           </div>
 
-          {agent.id === "indexer" && (
+          {agent.id === "indexer" ? (
             <div className="space-y-4">
               <div className="border-2 border-dashed rounded-lg p-6 text-center">
                 <input
@@ -276,12 +279,12 @@ export function AgentDetail({ agent, index }: AgentDetailProps) {
                 </div>
               )}
             </div>
-          )}
-
-          {agent.id !== "indexer" && (
-            <p className="text-muted-foreground text-sm">
-              이 화면에서 {agent.name} 에이전트와의 상호작용 UI를 확장할 수 있습니다.
-            </p>
+          ) : (
+            action ?? (
+              <p className="text-muted-foreground text-sm">
+                이 화면에서 {agent.name} 에이전트와의 상호작용 UI를 확장할 수 있습니다.
+              </p>
+            )
           )}
         </CardContent>
       </Card>
