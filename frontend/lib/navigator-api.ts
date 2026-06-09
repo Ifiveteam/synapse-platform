@@ -9,6 +9,7 @@ import type {
   Guide,
   Quest,
 } from "./navigator-types";
+import type { ProfilerResult } from "./types/profiler";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -203,6 +204,28 @@ export async function streamChat(options: ChatStreamOptions): Promise<void> {
     }
   }
   onDone();
+}
+
+// ──────────────────────────────────────────
+// Profiler 결과 → Navigator 입력 변환 헬퍼
+// ──────────────────────────────────────────
+
+/**
+ * Profiler Agent 결과를 Navigator Agent 입력 형식으로 변환합니다.
+ *
+ * - axes      → layer_a  (필드명만 다름, 값은 동일)
+ * - layer_b   → layer_b  (필드명 동일)
+ * - top5_interests: Top5Interest[] → string[]  (label만 추출)
+ */
+export function toProfilerData(result: ProfilerResult): ProfilerData {
+  return {
+    user_id:        result.user_id,
+    computed_at:    result.computed_at,
+    layer_a:        { user_id: result.user_id, ...result.axes },
+    layer_b:        result.layer_b,
+    top5_interests: result.top5_interests.map((i) => i.label),
+    summary:        result.summary,
+  };
 }
 
 // ──────────────────────────────────────────

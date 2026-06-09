@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { Agent, AgentStatus } from "@/lib/agents";
 import { ROUTES } from "@/lib/routes";
-import { useAgentStore } from "@/stores/use-agent-store";
+import { useAgentSelection } from "@/stores/shell/agent-selection";
 
 interface AgentCardProps {
   agent: Agent;
@@ -29,7 +29,9 @@ const STATUS_BADGE: Record<
 };
 
 export function AgentCard({ agent, index }: AgentCardProps) {
-  const setSelectedAgentId = useAgentStore((state) => state.setSelectedAgentId);
+  const setSelectedAgentId = useAgentSelection(
+    (state) => state.setSelectedAgentId,
+  );
   const badge = STATUS_BADGE[agent.status];
   const isDev     = agent.status === "dev";
   const isPlanned = agent.status === "planned";

@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { MOCK_PROFILER_DATA } from "@/lib/navigator-mock";
 import type { IdealType, IdealRadarChart, Guide, Quest } from "@/lib/navigator-types";
+import { useProfilerStore } from "@/stores/agents/profiler";
+import { toProfilerData } from "@/lib/navigator-api";
 import { NavigatorRadarChart } from "@/components/navigator/radar-chart";
 import { LayerBGauge } from "@/components/navigator/layer-b-gauge";
 import { AXIS_LABELS } from "@/lib/navigator-types";
@@ -26,10 +28,6 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "guide",   label: "가이드 & 퀘스트", icon: "🗺️" },
 ];
 
-// ── Profiler 데이터 (Profiler Agent 연동 전 임시) ──
-// TODO: Profiler Agent 완성 후 실제 API로 교체
-const PROFILER_DATA = MOCK_PROFILER_DATA;
-
 // ── dominant/weak 계산 ──────────────────────
 
 function computeDominantWeak(layerA: Record<string, number>, threshold = 15) {
@@ -45,7 +43,8 @@ function computeDominantWeak(layerA: Record<string, number>, threshold = 15) {
 // ── 프로필 섹션 ──────────────────────────────
 
 function ProfileSection() {
-  const data = PROFILER_DATA;
+  const profilerResult = useProfilerStore((s) => s.result);
+  const data = profilerResult ? toProfilerData(profilerResult) : MOCK_PROFILER_DATA;
   const { dominant, weak } = computeDominantWeak(data.layer_a as unknown as Record<string, number>);
 
   const dominantLabels = dominant.map((a) => AXIS_LABELS[a as keyof typeof AXIS_LABELS] ?? a).join(", ");
@@ -105,6 +104,7 @@ function ProfileSection() {
 // ── 이상향 섹션 ──────────────────────────────
 
 function IdealSection({
+  current,
   ideals,
   selected,
   onSelect,
@@ -112,6 +112,7 @@ function IdealSection({
   error,
   agentMessage,
 }: {
+  current:       import("@/lib/navigator-types").RadarChart;
   ideals:        IdealRadarChart[];
   selected:      IdealType | null;
   onSelect:      (t: IdealType) => void;
@@ -154,7 +155,7 @@ function IdealSection({
       )}
 
       <IdealSelector
-        current={PROFILER_DATA.layer_a}
+        current={current}
         ideals={ideals}
         selected={selected}
         onSelect={onSelect}
@@ -229,6 +230,10 @@ function GuideSection({
 // ── 메인 페이지 ──────────────────────────────
 
 export default function NavigatorPage() {
+  // Profiler store → 실제 데이터 우선, 없으면 Mock fallback
+  const profilerResult = useProfilerStore((s) => s.result);
+  const PROFILER_DATA  = profilerResult ? toProfilerData(profilerResult) : MOCK_PROFILER_DATA;
+
   const [tab,      setTab]      = useState<Tab>("profile");
   const [selected, setSelected] = useState<IdealType | null>(null);
 
@@ -244,7 +249,7 @@ export default function NavigatorPage() {
   const [confirmError,  setConfirmError]  = useState<string | null>(null);
   const [confirmMsg,    setConfirmMsg]    = useState("");
 
-  // ── 마운트 시 이상향 자동 생성 ──
+  // ── 마운트 시 이상향 자동 생성 (Profiler 데이터 기반) ──
   useEffect(() => {
     async function fetchDesign() {
       setDesignLoading(true);
@@ -262,7 +267,9 @@ export default function NavigatorPage() {
       }
     }
     fetchDesign();
-  }, []);
+  // profilerResult가 바뀌면 이상향 재생성
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profilerResult]);
 
   // ── 이상향 확정 ──
   const handleConfirm = useCallback(async () => {
@@ -283,7 +290,8 @@ export default function NavigatorPage() {
     } finally {
       setConfirmLoading(false);
     }
-  }, [selected, designResult]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, designResult, profilerResult]);
 
   const cognitiveScore = Math.round(
     (PROFILER_DATA.layer_b.search_active_ratio * 100
@@ -308,7 +316,11 @@ export default function NavigatorPage() {
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Agent 4</span>
               <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">Dual-Layer</span>
-              <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">🔗 API 연결</span>
+              {profilerResult ? (
+                <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">🔗 Profiler 연동</span>
+              ) : (
+                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">Mock 데이터</span>
+              )}
             </div>
             <h1 className="mt-0.5 text-3xl font-bold tracking-tight text-gray-900">Navigator</h1>
             <p className="mt-1 text-sm text-gray-500">이상향 설계 및 버블 탈출 행동 유도 에이전트</p>
@@ -343,6 +355,7 @@ export default function NavigatorPage() {
         {tab === "profile" && <ProfileSection />}
         {tab === "ideal" && (
           <IdealSection
+            current={PROFILER_DATA.layer_a}
             ideals={designResult?.proposals ?? []}
             selected={selected}
             onSelect={setSelected}
