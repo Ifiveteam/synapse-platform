@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any, TypedDict
 
@@ -11,8 +12,10 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from .prompts import AGGREGATOR_SYSTEM_PROMPT, build_report_user_prompt
 from .types import IntegratedData
 
+logger = logging.getLogger(__name__)
+
 PRIMARY_GEMINI_MODEL = "gemini-2.5-flash"
-FALLBACK_GEMINI_MODEL = "gemini-1.5-flash"
+FALLBACK_GEMINI_MODEL = "gemini-2.5-flash-lite"
 SUPPORTED_GEMINI_MODELS: tuple[str, ...] = (
     PRIMARY_GEMINI_MODEL,
     FALLBACK_GEMINI_MODEL,
@@ -79,6 +82,29 @@ def _extract_response_text(content: object) -> str:
     return str(content).strip()
 
 
+def _is_non_retryable_gemini_error(exc: Exception) -> bool:
+    """모델 미존재·인증 오류 등 fallback으로 해결되지 않는 Gemini 오류."""
+    if isinstance(exc, ValueError):
+        return True
+
+    visited: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        status_code = getattr(current, "status_code", None)
+        if status_code in {401, 403, 404}:
+            return True
+        message = str(current).upper()
+        if any(
+            marker in message
+            for marker in ("NOT_FOUND", "UNAUTHENTICATED", "PERMISSION_DENIED")
+        ):
+            return True
+        current = current.__cause__ or current.__context__
+
+    return False
+
+
 async def _invoke_b2b_report(
     data: IntegratedData,
     *,
@@ -103,9 +129,19 @@ async def generate_b2b_report(
 
     try:
         return await _invoke_b2b_report(integrated_data, model=resolved_model)
-    except Exception:
-        if resolved_model == FALLBACK_GEMINI_MODEL:
+    except Exception as exc:
+        if (
+            resolved_model == FALLBACK_GEMINI_MODEL
+            or _is_non_retryable_gemini_error(exc)
+        ):
             raise
+        logger.warning(
+            "Gemini B2B 리포트 생성 실패 (%s). fallback 모델(%s)로 재시도합니다: %s",
+            resolved_model,
+            FALLBACK_GEMINI_MODEL,
+            exc,
+            exc_info=True,
+        )
         return await _invoke_b2b_report(integrated_data, model=FALLBACK_GEMINI_MODEL)
 
 

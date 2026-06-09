@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 
+import { AggregatorActions } from "@/components/aggregator/aggregator-actions";
 import { AgentDetail } from "@/components/agent-detail";
 import { AGENTS, getAgent } from "@/lib/agents";
 
@@ -35,5 +36,15 @@ export default async function AgentPage({ params }: AgentPageProps) {
 
   const index = AGENTS.findIndex((item) => item.id === agent.id) + 1;
 
-  return <AgentDetail agent={agent} index={index} />;
+  return (
+    <AgentDetail
+      agent={agent}
+      index={index}
+      action={
+        slug === "aggregator" ? (
+          <AggregatorActions agentSlug={slug} />
+        ) : undefined
+      }
+    />
+  );
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -19,9 +19,10 @@ import { useAgentStore } from "@/stores/use-agent-store";
 interface AgentDetailProps {
   agent: Agent;
   index: number;
+  action?: ReactNode;
 }
 
-export function AgentDetail({ agent, index }: AgentDetailProps) {
+export function AgentDetail({ agent, index, action }: AgentDetailProps) {
   const selectedAgentId = useAgentStore((state) => state.selectedAgentId);
   const setSelectedAgentId = useAgentStore((state) => state.setSelectedAgentId);
 
@@ -60,10 +61,12 @@ export function AgentDetail({ agent, index }: AgentDetailProps) {
               </p>
             )}
           </div>
-          <p className="text-muted-foreground text-sm">
-            이 화면에서 {agent.name} 에이전트와의 상호작용 UI를 확장할 수
-            있습니다.
-          </p>
+          {action ?? (
+            <p className="text-muted-foreground text-sm">
+              이 화면에서 {agent.name} 에이전트와의 상호작용 UI를 확장할 수
+              있습니다.
+            </p>
+          )}
         </CardContent>
       </Card>
     </main>

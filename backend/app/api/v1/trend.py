@@ -22,7 +22,9 @@ from app.schemas.trend import (
     GraphViewResponse,
     KeywordStatSchema,
     ProfileAxisSchema,
+    TrendPostListResponse,
     TrendPostResponse,
+    TrendPostSummarySchema,
 )
 from app.services import external_trends
 from app.services.pdf import convert_markdown_to_pdf_async
@@ -87,6 +89,14 @@ def _get_post_or_404(post_id: str) -> TrendPostRecord:
     return post
 
 
+def _to_post_summary(post: TrendPostRecord) -> TrendPostSummarySchema:
+    return TrendPostSummarySchema(
+        post_id=post["post_id"],
+        generated_at=datetime.fromisoformat(post["generated_at"]),
+        cohort_size=post["cohort_size"],
+    )
+
+
 def _to_post_response(post: TrendPostRecord) -> TrendPostResponse:
     return TrendPostResponse(
         post_id=post["post_id"],
@@ -103,6 +113,17 @@ async def analyze_trend() -> AnalyzeResponse:
     post = await _create_trend_post()
     _TREND_POSTS[post["post_id"]] = post
     return AnalyzeResponse(post_id=post["post_id"])
+
+
+@router.get("/posts", response_model=TrendPostListResponse)
+async def list_trend_posts() -> TrendPostListResponse:
+    """저장된 분석 게시글 목록을 최신순으로 반환한다."""
+    items = sorted(
+        (_to_post_summary(post) for post in _TREND_POSTS.values()),
+        key=lambda item: item.generated_at,
+        reverse=True,
+    )
+    return TrendPostListResponse(items=items, total=len(items))
 
 
 @router.get("/posts/{post_id}", response_model=TrendPostResponse)

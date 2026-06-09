@@ -34,6 +34,17 @@ class AnalyzeResponse(BaseModel):
     post_id: str
 
 
+class TrendPostSummarySchema(BaseModel):
+    post_id: str
+    generated_at: datetime
+    cohort_size: int = Field(ge=0)
+
+
+class TrendPostListResponse(BaseModel):
+    items: list[TrendPostSummarySchema]
+    total: int = Field(ge=0)
+
+
 class TrendPostResponse(BaseModel):
     post_id: str
     generated_at: datetime
