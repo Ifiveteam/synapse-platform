@@ -10,10 +10,7 @@ import asyncio
 from functools import partial
 
 import markdown
-
-# weasyprint는 Linux/Mac 전용 네이티브 라이브러리(GTK)가 필요하므로
-# Windows 로컬 개발 환경에서는 모듈 로드 시점이 아닌 함수 호출 시점에 import
-# (Docker 환경에서는 Dockerfile에 GTK 패키지 포함되어 정상 동작)
+from weasyprint import HTML
 
 _PDF_CSS = """
 @page {
@@ -197,8 +194,6 @@ def _build_full_html(body_html: str) -> str:
 
 def convert_markdown_to_pdf(markdown_text: str) -> bytes:
     """Markdown 텍스트를 B2B 보고서 PDF 바이너리로 변환한다 (동기)."""
-    from weasyprint import HTML  # lazy import — Windows 로컬에서도 서버 시작 가능
-
     body_html = markdown.markdown(
         markdown_text,
         extensions=["tables", "fenced_code"],
