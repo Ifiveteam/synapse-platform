@@ -1,12 +1,10 @@
-"""Aggregator 파이프라인용 가상 통합 데이터 생성 모듈."""
+"""Aggregator 파이프라인용 비식별 내부 사용자 통계 Mock 생성 모듈."""
 
 from __future__ import annotations
 
 import random
 from datetime import UTC, datetime
 from typing import TypedDict
-
-SCHEMA_VERSION = "0.2.0"
 
 # 프로파일러 에이전트와 공유하는 8각 인지 차트 축 (0~100: 높을수록 해당 성향이 강함)
 COGNITIVE_BIAS_AXES: tuple[tuple[str, str], ...] = (
@@ -50,35 +48,6 @@ _INTERNAL_KEYWORD_POOL: tuple[str, ...] = (
     "주식 초보",
 )
 
-_EXTERNAL_KEYWORD_POOL: tuple[str, ...] = (
-    "ChatGPT",
-    "올림픽 하이라이트",
-    "전세 사기 예방",
-    "아이돌 컴백",
-    "장마 대비",
-    "비트코인 급등",
-    "넷플릭스 신작",
-    "총선 여론",
-    "MZ 재테크",
-    "AI 스타트업",
-    "K-팝 월드투어",
-    "기후 변화 뉴스",
-    "e스포츠 결승",
-    "반려동물 용품",
-    "명품 리셀",
-)
-
-_YOUTUBE_CATEGORIES: tuple[str, ...] = (
-    "뉴스/정치",
-    "엔터테인먼트",
-    "과학/기술",
-    "게임",
-    "음악",
-    "스포츠",
-    "교육",
-    "라이프스타일",
-)
-
 
 class KeywordStat(TypedDict):
     keyword: str
@@ -101,33 +70,6 @@ class CognitiveProfileMap(TypedDict):
 class InternalUserStats(TypedDict):
     top_keywords: list[KeywordStat]
     cognitive_bias_map: CognitiveProfileMap
-
-
-class GoogleTrendItem(TypedDict):
-    keyword: str
-    rank: int
-    interest_index: int
-    wow_change_pct: float
-
-
-class YouTubeTrendItem(TypedDict):
-    keyword: str
-    rank: int
-    category: str
-    estimated_views: int
-
-
-class ExternalMarketTrends(TypedDict):
-    google_trends: list[GoogleTrendItem]
-    youtube_trending: list[YouTubeTrendItem]
-    data_collected_at: str
-
-
-class MockIntegratedData(TypedDict):
-    schema_version: str
-    generated_at: str
-    internal_user_stats: InternalUserStats
-    external_market_trends: ExternalMarketTrends
 
 
 def _build_top_keywords(rng: random.Random, count: int = 10) -> list[KeywordStat]:
@@ -187,53 +129,11 @@ def _build_cognitive_bias_map(rng: random.Random) -> CognitiveProfileMap:
     }
 
 
-def _build_google_trends(rng: random.Random, count: int = 8) -> list[GoogleTrendItem]:
-    keywords = rng.sample(
-        _EXTERNAL_KEYWORD_POOL, k=min(count, len(_EXTERNAL_KEYWORD_POOL))
-    )
-    return [
-        {
-            "keyword": keyword,
-            "rank": index,
-            "interest_index": rng.randint(55, 100),
-            "wow_change_pct": round(rng.uniform(-8.0, 45.0), 1),
-        }
-        for index, keyword in enumerate(keywords, start=1)
-    ]
-
-
-def _build_youtube_trending(
-    rng: random.Random, count: int = 8
-) -> list[YouTubeTrendItem]:
-    keywords = rng.sample(
-        _EXTERNAL_KEYWORD_POOL, k=min(count, len(_EXTERNAL_KEYWORD_POOL))
-    )
-    return [
-        {
-            "keyword": keyword,
-            "rank": index,
-            "category": rng.choice(_YOUTUBE_CATEGORIES),
-            "estimated_views": rng.randint(250_000, 8_500_000),
-        }
-        for index, keyword in enumerate(keywords, start=1)
-    ]
-
-
-def generate_mock_integrated_data(*, seed: int | None = None) -> MockIntegratedData:
-    """비식별 내부 유저 통계와 외부 시장 트렌드를 통합한 가상 JSON 객체를 반환한다."""
+def generate_internal_user_stats(*, seed: int | None = None) -> InternalUserStats:
+    """비식별 내부 사용자 통계 Mock 데이터를 반환한다."""
     rng = random.Random(seed)
-    generated_at = datetime.now(tz=UTC).isoformat()
 
     return {
-        "schema_version": SCHEMA_VERSION,
-        "generated_at": generated_at,
-        "internal_user_stats": {
-            "top_keywords": _build_top_keywords(rng),
-            "cognitive_bias_map": _build_cognitive_bias_map(rng),
-        },
-        "external_market_trends": {
-            "google_trends": _build_google_trends(rng),
-            "youtube_trending": _build_youtube_trending(rng),
-            "data_collected_at": generated_at,
-        },
+        "top_keywords": _build_top_keywords(rng),
+        "cognitive_bias_map": _build_cognitive_bias_map(rng),
     }

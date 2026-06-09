@@ -692,5 +692,3 @@ app.add_middleware(
 | 2026-06-08 | `app/main.py` FastAPI 앱 구성, `backend/main.py` 삭제 |
 
 ---
-
-*문서 관련 문의는 Aggregator 에이전트 담당자 또는 백엔드 팀에 연락해 주세요.*

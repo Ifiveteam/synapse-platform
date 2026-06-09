@@ -8,8 +8,8 @@ from typing import Any, TypedDict
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from .mock_data import MockIntegratedData, generate_mock_integrated_data
 from .prompts import AGGREGATOR_SYSTEM_PROMPT, build_report_user_prompt
+from .types import IntegratedData
 
 PRIMARY_GEMINI_MODEL = "gemini-2.5-flash"
 FALLBACK_GEMINI_MODEL = "gemini-1.5-flash"
@@ -25,7 +25,7 @@ GEMINI_API_KEY_ENV_VARS = ("GOOGLE_API_KEY", "GEMINI_API_KEY")
 class AggregatorNodeState(TypedDict, total=False):
     """LangGraph 상태 스키마 (graph.py 연동용 베이스라인)."""
 
-    integrated_data: MockIntegratedData
+    integrated_data: IntegratedData
     report_markdown: str
 
 
@@ -79,8 +79,8 @@ def _extract_response_text(content: object) -> str:
     return str(content).strip()
 
 
-def _invoke_b2b_report(
-    data: MockIntegratedData,
+async def _invoke_b2b_report(
+    data: IntegratedData,
     *,
     model: str,
 ) -> str:
@@ -89,31 +89,37 @@ def _invoke_b2b_report(
         SystemMessage(content=AGGREGATOR_SYSTEM_PROMPT),
         HumanMessage(content=build_report_user_prompt(data)),
     ]
-    response = llm.invoke(messages)
+    response = await llm.ainvoke(messages)
     return _extract_response_text(response.content)
 
 
-def generate_b2b_report(
-    integrated_data: MockIntegratedData | None = None,
+async def generate_b2b_report(
+    integrated_data: IntegratedData,
     *,
     model: str | None = None,
 ) -> str:
-    """가상 통합 데이터를 기반으로 B2B 시장 분석 리포트(Markdown)를 생성한다."""
-    data = integrated_data or generate_mock_integrated_data()
+    """통합 데이터를 기반으로 B2B 시장 분석 리포트(Markdown)를 생성한다."""
     resolved_model = resolve_gemini_model(model)
 
     try:
-        return _invoke_b2b_report(data, model=resolved_model)
+        return await _invoke_b2b_report(integrated_data, model=resolved_model)
     except Exception:
         if resolved_model == FALLBACK_GEMINI_MODEL:
             raise
-        return _invoke_b2b_report(data, model=FALLBACK_GEMINI_MODEL)
+        return await _invoke_b2b_report(integrated_data, model=FALLBACK_GEMINI_MODEL)
 
 
-def generate_report_node(state: AggregatorNodeState) -> dict[str, Any]:
+async def generate_report_node(state: AggregatorNodeState) -> dict[str, Any]:
     """LangGraph 노드: 통합 데이터를 입력받아 Markdown 리포트를 상태에 기록한다."""
-    integrated_data = state.get("integrated_data") or generate_mock_integrated_data()
-    report_markdown = generate_b2b_report(integrated_data)
+    integrated_data = state.get("integrated_data")
+    if integrated_data is None:
+        msg = (
+            "integrated_data가 상태에 없습니다. "
+            "라우터에서 조립된 데이터를 전달하세요."
+        )
+        raise ValueError(msg)
+
+    report_markdown = await generate_b2b_report(integrated_data)
 
     return {
         "integrated_data": integrated_data,
