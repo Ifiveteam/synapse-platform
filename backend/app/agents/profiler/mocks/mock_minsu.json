@@ -1,0 +1,101 @@
+{
+  "user_id": "mock_minsu",
+  "indexed_at": "2026-06-01T09:00:00Z",
+  "source": "portability",
+  "records": [
+    {
+      "id": "m1",
+      "source_type": "watch",
+      "title": "웃참 실패 모음 #42",
+      "channel": "웃긴짤연구소",
+      "duration_sec": 45,
+      "is_shorts": true,
+      "recorded_at": "2026-05-28T22:10:00Z",
+      "tags": ["shorts", "meme", "variety"]
+    },
+    {
+      "id": "m2",
+      "source_type": "watch",
+      "title": "밈 리뷰: 이번 주 핫한 짤",
+      "channel": "웃긴짤연구소",
+      "duration_sec": 58,
+      "is_shorts": true,
+      "recorded_at": "2026-05-28T22:15:00Z",
+      "tags": ["shorts", "meme"]
+    },
+    {
+      "id": "m3",
+      "source_type": "watch",
+      "title": "아이돌 무대 실수 모음",
+      "channel": "K-POP클립",
+      "duration_sec": 52,
+      "is_shorts": true,
+      "recorded_at": "2026-05-29T20:00:00Z",
+      "tags": ["shorts", "entertainment_release", "variety"]
+    },
+    {
+      "id": "m4",
+      "source_type": "watch",
+      "title": "런닝맨 하이라이트",
+      "channel": "예능저장소",
+      "duration_sec": 600,
+      "is_shorts": false,
+      "recorded_at": "2026-05-29T21:00:00Z",
+      "tags": ["variety", "entertainment_release"]
+    },
+    {
+      "id": "m5",
+      "source_type": "watch",
+      "title": "게임 실황 웃긴 순간",
+      "channel": "웃긴짤연구소",
+      "duration_sec": 48,
+      "is_shorts": true,
+      "recorded_at": "2026-05-30T19:30:00Z",
+      "tags": ["shorts", "gaming", "meme"]
+    },
+    {
+      "id": "m6",
+      "source_type": "watch",
+      "title": "ASMR 힐링 10분",
+      "channel": "잠오는소리",
+      "duration_sec": 600,
+      "is_shorts": false,
+      "recorded_at": "2026-05-30T23:00:00Z",
+      "tags": ["asmr", "healing", "emotional_comfort"]
+    },
+    {
+      "id": "m7",
+      "source_type": "search",
+      "query": "웃긴 짤 모음",
+      "recorded_at": "2026-05-28T22:05:00Z",
+      "tags": ["meme"]
+    },
+    {
+      "id": "m8",
+      "source_type": "search",
+      "query": "shorts 추천",
+      "recorded_at": "2026-05-29T19:55:00Z",
+      "tags": ["shorts"]
+    },
+    {
+      "id": "m9",
+      "source_type": "watch",
+      "title": "밈 쇼츠 1분",
+      "channel": "웃긴짤연구소",
+      "duration_sec": 60,
+      "is_shorts": true,
+      "recorded_at": "2026-05-31T18:00:00Z",
+      "tags": ["shorts", "meme"]
+    },
+    {
+      "id": "m10",
+      "source_type": "watch",
+      "title": "예능 레전드 장면",
+      "channel": "예능저장소",
+      "duration_sec": 720,
+      "is_shorts": false,
+      "recorded_at": "2026-05-31T20:30:00Z",
+      "tags": ["variety"]
+    }
+  ]
+}

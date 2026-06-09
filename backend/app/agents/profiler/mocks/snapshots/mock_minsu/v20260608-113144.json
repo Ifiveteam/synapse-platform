@@ -1,0 +1,171 @@
+{
+  "version": "v20260608-113144",
+  "user_id": "mock_minsu",
+  "computed_at": "2026-06-08T11:31:44.098043Z",
+  "result": {
+    "user_id": "mock_minsu",
+    "computed_at": "2026-06-08T11:31:44.098043Z",
+    "axes": {
+      "intellectual_curiosity": 5,
+      "practical_orientation": 0,
+      "emotional_comfort": 60,
+      "social_awareness": 0,
+      "creative_expression": 0,
+      "entertainment_release": 95,
+      "self_improvement": 0,
+      "depth_immersion": 20
+    },
+    "layer_b": {
+      "search_active_ratio": 0.2,
+      "viewing_concentration": 0.498,
+      "taste_diversity_index": 36.6,
+      "exploration_depth": 0.159
+    },
+    "top5_interests": [
+      {
+        "rank": 1,
+        "label": "유머/밈",
+        "score": 0.9,
+        "evidence": [
+          "웃긴짤연구소 채널 시청 (211초)",
+          "웃긴 짤 모음 검색",
+          "'meme' 태그 (5회)"
+        ]
+      },
+      {
+        "rank": 2,
+        "label": "예능",
+        "score": 0.85,
+        "evidence": [
+          "예능저장소 채널 시청 (1320초, 최다)",
+          "'variety' 태그 (4회)"
+        ]
+      },
+      {
+        "rank": 3,
+        "label": "숏폼 콘텐츠",
+        "score": 0.8,
+        "evidence": [
+          "'shorts' 태그 (6회)",
+          "shorts 추천 검색",
+          "짧은 길이의 영상 다수 시청"
+        ]
+      },
+      {
+        "rank": 4,
+        "label": "정서적 안정/수면",
+        "score": 0.6,
+        "evidence": [
+          "잠오는소리 채널 시청 (600초)",
+          "'asmr', 'emotional_comfort', 'healing' 태그"
+        ]
+      },
+      {
+        "rank": 5,
+        "label": "K-POP 클립",
+        "score": 0.3,
+        "evidence": [
+          "K-POP클립 채널 시청 (52초)"
+        ]
+      }
+    ],
+    "summary": "사용자 mock_minsu님은 주로 유머러스한 숏폼 콘텐츠와 예능 하이라이트 등 가벼운 엔터테인먼트를 즐겨 시청하며, 정서적 안정이나 수면 유도에 도움이 되는 콘텐츠에도 관심을 보입니다.",
+    "interpretation": {
+      "consumption_mode": "균형형",
+      "primary_lever": "탐색 깊이",
+      "sovereignty_verdict": "주의",
+      "radar_gap_insight": "취향 다양성이 낮고 오락·해방 축이 두드러져 특정 영역에 쏠려 있습니다."
+    },
+    "axis_notes": {
+      "intellectual_curiosity": "새로운 주제나 채널 탐색의 증거가 거의 없습니다.",
+      "practical_orientation": "문제 해결이나 기술 습득 관련 콘텐츠 시청 기록이 없습니다.",
+      "emotional_comfort": "수면 유도 및 정서적 안정감을 주는 콘텐츠에 대한 관심이 높습니다.",
+      "social_awareness": "뉴스나 사회 현상에 대한 관심은 나타나지 않습니다.",
+      "creative_expression": "창작 활동이나 DIY 관련 콘텐츠 시청 기록이 없습니다.",
+      "entertainment_release": "유머, 예능, 밈 등 가벼운 엔터테인먼트 콘텐츠 소비가 매우 활발합니다.",
+      "self_improvement": "자기 계발이나 생산성 향상 관련 콘텐츠 시청 기록이 없습니다.",
+      "depth_immersion": "짧은 형식의 콘텐츠를 선호하며, 특정 주제에 깊이 몰입하는 경향은 낮습니다."
+    },
+    "investigation_log": [
+      "loaded 10 indexed records",
+      "layer_b: search_active_ratio=0.2",
+      "layer_b: viewing_concentration=0.498",
+      "layer_b: exploration_depth=0.159",
+      "top channel by watch time: 예 (능s)",
+      "patterns: weekend_ratio=0.4",
+      "agent: llm_mode=gemini_tools",
+      "agent: llm_tool_loop_start",
+      "tool:get_channel_breakdown",
+      "tool:get_search_queries",
+      "tool:get_tag_distribution",
+      "tool:get_sample_records",
+      "agent: tool_loop_complete",
+      "layer_b: taste_diversity_index=36.6",
+      "interpretation: mode=균형형",
+      "interpretation: lever=탐색 깊이",
+      "interpretation: verdict=주의"
+    ],
+    "llm_used": true,
+    "behavior_patterns": {
+      "hour_distribution": {
+        "morning": 0.0,
+        "afternoon": 0.0,
+        "evening": 0.6,
+        "night": 0.4
+      },
+      "weekend_ratio": 0.4,
+      "top_repeated_channels": [
+        {
+          "channel": "웃긴짤연구소",
+          "count": 4
+        },
+        {
+          "channel": "예능저장소",
+          "count": 2
+        },
+        {
+          "channel": "K-POP클립",
+          "count": 1
+        },
+        {
+          "channel": "잠오는소리",
+          "count": 1
+        }
+      ],
+      "top_repeated_tags": [
+        {
+          "tag": "shorts",
+          "count": 6
+        },
+        {
+          "tag": "meme",
+          "count": 5
+        },
+        {
+          "tag": "variety",
+          "count": 4
+        },
+        {
+          "tag": "entertainment_release",
+          "count": 2
+        },
+        {
+          "tag": "gaming",
+          "count": 1
+        },
+        {
+          "tag": "asmr",
+          "count": 1
+        },
+        {
+          "tag": "healing",
+          "count": 1
+        },
+        {
+          "tag": "emotional_comfort",
+          "count": 1
+        }
+      ]
+    }
+  }
+}
