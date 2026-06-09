@@ -28,3 +28,15 @@ class DashboardResponse(BaseModel):
 class GraphViewResponse(BaseModel):
     cohort_size: int = Field(ge=0)
     axes: list[ProfileAxisSchema] = Field(min_length=8, max_length=8)
+
+
+class AnalyzeResponse(BaseModel):
+    post_id: str
+
+
+class TrendPostResponse(BaseModel):
+    post_id: str
+    generated_at: datetime
+    cohort_size: int = Field(ge=0)
+    axes: list[ProfileAxisSchema] = Field(min_length=8, max_length=8)
+    report_markdown: str

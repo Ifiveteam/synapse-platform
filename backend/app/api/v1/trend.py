@@ -2,23 +2,44 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
-from typing import Annotated
+from io import BytesIO
+from typing import Annotated, TypedDict
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response, StreamingResponse
 
-from app.agents.aggregator.mock_data import generate_internal_user_stats
+from app.agents.aggregator.mock_data import (
+    ProfileAxisScore,
+    generate_internal_user_stats,
+)
 from app.agents.aggregator.nodes import generate_b2b_report
 from app.agents.aggregator.types import INTEGRATED_SCHEMA_VERSION, IntegratedData
 from app.schemas.trend import (
+    AnalyzeResponse,
     DashboardResponse,
     GraphViewResponse,
     KeywordStatSchema,
     ProfileAxisSchema,
+    TrendPostResponse,
 )
 from app.services import external_trends
+from app.services.pdf import convert_markdown_to_pdf_async
 
 router = APIRouter()
+
+
+class TrendPostRecord(TypedDict):
+    post_id: str
+    generated_at: str
+    cohort_size: int
+    axes: list[ProfileAxisScore]
+    report_markdown: str
+
+
+# 가상 인메모리 게시판 저장소 (post_id → 게시글)
+_TREND_POSTS: dict[str, TrendPostRecord] = {}
 
 
 async def get_integrated_data() -> IntegratedData:
@@ -41,6 +62,69 @@ async def get_b2b_report(
     return await generate_b2b_report(data)
 
 
+async def _create_trend_post() -> TrendPostRecord:
+    """통합 데이터를 조립하고 Gemini 리포트를 생성한 뒤 게시글 레코드를 만든다."""
+    data = await get_integrated_data()
+    report_markdown = await generate_b2b_report(data)
+    profile_map = data["internal_user_stats"]["cognitive_bias_map"]
+
+    return {
+        "post_id": uuid.uuid4().hex,
+        "generated_at": data["generated_at"],
+        "cohort_size": profile_map["cohort_size"],
+        "axes": profile_map["axes"],
+        "report_markdown": report_markdown,
+    }
+
+
+def _get_post_or_404(post_id: str) -> TrendPostRecord:
+    post = _TREND_POSTS.get(post_id)
+    if post is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"post_id '{post_id}'에 해당하는 분석 게시글을 찾을 수 없습니다.",
+        )
+    return post
+
+
+def _to_post_response(post: TrendPostRecord) -> TrendPostResponse:
+    return TrendPostResponse(
+        post_id=post["post_id"],
+        generated_at=datetime.fromisoformat(post["generated_at"]),
+        cohort_size=post["cohort_size"],
+        axes=[ProfileAxisSchema.model_validate(axis) for axis in post["axes"]],
+        report_markdown=post["report_markdown"],
+    )
+
+
+@router.post("/analyze", response_model=AnalyzeResponse, status_code=status.HTTP_201_CREATED)
+async def analyze_trend() -> AnalyzeResponse:
+    """트렌드 분석을 실행하고 결과를 인메모리 게시판에 저장한다."""
+    post = await _create_trend_post()
+    _TREND_POSTS[post["post_id"]] = post
+    return AnalyzeResponse(post_id=post["post_id"])
+
+
+@router.get("/posts/{post_id}", response_model=TrendPostResponse)
+async def read_trend_post(post_id: str) -> TrendPostResponse:
+    """저장된 분석 게시글의 8각 축 점수와 마크다운 본문을 반환한다."""
+    return _to_post_response(_get_post_or_404(post_id))
+
+
+@router.get("/posts/{post_id}/download")
+async def download_trend_post_pdf(post_id: str) -> StreamingResponse:
+    """저장된 마크다운 본문을 PDF로 변환하여 스트리밍 다운로드한다."""
+    post = _get_post_or_404(post_id)
+    pdf_bytes = await convert_markdown_to_pdf_async(post["report_markdown"])
+    filename = f"B2B_Trend_Report_{post_id[:8]}_{datetime.now(UTC).strftime('%Y%m%d')}.pdf"
+
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @router.get("/dashboard", response_model=DashboardResponse)
 async def read_trend_dashboard(
     data: Annotated[IntegratedData, Depends(get_integrated_data)],
@@ -57,6 +141,21 @@ async def read_trend_dashboard(
             for keyword in internal_stats["top_keywords"]
         ],
         report_markdown=report_markdown,
+    )
+
+
+@router.get("/download-pdf")
+async def download_trend_report_pdf(
+    report_markdown: Annotated[str, Depends(get_b2b_report)],
+) -> Response:
+    """Gemini 리포트 Markdown을 B2B PDF로 변환하여 다운로드한다."""
+    pdf_bytes = await convert_markdown_to_pdf_async(report_markdown)
+    filename = f"B2B_Trend_Report_{datetime.now(UTC).strftime('%Y%m%d')}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 
