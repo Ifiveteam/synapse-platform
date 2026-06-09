@@ -1,0 +1,179 @@
+{
+  "version": "v20260608-115052",
+  "user_id": "mock_jiyeon",
+  "computed_at": "2026-06-08T11:50:52.680962Z",
+  "result": {
+    "user_id": "mock_jiyeon",
+    "computed_at": "2026-06-08T11:50:52.680962Z",
+    "axes": {
+      "intellectual_curiosity": 50,
+      "practical_orientation": 90,
+      "emotional_comfort": 65,
+      "social_awareness": 5,
+      "creative_expression": 25,
+      "entertainment_release": 20,
+      "self_improvement": 95,
+      "depth_immersion": 80
+    },
+    "layer_b": {
+      "search_active_ratio": 0.2,
+      "viewing_concentration": 0.402,
+      "taste_diversity_index": 22.7,
+      "exploration_depth": 0.56
+    },
+    "top5_interests": [
+      {
+        "rank": 1,
+        "label": "직업/기술 개발",
+        "score": 1.0,
+        "evidence": [
+          "코딩스쿨 채널 12120초 시청",
+          "Python 기초 3시간 완성 시청",
+          "포트폴리오 작성법 검색"
+        ]
+      },
+      {
+        "rank": 2,
+        "label": "생산성 및 시간 관리",
+        "score": 0.9,
+        "evidence": [
+          "생산성랩 채널 2200초 시청",
+          "Better Habits 채널 1620초 시청",
+          "시간관리 방법 검색",
+          "Notion로 업무 자동화하기 시청"
+        ]
+      },
+      {
+        "rank": 3,
+        "label": "실용 정보/튜토리얼",
+        "score": 0.85,
+        "evidence": [
+          "tutorial, how-to 태그 다수",
+          "엑셀 피벗테이블 검색",
+          "피벗테이블 실전 따라하기 시청"
+        ]
+      },
+      {
+        "rank": 4,
+        "label": "정서적 안정 및 휴식",
+        "score": 0.7,
+        "evidence": [
+          "Chill Music 채널 3600초 시청",
+          "Mindful KR 채널 900초 시청",
+          "emotional_comfort 태그"
+        ]
+      },
+      {
+        "rank": 5,
+        "label": "지적 탐구",
+        "score": 0.5,
+        "evidence": [
+          "Science Today 채널 2400초 시청",
+          "documentary 태그"
+        ]
+      }
+    ],
+    "summary": "사용자 mock_jiyeon님은 코딩, 생산성 도구 활용, 시간 관리 등 직업 및 자기 계발에 매우 높은 관심을 보이며, 특히 실용적인 학습 콘텐츠를 통해 깊이 있게 몰입하는 경향이 있습니다. 긴 시간의 튜토리얼 시청과 구체적인 문제 해결을 위한 검색 활동이 두드러지며, 이와 함께 휴식을 위한 음악 감상이나 과학 분야의 지적 탐구도 병행하는 균형 잡힌 디지털 소비 패턴을 보입니다.",
+    "interpretation": {
+      "consumption_mode": "균형형",
+      "primary_lever": "취향 다양성",
+      "sovereignty_verdict": "양호",
+      "radar_gap_insight": "취향 다양성이 낮고 자기계발 축이 두드러져 특정 영역에 쏠려 있습니다."
+    },
+    "axis_notes": {
+      "intellectual_curiosity": "Science Today 채널 시청 기록으로 새로운 지식 탐구 경향이 있습니다.",
+      "practical_orientation": "코딩, 엑셀, 노션 등 실용적인 기술 습득 콘텐츠에 높은 관심을 보입니다.",
+      "emotional_comfort": "Chill Music 및 Mindful KR 채널 시청으로 정서적 안정감을 추구합니다.",
+      "social_awareness": "사회 이슈나 뉴스 관련 콘텐츠 시청 기록은 거의 없습니다.",
+      "creative_expression": "홈메이킹 채널 시청 기록이 있으나 비중은 낮습니다.",
+      "entertainment_release": "가벼운 오락성 콘텐츠보다는 기능성 콘텐츠에 집중합니다.",
+      "self_improvement": "커리어 개발, 생산성, 습관 형성 등 자기 계발 콘텐츠에 압도적인 관심을 보입니다.",
+      "depth_immersion": "3시간짜리 코딩 튜토리얼 시청 등 특정 주제에 깊이 몰입하는 경향이 뚜렷합니다."
+    },
+    "investigation_log": [
+      "loaded 15 indexed records",
+      "layer_b: search_active_ratio=0.2",
+      "layer_b: viewing_concentration=0.402",
+      "layer_b: exploration_depth=0.56",
+      "top channel by watch time: 코 (딩s)",
+      "patterns: weekend_ratio=0.4",
+      "agent: llm_mode=gemini_tools",
+      "agent: llm_tool_loop_start",
+      "tool:get_channel_breakdown",
+      "tool:get_search_queries",
+      "tool:get_tag_distribution",
+      "tool:get_sample_records",
+      "agent: tool_loop_complete",
+      "layer_b: taste_diversity_index=22.7",
+      "interpretation: mode=균형형",
+      "interpretation: lever=취향 다양성",
+      "interpretation: verdict=양호"
+    ],
+    "llm_used": true,
+    "behavior_patterns": {
+      "hour_distribution": {
+        "morning": 0.6,
+        "afternoon": 0.133,
+        "evening": 0.2,
+        "night": 0.067
+      },
+      "weekend_ratio": 0.4,
+      "top_repeated_channels": [
+        {
+          "channel": "생산성랩",
+          "count": 2
+        },
+        {
+          "channel": "코딩스쿨",
+          "count": 2
+        },
+        {
+          "channel": "Better Habits",
+          "count": 2
+        },
+        {
+          "channel": "홈메이킹",
+          "count": 1
+        },
+        {
+          "channel": "Science Today",
+          "count": 1
+        }
+      ],
+      "top_repeated_tags": [
+        {
+          "tag": "tutorial",
+          "count": 6
+        },
+        {
+          "tag": "productivity",
+          "count": 6
+        },
+        {
+          "tag": "how-to",
+          "count": 4
+        },
+        {
+          "tag": "career",
+          "count": 4
+        },
+        {
+          "tag": "self_improvement",
+          "count": 3
+        },
+        {
+          "tag": "diy",
+          "count": 1
+        },
+        {
+          "tag": "creative_expression",
+          "count": 1
+        },
+        {
+          "tag": "science",
+          "count": 1
+        }
+      ]
+    }
+  }
+}

@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { Agent } from "@/lib/agents";
 import { ROUTES } from "@/lib/routes";
-import { useAgentStore } from "@/stores/use-agent-store";
+import { useAgentSelection } from "@/stores/shell/agent-selection";
 
 interface AgentCardProps {
   agent: Agent;
@@ -20,7 +20,9 @@ interface AgentCardProps {
 }
 
 export function AgentCard({ agent, index }: AgentCardProps) {
-  const setSelectedAgentId = useAgentStore((state) => state.setSelectedAgentId);
+  const setSelectedAgentId = useAgentSelection(
+    (state) => state.setSelectedAgentId,
+  );
 
   return (
     <Card className="transition-shadow hover:shadow-md">
