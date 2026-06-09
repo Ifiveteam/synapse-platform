@@ -16,9 +16,9 @@ from app.api.v1.navigator import router as navigator_router  # noqa: E402
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 Synapse Platform 서버 시작")
+    print("Synapse Platform 서버 시작")
     yield
-    print("🛑 서버 종료")
+    print("서버 종료")
 
 
 app = FastAPI(

@@ -247,10 +247,11 @@ class IdealDesignRequest(BaseModel):
 
 
 class IdealDesignResponse(BaseModel):
-    user_id:       str
-    proposals:     list[IdealRadarChart] = Field(description="반대/확장/균형 3가지 제안")
-    selected:      Optional[IdealRadarChart] = None
-    agent_message: str = ""
+    user_id:         str
+    proposals:       list[IdealRadarChart]  = Field(description="반대/확장/균형 3가지 제안")
+    selected:        Optional[IdealRadarChart] = None
+    opposite_guide:  Optional["Guide"]      = Field(default=None, description="반대방향형 LLM이 생성한 30일 가이드")
+    agent_message:   str = ""
 
 
 # ──────────────────────────────────────────
@@ -264,6 +265,10 @@ class Guide(BaseModel):
     steps:          list[str]
     target_axes:    list[AxisKey]
     estimated_days: int = Field(default=30)
+
+
+# forward reference 해소 (IdealDesignResponse.opposite_guide: Optional[Guide])
+IdealDesignResponse.model_rebuild()
 
 
 class Quest(BaseModel):

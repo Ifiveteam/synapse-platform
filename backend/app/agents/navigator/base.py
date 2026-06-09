@@ -57,11 +57,11 @@ class NavigatorAgent:
         top5_interests: list[str],
     ) -> IdealDesignResponse:
         """
-        LLM 없이 수식 기반으로 3가지 이상향 즉시 생성
-        layer_a에서 dominant/weak 런타임 계산 후 이중 방향 적용
+        3가지 이상향 생성 (반대방향형은 Gemini LLM, 나머지는 수식 기반)
+        반대방향형 LLM이 가이드도 동시에 생성하여 반환
         """
         dominant, weak = compute_dominant_weak(profiler_data.layer_a)
-        proposals = generate_all_ideals(
+        proposals, opposite_guide = generate_all_ideals(
             profiler_data.layer_a, dominant, weak,
             layer_b        = profiler_data.layer_b,
             top5_interests = top5_interests,
@@ -69,6 +69,7 @@ class NavigatorAgent:
         return IdealDesignResponse(
             user_id=user_id,
             proposals=proposals,
+            opposite_guide=opposite_guide,
             agent_message=(
                 "3가지 이상향을 자동으로 설계했습니다. "
                 "마음에 드는 방향을 선택하거나, 대화로 조율해보세요."
@@ -105,7 +106,7 @@ class NavigatorAgent:
     ) -> NavigatorState:
         """Navigator 전체 워크플로우 실행"""
         dominant, weak = compute_dominant_weak(profiler_data.layer_a)
-        proposals      = generate_all_ideals(
+        proposals, _   = generate_all_ideals(
             profiler_data.layer_a, dominant, weak,
             layer_b        = profiler_data.layer_b,
             top5_interests = top5_interests,

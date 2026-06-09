@@ -204,10 +204,11 @@ def generate_opposite_ideal(
     weak_axes:     list[str] | None = None,
     layer_b=None,
     top5_interests: list[str] | None = None,
-) -> IdealRadarChart:
+) -> tuple[IdealRadarChart, Guide]:
     """
-    반대 방향형 이상향 — gpt-4o 기반 철학적 반대 방향 설계
+    반대 방향형 이상향 — 페르소나 기반 철학적 반대 방향 설계 + 가이드 동시 생성
     단순 수치 반전이 아닌 콘텐츠 소비 정체성의 대비를 표현.
+    Returns: (IdealRadarChart, Guide)
     """
     from .modifier import generate_opposite_by_llm
 
@@ -279,18 +280,27 @@ def generate_all_ideals(
     weak_axes:      list[str] | None = None,
     layer_b=None,
     top5_interests: list[str] | None = None,
-) -> list[IdealRadarChart]:
-    """이상향 3종 동시 생성 (반대 / 확장 / 균형)"""
+) -> tuple[list[IdealRadarChart], Guide]:
+    """
+    이상향 3종 동시 생성 (반대 / 확장 / 균형)
+    Returns: (proposals, opposite_guide)
+      - opposite_guide: 반대방향형 LLM이 동시 생성한 30일 가이드
+    """
     if dominant_axes is None or weak_axes is None:
         _dom, _weak = compute_dominant_weak(current)
         dominant_axes = dominant_axes or _dom
         weak_axes     = weak_axes     or _weak
 
-    return [
-        generate_opposite_ideal(current, dominant_axes, weak_axes, layer_b, top5_interests),
+    opposite_ideal, opposite_guide = generate_opposite_ideal(
+        current, dominant_axes, weak_axes, layer_b, top5_interests
+    )
+
+    proposals = [
+        opposite_ideal,
         generate_expansion_ideal(current, dominant_axes, weak_axes),
         generate_balanced_ideal(current),
     ]
+    return proposals, opposite_guide
 
 
 # ──────────────────────────────────────────
