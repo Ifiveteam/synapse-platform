@@ -1,16 +1,23 @@
 # ─────────────────────────────────────────────────────────
-# Synapse Platform — docker-compose (Structure 2)
-#
-# 구조:
-#   Amplify  → 프론트엔드 (Amplify 자동 배포)
-#   EC2      → Nginx(:80) → FastAPI(:8000)
-#
-# 필요한 환경변수 (.env 또는 GitHub Secrets):
-#   DOCKER_HUB_USERNAME, IMAGE_TAG
-#   OPENAI_API_KEY, YOUTUBE_API_KEY
+# Synapse Platform — docker-compose
 # ─────────────────────────────────────────────────────────
 
 services:
+
+  # ── PostgreSQL + pgvector ─────────────────────────────
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: synapse-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: synapse
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - synapse-net
 
   # ── FastAPI 백엔드 ────────────────────────────────────
   backend:
@@ -22,9 +29,11 @@ services:
       - NAVIGATOR_MODEL=${NAVIGATOR_MODEL:-gpt-4o}
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
     expose:
-      - "8000"          # Nginx에서만 접근, 외부 직접 노출 없음
+      - "8000"
     networks:
       - synapse-net
+    depends_on:
+      - db
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -32,17 +41,15 @@ services:
       retries: 3
       start_period: 15s
 
-  # ── Nginx (보안 앞단) ─────────────────────────────────
+  # ── Nginx ─────────────────────────────────────────────
   nginx:
     image: ${DOCKER_HUB_USERNAME}/synapse-nginx:${IMAGE_TAG:-latest}
     container_name: synapse-nginx
     restart: unless-stopped
     ports:
-      - "80:80"         # HTTP (운영 초기)
-      - "443:443"       # HTTPS (SSL 인증서 발급 후)
+      - "80:80"
+      - "443:443"
     volumes:
-      # SSL 인증서 마운트 (Let's Encrypt 설정 후 활성화)
-      # - /etc/letsencrypt:/etc/letsencrypt:ro
       - nginx-logs:/var/log/nginx
     networks:
       - synapse-net
@@ -55,4 +62,5 @@ networks:
     driver: bridge
 
 volumes:
+  pgdata:
   nginx-logs:
