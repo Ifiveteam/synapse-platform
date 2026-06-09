@@ -1,0 +1,182 @@
+{
+  "version": "v20260609-044313",
+  "user_id": "mock_jiyeon",
+  "computed_at": "2026-06-09T04:43:13.329653Z",
+  "result": {
+    "user_id": "mock_jiyeon",
+    "computed_at": "2026-06-09T04:43:13.329653Z",
+    "axes": {
+      "intellectual_curiosity": 45,
+      "practical_orientation": 95,
+      "emotional_comfort": 35,
+      "social_awareness": 5,
+      "creative_expression": 25,
+      "entertainment_release": 5,
+      "self_improvement": 90,
+      "depth_immersion": 75
+    },
+    "layer_b": {
+      "search_active_ratio": 0.2,
+      "viewing_concentration": 0.402,
+      "taste_diversity_index": 19.0,
+      "exploration_depth": 0.56
+    },
+    "top5_interests": [
+      {
+        "rank": 1,
+        "label": "생산성 및 업무 효율",
+        "score": 0.95,
+        "evidence": [
+          "생산성랩 채널 시청",
+          "Notion로 업무 자동화하기 시청",
+          "피벗테이블 실전 따라하기 시청",
+          "엑셀 피벗테이블 검색",
+          "시간관리 방법 검색",
+          "productivity, how-to 태그 다수"
+        ]
+      },
+      {
+        "rank": 2,
+        "label": "코딩 및 프로그래밍",
+        "score": 0.9,
+        "evidence": [
+          "코딩스쿨 채널 (최고 시청 시간)",
+          "Python 기초 3시간 완성 시청",
+          "tutorial, career 태그"
+        ]
+      },
+      {
+        "rank": 3,
+        "label": "자기계발 및 커리어 성장",
+        "score": 0.85,
+        "evidence": [
+          "Better Habits 채널 시청",
+          "뽀모도로 시간관리 실습 시청",
+          "포트폴리오 작성법 검색",
+          "self_improvement, career 태그"
+        ]
+      },
+      {
+        "rank": 4,
+        "label": "과학 및 지식 탐구",
+        "score": 0.4,
+        "evidence": [
+          "Science Today 채널 시청",
+          "science, documentary, intellectual_curiosity 태그"
+        ]
+      },
+      {
+        "rank": 5,
+        "label": "휴식 및 정서적 안정",
+        "score": 0.35,
+        "evidence": [
+          "Chill Music, Mindful KR 채널 시청",
+          "healing, music, emotional_comfort 태그"
+        ]
+      }
+    ],
+    "summary": "사용자는 코딩, 엑셀, 시간 관리 등 실용적인 기술 습득과 생산성 향상, 커리어 개발을 위한 자기계발 콘텐츠에 매우 높은 관심을 보입니다. 특히 장시간의 코딩 강의를 시청하며 특정 주제에 깊이 몰입하는 경향이 있으며, 궁금한 점은 직접 검색하여 해결하려는 적극적인 학습 태도를 가지고 있습니다. 또한, 과학 지식 탐구와 함께 휴식 음악이나 마음 챙김 콘텐츠로 정서적 안정을 추구하는 모습도 관찰됩니다.",
+    "interpretation": {
+      "consumption_mode": "균형형",
+      "primary_lever": "취향 다양성",
+      "sovereignty_verdict": "양호",
+      "radar_gap_insight": "취향 다양성이 낮고 실용 지향 축이 두드러져 특정 영역에 쏠려 있습니다."
+    },
+    "axis_notes": {
+      "intellectual_curiosity": "Science Today 시청 기록과 과학 관련 태그가 있지만, 주된 관심사는 아닙니다.",
+      "practical_orientation": "코딩, 엑셀, 시간 관리 등 실용적인 기술 습득에 대한 높은 관심이 뚜렷합니다.",
+      "emotional_comfort": "칠 뮤직이나 마음 챙김 채널 시청으로 휴식과 정서적 안정을 추구하는 경향이 있습니다.",
+      "social_awareness": "사회 이슈나 뉴스 관련 기록은 거의 발견되지 않습니다.",
+      "creative_expression": "홈메이킹 채널 시청 기록이 있으나, 비중은 낮습니다.",
+      "entertainment_release": "가벼운 오락이나 예능 콘텐츠 시청 기록은 없습니다.",
+      "self_improvement": "생산성, 습관 형성, 커리어 개발 등 자기계발에 대한 강한 의지를 보입니다.",
+      "depth_immersion": "3시간짜리 코딩 강의를 시청하는 등 특정 주제에 깊이 몰입하는 경향이 있습니다."
+    },
+    "investigation_log": [
+      "loaded 15 indexed records",
+      "layer_b: search_active_ratio=0.2",
+      "layer_b: viewing_concentration=0.402",
+      "layer_b: exploration_depth=0.56",
+      "top channel by watch time: 코 (딩s)",
+      "patterns: weekend_ratio=0.4",
+      "agent: llm_mode=gemini_tools",
+      "agent: llm_tool_loop_start",
+      "tool:get_channel_breakdown",
+      "tool:get_search_queries",
+      "tool:get_tag_distribution",
+      "tool:get_sample_records",
+      "agent: tool_loop_complete",
+      "layer_b: taste_diversity_index=19.0",
+      "interpretation: mode=균형형",
+      "interpretation: lever=취향 다양성",
+      "interpretation: verdict=양호",
+      "notify: mail sent to k***@gmail.com"
+    ],
+    "llm_used": true,
+    "behavior_patterns": {
+      "hour_distribution": {
+        "morning": 0.6,
+        "afternoon": 0.133,
+        "evening": 0.2,
+        "night": 0.067
+      },
+      "weekend_ratio": 0.4,
+      "top_repeated_channels": [
+        {
+          "channel": "생산성랩",
+          "count": 2
+        },
+        {
+          "channel": "코딩스쿨",
+          "count": 2
+        },
+        {
+          "channel": "Better Habits",
+          "count": 2
+        },
+        {
+          "channel": "홈메이킹",
+          "count": 1
+        },
+        {
+          "channel": "Science Today",
+          "count": 1
+        }
+      ],
+      "top_repeated_tags": [
+        {
+          "tag": "tutorial",
+          "count": 6
+        },
+        {
+          "tag": "productivity",
+          "count": 6
+        },
+        {
+          "tag": "how-to",
+          "count": 4
+        },
+        {
+          "tag": "career",
+          "count": 4
+        },
+        {
+          "tag": "self_improvement",
+          "count": 3
+        },
+        {
+          "tag": "diy",
+          "count": 1
+        },
+        {
+          "tag": "creative_expression",
+          "count": 1
+        },
+        {
+          "tag": "science",
+          "count": 1
+        }
+      ]
+    }
+  }
+}

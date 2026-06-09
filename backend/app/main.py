@@ -1,51 +1,46 @@
-"""
-Synapse Platform — FastAPI 메인 앱
-"""
-
-from contextlib import asynccontextmanager
-
-from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# .env 로드 (가장 먼저 실행)
-load_dotenv()
+from app.agents.profiler.api import router as profiler_router
+from app.agents.profiler.load_env import load_backend_env
+from app.api.v1.navigator import router as navigator_router
 
-from app.api.v1.navigator import router as navigator_router  # noqa: E402
+load_backend_env()
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("Synapse Platform 서버 시작")
-    yield
-    print("서버 종료")
+api_router = APIRouter(prefix="/api/v1")
+api_router.include_router(profiler_router)
+api_router.include_router(navigator_router)
 
 
-app = FastAPI(
-    title="Synapse Platform API",
-    description="Synapse AI Agent Platform — Navigator, Profiler, Indexer ...",
-    version="0.1.0",
-    lifespan=lifespan,
-)
+def create_app() -> FastAPI:
+    app = FastAPI(title="Synapse Platform API", version="0.1.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.include_router(api_router)
 
-# CORS (프론트엔드 Next.js 3000 허용)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    @app.get("/", tags=["health"])
+    async def root():
+        return {"status": "ok", "platform": "Synapse"}
 
-# ── 라우터 등록 ──────────────────────────────
-app.include_router(navigator_router, prefix="/api/v1")
+    @app.get("/health", tags=["health"])
+    async def health():
+        return {"status": "healthy"}
 
-
-@app.get("/", tags=["health"])
-async def root():
-    return {"status": "ok", "platform": "Synapse"}
+    return app
 
 
-@app.get("/health", tags=["health"])
-async def health():
-    return {"status": "healthy"}
+app = create_app()
+
+
+def main() -> None:
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+
+
+if __name__ == "__main__":
+    main()

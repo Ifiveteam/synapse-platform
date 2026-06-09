@@ -1,0 +1,144 @@
+{
+  "user_id": "mock_jiyeon",
+  "indexed_at": "2026-06-01T09:00:00Z",
+  "source": "portability",
+  "records": [
+    {
+      "id": "j1",
+      "source_type": "watch",
+      "title": "Notion로 업무 자동화하기",
+      "channel": "생산성랩",
+      "duration_sec": 1240,
+      "is_shorts": false,
+      "recorded_at": "2026-05-27T08:00:00Z",
+      "tags": ["tutorial", "how-to", "productivity"]
+    },
+    {
+      "id": "j2",
+      "source_type": "watch",
+      "title": "Python 기초 3시간 완성",
+      "channel": "코딩스쿨",
+      "duration_sec": 10800,
+      "is_shorts": false,
+      "recorded_at": "2026-05-27T20:00:00Z",
+      "tags": ["tutorial", "how-to", "career"]
+    },
+    {
+      "id": "j3",
+      "source_type": "search",
+      "query": "엑셀 피벗테이블",
+      "recorded_at": "2026-05-28T09:10:00Z",
+      "tags": ["how-to"]
+    },
+    {
+      "id": "j11",
+      "source_type": "watch",
+      "title": "피벗테이블 실전 따라하기",
+      "channel": "생산성랩",
+      "duration_sec": 960,
+      "is_shorts": false,
+      "recorded_at": "2026-05-28T09:20:00Z",
+      "tags": ["tutorial", "how-to", "productivity"]
+    },
+    {
+      "id": "j12",
+      "source_type": "watch",
+      "title": "뽀모도로 시간관리 실습",
+      "channel": "Better Habits",
+      "duration_sec": 720,
+      "is_shorts": false,
+      "recorded_at": "2026-05-29T08:15:00Z",
+      "tags": ["productivity", "self_improvement"]
+    },
+    {
+      "id": "j13",
+      "source_type": "watch",
+      "title": "개발자 포트폴리오 가이드",
+      "channel": "코딩스쿨",
+      "duration_sec": 1320,
+      "is_shorts": false,
+      "recorded_at": "2026-05-30T10:15:00Z",
+      "tags": ["tutorial", "career"]
+    },
+    {
+      "id": "j4",
+      "source_type": "watch",
+      "title": "아침 루틴 5가지",
+      "channel": "Better Habits",
+      "duration_sec": 900,
+      "is_shorts": false,
+      "recorded_at": "2026-05-28T07:30:00Z",
+      "tags": ["productivity", "self_improvement"]
+    },
+    {
+      "id": "j5",
+      "source_type": "watch",
+      "title": "DIY 책상 정리",
+      "channel": "홈메이킹",
+      "duration_sec": 780,
+      "is_shorts": false,
+      "recorded_at": "2026-05-29T14:00:00Z",
+      "tags": ["diy", "creative_expression"]
+    },
+    {
+      "id": "j6",
+      "source_type": "search",
+      "query": "시간관리 방법",
+      "recorded_at": "2026-05-29T08:00:00Z",
+      "tags": ["productivity"]
+    },
+    {
+      "id": "j7",
+      "source_type": "watch",
+      "title": "우주 다큐: 블랙홀",
+      "channel": "Science Today",
+      "duration_sec": 2400,
+      "is_shorts": false,
+      "recorded_at": "2026-05-30T21:00:00Z",
+      "tags": ["science", "documentary", "intellectual_curiosity"]
+    },
+    {
+      "id": "j8",
+      "source_type": "search",
+      "query": "포트폴리오 작성법",
+      "recorded_at": "2026-05-30T10:00:00Z",
+      "tags": ["career"]
+    },
+    {
+      "id": "j9",
+      "source_type": "watch",
+      "title": "명상 15분 가이드",
+      "channel": "Mindful KR",
+      "duration_sec": 900,
+      "is_shorts": false,
+      "recorded_at": "2026-05-31T06:00:00Z",
+      "tags": ["healing", "self_improvement"]
+    },
+    {
+      "id": "j10",
+      "source_type": "watch",
+      "title": "재즈 플레이리스트",
+      "channel": "Chill Music",
+      "duration_sec": 3600,
+      "is_shorts": false,
+      "recorded_at": "2026-05-31T22:00:00Z",
+      "tags": ["music", "emotional_comfort"]
+    },
+    {
+      "id": "j-scrap-1",
+      "source_type": "scrap",
+      "title": "Notion 템플릿 모음",
+      "url": "https://example.com/notion-templates",
+      "recorded_at": "2026-05-29T12:00:00Z",
+      "tags": ["productivity", "tutorial"]
+    },
+    {
+      "id": "j-scrap-2",
+      "source_type": "scrap",
+      "title": "Python 자동화 레시피",
+      "url": "https://example.com/python-automation",
+      "recorded_at": "2026-05-30T18:00:00Z",
+      "tags": ["tutorial", "career"]
+    }
+  ]
+}

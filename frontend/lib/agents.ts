@@ -19,33 +19,34 @@ export const AGENTS: Agent[] = [
   {
     id: "aggregator",
     name: "Aggregator",
-    description: "여러 소스의 데이터를 수집하고 통합합니다.",
+    description: "수많은 디지털 자아들을 모아 트렌드를 읽어내는 시장 분석가",
     status: "planned",
   },
   {
     id: "archiver",
     name: "Archiver",
-    description: "데이터를 아카이브하고 장기 보관을 관리합니다.",
+    description: "사용자가 의도적으로 수집한 지식을 내재화하고 함께 토론하는 지적 동반자",
     status: "planned",
   },
   {
     id: "indexer",
     name: "Indexer",
-    description: "콘텐츠를 인덱싱하여 빠른 검색을 지원합니다.",
+    description: "사용자의 무의식적인 디지털 발자국을 빠짐없이 기록하고 정돈하는 기억 저장소",
     status: "planned",
   },
   {
     id: "navigator",
     name: "Navigator",
-    description: "이상향 설계 및 버블 탈출 행동 유도 에이전트.",
+    description: "사용자가 원하는 이상향으로 나아갈 수 있도록 이끄는 페이스메이커",
     status: "dev",
     statusLabel: "개발 중",
   },
   {
     id: "profiler",
     name: "Profiler",
-    description: "YouTube 소비 패턴을 8각 레이더 차트로 분석합니다.",
-    status: "planned",
+    description: "데이터라는 거울을 통해 사용자의 현재 상태와 성향을 있는 그대로 비춰주는 분석가",
+    status: "dev",
+    statusLabel: "개발 중",
   },
 ];
 
