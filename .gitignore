@@ -12,11 +12,9 @@ Desktop.ini
 !.vscode/extensions.json
 !.vscode/settings.json
 
-# Environment & secrets
-.env
-.env.*
-!.env.example
-!.env*.example
+# Environment & secrets (.env.example 은 커밋)
+**/.env
+**/.env.local
 
 # Python (backend)
 __pycache__/

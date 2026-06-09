@@ -8,8 +8,10 @@ interface AgentPageProps {
   params: Promise<{ slug: string }>;
 }
 
+const SLUG_AGENTS = AGENTS.filter((agent) => agent.id !== "profiler");
+
 export function generateStaticParams() {
-  return AGENTS.map((agent) => ({ slug: agent.id }));
+  return SLUG_AGENTS.map((agent) => ({ slug: agent.id }));
 }
 
 export async function generateMetadata({ params }: AgentPageProps) {
@@ -28,13 +30,17 @@ export async function generateMetadata({ params }: AgentPageProps) {
 
 export default async function AgentPage({ params }: AgentPageProps) {
   const { slug } = await params;
+  if (slug === "profiler") {
+    notFound();
+  }
+
   const agent = getAgent(slug);
 
   if (!agent) {
     notFound();
   }
 
-  const index = AGENTS.findIndex((item) => item.id === agent.id) + 1;
+  const index = SLUG_AGENTS.findIndex((item) => item.id === agent.id) + 1;
 
   return (
     <AgentDetail

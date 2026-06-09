@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 import type { Agent } from "@/lib/agents";
 import { ROUTES } from "@/lib/routes";
-import { useAgentStore } from "@/stores/use-agent-store";
+import { useAgentSelection } from "@/stores/shell/agent-selection";
 
 interface AgentDetailProps {
   agent: Agent;
@@ -23,8 +23,10 @@ interface AgentDetailProps {
 }
 
 export function AgentDetail({ agent, index, action }: AgentDetailProps) {
-  const selectedAgentId = useAgentStore((state) => state.selectedAgentId);
-  const setSelectedAgentId = useAgentStore((state) => state.setSelectedAgentId);
+  const selectedAgentId = useAgentSelection((state) => state.selectedAgentId);
+  const setSelectedAgentId = useAgentSelection(
+    (state) => state.setSelectedAgentId,
+  );
 
   useEffect(() => {
     setSelectedAgentId(agent.id);

@@ -1,0 +1,43 @@
+{
+  "version": "v2",
+  "user_id": "mock_jiyeon",
+  "computed_at": "2026-06-01T09:00:00Z",
+  "result": {
+    "user_id": "mock_jiyeon",
+    "computed_at": "2026-06-01T09:00:00Z",
+    "axes": {
+      "intellectual_curiosity": 72,
+      "practical_orientation": 80,
+      "emotional_comfort": 55,
+      "social_awareness": 38,
+      "creative_expression": 48,
+      "entertainment_release": 42,
+      "self_improvement": 75,
+      "depth_immersion": 58
+    },
+    "layer_b": {
+      "search_active_ratio": 0.31,
+      "viewing_concentration": 0.42,
+      "taste_diversity_index": 55.0,
+      "exploration_depth": 0.56
+    },
+    "top5_interests": [
+      {"rank": 1, "label": "생산성랩", "score": 1.0, "evidence": ["Notion로 업무 자동화하기"]},
+      {"rank": 2, "label": "코딩스쿨", "score": 0.9, "evidence": ["Python 기초 3시간 완성"]},
+      {"rank": 3, "label": "검색: 엑셀 피벗테이블", "score": 0.55, "evidence": ["엑셀 피벗테이블"]},
+      {"rank": 4, "label": "스크랩: Notion 템플릿 모음", "score": 0.45, "evidence": ["Notion 템플릿 모음"]},
+      {"rank": 5, "label": "Mindful KR", "score": 0.4, "evidence": ["명상 15분 가이드"]}
+    ],
+    "summary": "6월 mock_jiyeon 프로필 — 검색·스크랩 활동 증가, 탐색 깊이·다양성 개선.",
+    "interpretation": {
+      "consumption_mode": "탐색형",
+      "primary_lever": "취향 다양성",
+      "sovereignty_verdict": "양호",
+      "radar_gap_insight": "지적 호기심과 탐색 깊이가 개선되었습니다."
+    },
+    "axis_notes": {},
+    "investigation_log": [],
+    "llm_used": false,
+    "behavior_patterns": null
+  }
+}
