@@ -11,7 +11,11 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/synapse"
 )
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=300,
+)
 SessionLocal = sessionmaker(bind=engine)
 
 
@@ -29,6 +33,9 @@ def init_db():
                 url TEXT,
                 watched_at TIMESTAMP,
                 category TEXT,
+                keywords TEXT[],
+                duration INTEGER,
+                is_shorts BOOLEAN,
                 embedding vector(1024)
             )
         """)
@@ -44,10 +51,10 @@ def save_vectors(items: list[dict]):
             conn.execute(
                 text("""
                 INSERT INTO video_vectors
-                (title, channel, channel_url, url, watched_at, category, embedding)
+                (title, channel, channel_url, url, watched_at, category, keywords, duration, is_shorts, embedding)
                 VALUES (
                     :title, :channel, :channel_url, :url,
-                    :watched_at, :category, :embedding
+                    :watched_at, :category, :keywords, :duration, :is_shorts, :embedding
                 )
             """),
                 {
@@ -57,6 +64,9 @@ def save_vectors(items: list[dict]):
                     "url": item.get("url", ""),
                     "watched_at": item.get("watched_at"),
                     "category": item.get("category", ""),
+                    "keywords": item.get("keywords", []),
+                    "duration": item.get("duration", 0),
+                    "is_shorts": item.get("is_shorts", False),
                     "embedding": str(item.get("embedding", [])),
                 },
             )

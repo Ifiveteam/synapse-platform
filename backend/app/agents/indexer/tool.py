@@ -1,5 +1,8 @@
 import json
+import os
 import re
+import time
+import urllib.request
 import zipfile
 from datetime import datetime, timezone
 
@@ -104,5 +107,116 @@ def vectorize(items: list[dict]) -> list[dict]:
     result = []
     for item, embedding in zip(items, embeddings, strict=False):
         result.append({**item, "embedding": embedding.tolist()})
+
+    return result
+
+
+def is_shorts_by_redirect(video_url: str) -> bool:
+    """shorts/ URL 리다이렉트로 쇼츠 여부 판별"""
+    match = re.search(r"(?:v=|shorts/)([^&?]+)", video_url)
+    if not match:
+        return False
+    video_id = match.group(1)
+    shorts_url = f"https://www.youtube.com/shorts/{video_id}"
+    try:
+        req = urllib.request.Request(
+            shorts_url,
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            final_url = response.url
+            return "shorts" in final_url
+    except Exception:
+        return False
+
+
+def get_video_info(video_url: str) -> dict:
+    """YouTube URL에서 description, duration, is_shorts 한 번에 가져오기"""
+    api_key = os.getenv("YOUTUBE_API_KEY")
+    if not api_key:
+        return {"description": "", "duration": 0, "is_shorts": False}
+
+    match = re.search(r"(?:v=|shorts/)([^&?]+)", video_url)
+    if not match:
+        return {"description": "", "duration": 0, "is_shorts": False}
+
+    video_id = match.group(1)
+    url = (
+        f"https://www.googleapis.com/youtube/v3/videos"
+        f"?part=snippet,contentDetails&id={video_id}&key={api_key}"
+    )
+
+    try:
+        with urllib.request.urlopen(url) as response:
+            data = json.loads(response.read())
+            items = data.get("items", [])
+            if not items:
+                return {"description": "", "duration": 0, "is_shorts": False}
+
+            snippet = items[0].get("snippet", {})
+            content = items[0].get("contentDetails", {})
+
+            description = snippet.get("description", "")
+            tags = snippet.get("tags", [])
+            is_shorts = any(t.lower() in ("#shorts", "shorts") for t in tags)
+
+            duration_str = content.get("duration", "PT0S")
+            m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration_str)
+            duration = 0
+            if m:
+                h = int(m.group(1) or 0)
+                mins = int(m.group(2) or 0)
+                s = int(m.group(3) or 0)
+                duration = h * 3600 + mins * 60 + s
+
+            # 태그에 없으면 리다이렉트로 확인
+            if not is_shorts:
+                is_shorts = is_shorts_by_redirect(video_url)
+
+            # 그래도 안되면 60초 기준
+            if not is_shorts and duration <= 60:
+                is_shorts = True
+
+            return {
+                "description": description,
+                "duration": duration,
+                "is_shorts": is_shorts,
+            }
+    except Exception:
+        return {"description": "", "duration": 0, "is_shorts": False}
+
+
+def add_keywords(items: list[dict]) -> list[dict]:
+    """LLM으로 제목 + description 키워드 추출 + 쇼츠 여부"""
+    from app.agents.indexer.prompt import extract_keywords_batch
+
+    batch_size = 10
+    result = []
+
+    for i in range(0, len(items), batch_size):
+        batch = items[i : i + batch_size]
+
+        texts = []
+        video_infos = []
+        for item in batch:
+            info = get_video_info(item.get("url", ""))
+            video_infos.append(info)
+            text = item["title"]
+            if info["description"]:
+                text += " " + info["description"][:100]
+            texts.append(text)
+
+        keywords_list = extract_keywords_batch(texts)
+        time.sleep(1)
+
+        for item, keywords, info in zip(batch, keywords_list, video_infos, strict=False):
+            result.append({
+                **item,
+                "keywords": keywords,
+                "title_keywords": keywords,
+                "desc_keywords": [],
+                "duration": info["duration"],
+                "is_shorts": info["is_shorts"],
+            })
 
     return result

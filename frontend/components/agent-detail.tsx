@@ -26,6 +26,9 @@ interface VideoItem {
   channel: string;
   category: string;
   watched_at: string;
+  keywords: string[];
+  duration: number;
+  is_shorts: boolean;
 }
 
 interface AnalyzeResult {
@@ -46,6 +49,13 @@ const CATEGORY_LABELS: Record<string, string> = {
   emotional_comfort: "정서·위로",
   creative_expression: "창의·표현",
   entertainment_release: "오락·해방",
+};
+
+const formatDuration = (seconds: number) => {
+  if (seconds === 0) return "";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
 };
 
 export function AgentDetail({ agent, index }: AgentDetailProps) {
@@ -218,18 +228,40 @@ export function AgentDetail({ agent, index }: AgentDetailProps) {
                   {result.videos && result.videos.length > 0 && (
                     <div className="rounded-lg border p-4 space-y-2">
                       <p className="font-medium text-sm">🎬 분석된 영상 목록</p>
-                      <div className="max-h-72 overflow-y-auto space-y-2">
+                      <div className="max-h-96 overflow-y-auto space-y-3">
                         {result.videos.map((video, i) => (
-                          <div key={i} className="bg-muted rounded p-3 text-sm">
-                            <p className="font-medium truncate">{video.title}</p>
-                            <div className="flex justify-between mt-1">
+                          <div key={i} className="bg-muted rounded p-3 text-sm space-y-2">
+                            <div className="flex items-center gap-2">
+                              {video.is_shorts && (
+                                <span className="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full shrink-0">
+                                  Shorts
+                                </span>
+                              )}
+                              <p className="font-medium truncate">{video.title}</p>
+                            </div>
+                            <div className="flex justify-between">
                               <span className="text-muted-foreground text-xs truncate">
                                 {video.channel}
+                                {video.duration > 0 && (
+                                  <span className="ml-2">· {formatDuration(video.duration)}</span>
+                                )}
                               </span>
                               <span className="text-xs font-medium text-green-600 ml-2 shrink-0">
                                 {CATEGORY_LABELS[video.category] ?? video.category}
                               </span>
                             </div>
+                            {video.keywords && video.keywords.length > 0 && (
+                              <div>
+                                <p className="text-xs text-muted-foreground mb-1">🔑 키워드</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {video.keywords.map((kw, j) => (
+                                    <span key={j} className="bg-blue-50 text-blue-600 text-xs px-2 py-0.5 rounded-full">
+                                      {kw}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>

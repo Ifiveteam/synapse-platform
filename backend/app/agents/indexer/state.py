@@ -9,6 +9,9 @@ class VideoItem(TypedDict):
     watched_at: str
     category: str
     embedding: list[float]
+    keywords: list[str]
+    duration: int
+    is_shorts: bool
 
 
 class IndexerState(TypedDict):

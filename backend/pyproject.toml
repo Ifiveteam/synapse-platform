@@ -17,6 +17,8 @@ dependencies = [
     "sentence-transformers>=5.5.1",
     "psycopg2-binary>=2.9.12",
     "python-multipart>=0.0.32",
+    "groq>=1.4.0",
+    "konlpy>=0.6.0",
 ]
 
 [dependency-groups]

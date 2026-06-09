@@ -38,14 +38,17 @@ def run_analysis(task_id: str, tmp_path: str, limit: int = 100):
         category_stats = dict(Counter(categories).most_common())
 
         videos = [
-            {
-                "title": item.get("title", ""),
-                "channel": item.get("channel", ""),
-                "category": item.get("category", ""),
-                "watched_at": item.get("watched_at", ""),
-            }
-            for item in result["cleaned_data"]
-        ]
+        {
+            "title": item.get("title", ""),
+            "channel": item.get("channel", ""),
+            "category": item.get("category", ""),
+            "watched_at": item.get("watched_at", ""),
+            "keywords": item.get("keywords", []),
+            "duration": item.get("duration", 0),
+            "is_shorts": item.get("is_shorts", False),
+        }
+        for item in result["cleaned_data"]
+    ]
 
         analysis_status[task_id] = {
             "status": "success",
