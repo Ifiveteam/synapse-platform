@@ -4,8 +4,11 @@ from datetime import UTC, datetime
 
 from app.agents.profiler.base import ProfilerResult
 from app.agents.profiler.state import ProfilerState
-from app.agents.profiler.subagent.notify.in_app import build_notification, mask_email
-from app.agents.profiler.subagent.notify.mail import send_analysis_complete_email
+from app.agents.profiler.subagent.notify.email_template import (
+    build_analysis_complete_email,
+)
+from app.services.email import send_email
+from app.services.notification import build_notification, mask_email
 
 
 def _result_from_state(state: ProfilerState) -> ProfilerResult:
@@ -27,8 +30,14 @@ def _result_from_state(state: ProfilerState) -> ProfilerResult:
 def notify_node(state: ProfilerState) -> dict:
     result = _result_from_state(state)
     recipient = state["notify_email"]
-    mail_result = send_analysis_complete_email(recipient, result)
-    notification = build_notification(result, mail_result, recipient)
+    subject, body = build_analysis_complete_email(result)
+    mail_result = send_email(recipient, subject, body)
+    notification = build_notification(
+        notification_type="analysis_complete",
+        message=f"{result.user_id} 프로필 분석이 완료되었습니다.",
+        mail_result=mail_result,
+        recipient=recipient,
+    )
 
     log = list(state.get("investigation_log", []))
     if mail_result.sent:

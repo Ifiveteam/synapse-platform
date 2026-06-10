@@ -37,7 +37,7 @@ profiler_graph = build_profiler_graph()
 
 
 def run_profiler(user_id: str, email: str) -> dict:
-    from app.agents.profiler.load_env import load_backend_env
+    from app.core.env import load_backend_env
 
     load_backend_env()
     initial: ProfilerState = {

@@ -16,14 +16,9 @@ from app.agents.profiler.base.insights import (
     ProfilerSnapshot,
 )
 from app.agents.profiler.base.job import (
-    DEFAULT_FROM_ADDRESS,
     BehaviorEvent,
     BehaviorEventSummary,
-    EmailChannel,
-    InAppChannel,
     JobStatus,
-    NotificationChannels,
-    NotificationPayload,
     PersonaInfo,
 )
 from app.agents.profiler.base.layer_b import LayerB, LayerBDelta
@@ -38,6 +33,13 @@ from app.agents.profiler.base.record import (
     IndexedRecord,
     IndexedRecordsBundle,
     SourceType,
+)
+from app.services.email import DEFAULT_FROM_ADDRESS
+from app.services.notification import (
+    EmailChannel,
+    InAppChannel,
+    NotificationChannels,
+    NotificationPayload,
 )
 
 __all__ = [
