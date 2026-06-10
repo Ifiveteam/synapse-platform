@@ -1,10 +1,10 @@
-"""Aggregator 파이프라인 통합 데이터 타입."""
+"""Aggregator 파이프라인 통합 데이터 도메인 타입."""
 
 from __future__ import annotations
 
 from typing import TypedDict
 
-from app.agents.aggregator.mock_data import InternalUserStats
+from app.agents.aggregator.base.internal_stats import InternalUserStats
 from app.services.external_trends import ExternalMarketTrends
 
 INTEGRATED_SCHEMA_VERSION = "0.2.0"

@@ -10,12 +10,8 @@ from typing import Annotated, TypedDict
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response, StreamingResponse
 
-from app.agents.aggregator.mock_data import (
-    ProfileAxisScore,
-    generate_internal_user_stats,
-)
-from app.agents.aggregator.nodes import generate_b2b_report
-from app.agents.aggregator.types import INTEGRATED_SCHEMA_VERSION, IntegratedData
+from app.agents.aggregator.agent import assemble_integrated_data, get_aggregator_agent
+from app.agents.aggregator.base import IntegratedData, ProfileAxisScore
 from app.schemas.trend import (
     AnalyzeResponse,
     DashboardResponse,
@@ -26,13 +22,14 @@ from app.schemas.trend import (
     TrendPostResponse,
     TrendPostSummarySchema,
 )
-from app.services import external_trends
 from app.services.pdf import convert_markdown_to_pdf_async
 
 router = APIRouter()
 
 
 class TrendPostRecord(TypedDict):
+    """인메모리 게시판 저장용 레코드 (API 라우터 private)."""
+
     post_id: str
     generated_at: str
     cohort_size: int
@@ -46,28 +43,22 @@ _TREND_POSTS: dict[str, TrendPostRecord] = {}
 
 async def get_integrated_data() -> IntegratedData:
     """내부 Mock 통계와 외부 실시간 트렌드를 조립한 통합 데이터를 반환한다."""
-    user_mock = generate_internal_user_stats()
-    external_real = await external_trends.fetch_real_trends()
-
-    return {
-        "schema_version": INTEGRATED_SCHEMA_VERSION,
-        "generated_at": datetime.now(tz=UTC).isoformat(),
-        "internal_user_stats": user_mock,
-        "external_market_trends": external_real,
-    }
+    return await assemble_integrated_data()
 
 
 async def get_b2b_report(
     data: Annotated[IntegratedData, Depends(get_integrated_data)],
 ) -> str:
     """Gemini 에이전트로 B2B 마크다운 리포트를 생성한다."""
-    return await generate_b2b_report(data)
+    agent = get_aggregator_agent()
+    return await agent.generate_report(data)
 
 
 async def _create_trend_post() -> TrendPostRecord:
     """통합 데이터를 조립하고 Gemini 리포트를 생성한 뒤 게시글 레코드를 만든다."""
-    data = await get_integrated_data()
-    report_markdown = await generate_b2b_report(data)
+    agent = get_aggregator_agent()
+    data = await agent.assemble_integrated_data()
+    report_markdown = await agent.generate_report(data)
     profile_map = data["internal_user_stats"]["cognitive_bias_map"]
 
     return {
