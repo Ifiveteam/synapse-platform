@@ -3,9 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
-
-DEFAULT_FROM_ADDRESS = "synapse@ifive.site"
+from pydantic import BaseModel
 
 
 class JobStatus(StrEnum):
@@ -13,29 +11,6 @@ class JobStatus(StrEnum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
-
-
-class InAppChannel(BaseModel):
-    delivered: bool = True
-
-
-class EmailChannel(BaseModel):
-    attempted: bool = False
-    sent: bool = False
-    from_address: str = DEFAULT_FROM_ADDRESS
-    recipient_masked: str = ""
-    error: str | None = None
-
-
-class NotificationChannels(BaseModel):
-    in_app: InAppChannel = Field(default_factory=InAppChannel)
-    email: EmailChannel = Field(default_factory=EmailChannel)
-
-
-class NotificationPayload(BaseModel):
-    type: str
-    message: str = ""
-    channels: NotificationChannels = Field(default_factory=NotificationChannels)
 
 
 class PersonaInfo(BaseModel):

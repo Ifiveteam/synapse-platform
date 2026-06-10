@@ -1,3 +1,5 @@
+"""Profiler Agent FastAPI 라우터."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status

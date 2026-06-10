@@ -5,8 +5,8 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.agents.profiler.load_env import load_backend_env
 from app.api.v1 import api_router
+from app.core.env import load_backend_env
 
 load_backend_env()
 
@@ -36,6 +36,7 @@ def health_check() -> dict[str, str]:
 
 def main() -> None:
     import uvicorn
+
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
 
 

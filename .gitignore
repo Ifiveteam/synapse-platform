@@ -61,5 +61,3 @@ temp/
 # Pre-commit
 .cache/
 
-# Docs (내부 문서 — 커밋 제외)
-docs/
