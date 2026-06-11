@@ -2,6 +2,4 @@
 
 
 def import_all_models() -> None:
-    # Indexer (and other agents) add model imports here, e.g.:
-    # import app.models.video_vector  # noqa: F401
-    return None
+    import app.models.video_vector  # noqa: F401

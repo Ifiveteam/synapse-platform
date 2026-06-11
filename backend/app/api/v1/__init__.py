@@ -2,13 +2,17 @@
 
 from fastapi import APIRouter
 
+from app.api.v1.auth import router as auth_router
 from app.api.v1.indexer import router as indexer_router
 from app.api.v1.navigator import router as navigator_router
 from app.api.v1.profiler import router as profiler_router
+from app.api.v1.takeout import router as takeout_router
 from app.api.v1.trend import router as trend_router
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(indexer_router)
+api_router.include_router(auth_router)
+api_router.include_router(takeout_router)
 api_router.include_router(
     trend_router,
     prefix="/trend",

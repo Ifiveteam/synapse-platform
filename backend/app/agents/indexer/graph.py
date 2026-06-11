@@ -2,7 +2,6 @@ import time
 
 from langgraph.graph import END, StateGraph
 
-from app.agents.indexer.db import save_vectors
 from app.agents.indexer.prompt import classify_batch
 from app.agents.indexer.state import IndexerState
 from app.agents.indexer.tool import add_keywords, parse_takeout_json, preprocess, vectorize
@@ -70,10 +69,14 @@ def node_vectorize(state: IndexerState) -> IndexerState:
         return {**state, "error": str(e)}
 
 
-def node_save(state: IndexerState) -> IndexerState:
+async def node_save(state: IndexerState) -> IndexerState:
     """노드 6: DB 저장"""
     try:
-        save_vectors(state["cleaned_data"])
+        from app.agents.indexer.repository import save_vectors
+        from app.core.database.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as session:
+            await save_vectors(state["cleaned_data"], session)
         return {**state, "saved_count": len(state["cleaned_data"]), "error": None}
     except Exception as e:
         return {**state, "saved_count": 0, "error": str(e)}

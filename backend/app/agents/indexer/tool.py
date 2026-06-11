@@ -6,7 +6,11 @@ import urllib.request
 import zipfile
 from datetime import datetime, timezone
 
-from sentence_transformers import SentenceTransformer
+from dotenv import load_dotenv
+from openai import OpenAI
+
+load_dotenv(override=True)
+_openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 def parse_takeout_zip(zip_path: str) -> list[dict]:
@@ -86,28 +90,16 @@ def preprocess(data: list[dict]) -> list[dict]:
     return cleaned
 
 
-_model = None
-
-
-def get_model():
-    """BGE-m3 모델 로드 (최초 1회만 다운로드)"""
-    global _model
-    if _model is None:
-        print("BGE-m3 모델 로딩 중... (첫 실행 시 다운로드 약 2GB)")
-        _model = SentenceTransformer("BAAI/bge-m3")
-    return _model
-
-
 def vectorize(items: list[dict]) -> list[dict]:
-    """제목 + 채널명 벡터화"""
-    model = get_model()
+    """제목 + 채널명 벡터화 (OpenAI text-embedding-3-small)"""
     texts = [f"{item['title']} {item['channel']}" for item in items]
-    embeddings = model.encode(texts, show_progress_bar=True)
-
+    response = _openai_client.embeddings.create(
+        model="text-embedding-3-small",
+        input=texts,
+    )
     result = []
-    for item, embedding in zip(items, embeddings, strict=False):
-        result.append({**item, "embedding": embedding.tolist()})
-
+    for item, emb_data in zip(items, response.data, strict=False):
+        result.append({**item, "embedding": emb_data.embedding})
     return result
 
 
