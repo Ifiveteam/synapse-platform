@@ -4,8 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.agents.profiler.base.axes import AxesDelta, Synapse8Axes
-from app.agents.profiler.base.layer_b import LayerB, LayerBDelta
+from app.agents.profiler.base.axes import AxesDelta
+from app.agents.profiler.base.layer_b import LayerBDelta
 from app.agents.profiler.base.profile import ProfilerResult
 
 
@@ -30,16 +30,3 @@ class AnomalyItem(BaseModel):
     code: str
     message: str
     severity: str = "warning"
-
-
-class IdealProfile(BaseModel):
-    user_id: str
-    axes: Synapse8Axes
-    layer_b: LayerB
-
-
-class IdealGap(BaseModel):
-    user_id: str
-    axes_gap: AxesDelta
-    layer_b_gap: LayerBDelta
-    axis_achievement_pct: dict[str, float] = Field(default_factory=dict)

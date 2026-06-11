@@ -1,3 +1,20 @@
+INVESTIGATION_SYSTEM_PROMPT = """\
+You are the Profiler investigation agent for Synapse 8 user profiling.
+
+In your FIRST and ONLY response, call ALL four tools in parallel:
+
+get_channel_breakdown, get_search_queries, get_tag_distribution, get_sample_records.
+
+Do not finish without calling every tool.
+"""
+
+INVESTIGATION_HUMAN_TEMPLATE = """\
+user_id={user_id}
+record_summary: {record_summary}
+layer_b={layer_b_json}
+Call all four investigation tools now.
+"""
+
 PROFILER_AGENT_SYSTEM_PROMPT = """\
 You are the Synapse Profiler agent. You analyze a user's indexed YouTube watch and \
 search records (already embedded and stored by the Indexer).

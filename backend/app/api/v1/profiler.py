@@ -5,33 +5,19 @@ from __future__ import annotations
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 
 from app.agents.profiler.base import GraphViewData
-from app.agents.profiler.runtime import job_store
-from app.agents.profiler.runtime.insights import (
-    build_knowledge_graph,
-    build_taste_graph,
-    compute_compare_delta,
-    compute_ideal_gap,
-    detect_anomalies,
-    list_snapshot_versions,
-    load_snapshot,
-    summarize_behavior_events,
-)
-from app.agents.profiler.schemas import (
+from app.agents.profiler.scripts.mock_loader import list_personas, load_mock_bundle
+from app.schemas.profiler import (
     AnalyzeRequest,
     AnalyzeResponse,
-    BehaviorEventsResponse,
     CompareResponse,
-    IdealGapResponse,
     JobResponse,
     PersonasResponse,
     ProfilerResultResponse,
     SnapshotListResponse,
     SnapshotResponse,
 )
-from app.agents.profiler.subagent.load_records.loader import (
-    list_personas,
-    load_mock_bundle,
-)
+from app.services.profiler import profiler_compare, profiler_graph_view, profiler_service
+from app.services.profiler.service import list_snapshot_versions, load_snapshot
 
 router = APIRouter(prefix="/profiler", tags=["profiler"])
 
@@ -41,13 +27,8 @@ def _to_result_response(result) -> ProfilerResultResponse:
 
 
 def _get_profile_or_404(user_id: str):
-    profile = job_store.get_profile(user_id)
+    profile = profiler_service.get_profile(user_id)
     if profile is None:
-        snapshot_versions = list_snapshot_versions(user_id)
-        if snapshot_versions:
-            latest = load_snapshot(user_id, snapshot_versions[-1])
-            if latest is not None:
-                return latest.result
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Profile not found. Run POST /analyze first.",
@@ -71,14 +52,14 @@ def analyze_profile(
             detail=f"Unknown user_id: {body.user_id}. Use GET /personas for mock ids.",
         )
 
-    job = job_store.create_job(body.user_id, str(body.email))
-    background_tasks.add_task(job_store.run_job, job.job_id)
+    job = profiler_service.create_job(body.user_id, str(body.email))
+    background_tasks.add_task(profiler_service.run_job, job.job_id)
     return AnalyzeResponse(job_id=job.job_id, status=job.status)
 
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
 def get_job(job_id: str) -> JobResponse:
-    job = job_store.get_job(job_id)
+    job = profiler_service.get_job(job_id)
     if job is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -139,8 +120,10 @@ def compare_profiles(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="One or both snapshot versions not found",
         )
-    delta = compute_compare_delta(user_id, from_snap, to_snap)
-    return CompareResponse(delta=delta, anomalies=detect_anomalies(delta))
+    delta = profiler_compare.compute_compare_delta(user_id, from_snap, to_snap)
+    return CompareResponse(
+        delta=delta, anomalies=profiler_compare.detect_anomalies(delta)
+    )
 
 
 @router.get("/profile/{user_id}/graph", response_model=GraphViewData)
@@ -155,30 +138,5 @@ def get_graph(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
-    profile = job_store.get_profile(user_id)
-    if kind == "knowledge":
-        return build_knowledge_graph(bundle.records)
-    return build_taste_graph(bundle.records, profile)
-
-
-@router.get("/profile/{user_id}/ideal-gap", response_model=IdealGapResponse)
-def get_ideal_gap(user_id: str) -> IdealGapResponse:
-    profile = _get_profile_or_404(user_id)
-    gap = compute_ideal_gap(user_id, profile)
-    if gap is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Ideal profile mock not found for {user_id}",
-        )
-    return IdealGapResponse(ideal_gap=gap)
-
-
-@router.get("/profile/{user_id}/events", response_model=BehaviorEventsResponse)
-def get_behavior_events(user_id: str) -> BehaviorEventsResponse:
-    summary = summarize_behavior_events(user_id)
-    if summary.total_events == 0:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No behavior event mock for {user_id}",
-        )
-    return BehaviorEventsResponse(user_id=user_id, summary=summary)
+    profile = profiler_service.get_profile(user_id)
+    return profiler_graph_view.build_graph(bundle.records, profile, kind)

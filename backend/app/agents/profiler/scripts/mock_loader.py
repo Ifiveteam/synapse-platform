@@ -1,3 +1,5 @@
+"""Mock persona JSON loader (MVP). Replace with Indexer API integration."""
+
 from __future__ import annotations
 
 import json
@@ -5,7 +7,7 @@ from pathlib import Path
 
 from app.agents.profiler.base import IndexedRecordsBundle, PersonaInfo
 
-MOCKS_DIR = Path(__file__).resolve().parent.parent.parent / "mocks"
+MOCKS_DIR = Path(__file__).resolve().parent.parent / "mocks"
 
 
 def load_mock_bundle(user_id: str) -> IndexedRecordsBundle:

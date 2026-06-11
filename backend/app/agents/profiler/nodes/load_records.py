@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from app.agents.profiler.scripts.mock_loader import load_mock_bundle
 from app.agents.profiler.state import ProfilerState
-from app.agents.profiler.subagent.load_records.loader import load_mock_bundle
 
 
 def load_records_node(state: ProfilerState) -> dict:
