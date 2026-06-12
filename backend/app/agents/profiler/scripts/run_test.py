@@ -12,30 +12,12 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from datetime import UTC, datetime
-
-from app.agents.profiler.base import ProfilerResult
+from app.agents.profiler.base import ProfilerResult, profiler_result_from_state
 from app.agents.profiler.graph import run_profiler
-from app.agents.profiler.subagent.load_records.loader import list_personas
+from app.agents.profiler.scripts.mock_loader import list_personas
 
 EXPECTED_STEP = "notify"
 DEFAULT_TEST_EMAIL = "test@ifive.site"
-
-
-def _final_to_result(user_id: str, final: dict) -> ProfilerResult:
-    return ProfilerResult(
-        user_id=user_id,
-        computed_at=datetime.now(UTC),
-        axes=final["axes"],
-        layer_b=final["layer_b"],
-        top5_interests=final["top5_interests"],
-        summary=final["summary"],
-        interpretation=final["interpretation"],
-        axis_notes=final.get("axis_notes", {}),
-        investigation_log=final.get("investigation_log", []),
-        llm_used=final.get("llm_used", False),
-        behavior_patterns=final.get("behavior_patterns"),
-    )
 
 
 def _assert_pipeline(final: dict) -> list[str]:
@@ -70,7 +52,7 @@ def run_one(user_id: str, *, as_json: bool = False) -> ProfilerResult:
     test_email = os.getenv("PROFILER_TEST_EMAIL", DEFAULT_TEST_EMAIL)
     final = run_profiler(user_id, test_email)
     errors = _assert_pipeline(final)
-    result = _final_to_result(user_id, final)
+    result = profiler_result_from_state(final)
 
     if errors:
         msg = "; ".join(errors)

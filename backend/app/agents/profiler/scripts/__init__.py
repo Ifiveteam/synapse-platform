@@ -1,1 +1,1 @@
-# Profiler manual test scripts (run from backend/)
+"""Profiler mock loaders, demo helpers, and local test runners."""

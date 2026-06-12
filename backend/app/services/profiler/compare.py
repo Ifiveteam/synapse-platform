@@ -1,4 +1,4 @@
-"""Snapshot compare delta and anomaly detection."""
+"""Profile snapshot compare and anomaly detection."""
 
 from __future__ import annotations
 
