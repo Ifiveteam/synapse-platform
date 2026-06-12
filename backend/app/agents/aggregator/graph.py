@@ -9,9 +9,9 @@ from app.agents.aggregator.nodes import (
     culture_analysis_node,
     generate_report_node,
     market_analysis_node,
+    notify_node,
     verify_report_node,
 )
-from app.agents.aggregator.notify import notify_node
 from app.agents.aggregator.routing import route_after_verify
 from app.agents.aggregator.state import AggregatorState
 
