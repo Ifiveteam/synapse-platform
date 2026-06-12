@@ -386,37 +386,43 @@ function savePersistedStats(stats: Record<string, AnalysisStats>) {
   localStorage.setItem(STATS_KEY, JSON.stringify(stats));
 }
 
-function DriveTab({ onSuccess }: { onSuccess: () => void }) {
-  const [files, setFiles] = useState<DriveFile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [taskMap, setTaskMap] = useState<Record<string, string>>({});
-  const [statsMap, setStatsMap] = useState<Record<string, AnalysisStats>>(loadPersistedStats);
+const ANALYZED_KEY = "synapse-analyzed-files";
+
+function loadAnalyzedFiles(): Record<string, AnalysisStats> {
+  try { return JSON.parse(localStorage.getItem(ANALYZED_KEY) || "{}"); } catch { return {}; }
+}
+
+function DriveTab({ onSuccess, resetKey }: { onSuccess: () => void; resetKey: number }) {
+  const [status, setStatus] = useState<"idle" | "searching" | "downloading" | "processing" | "success" | "error" | "no_files" | "waiting">("idle");
+  const [stats, setStats] = useState<AnalysisStats | null>(() => {
+    const analyzed = loadAnalyzedFiles();
+    const keys = Object.keys(analyzed);
+    return keys.length > 0 ? analyzed[keys[keys.length - 1]] : null;
+  });
+  const [errorMsg, setErrorMsg] = useState("");
+  const [fileName, setFileName] = useState("");
   const [countdown, setCountdown] = useState(30);
   const token = useAuthStore((s) => s.token);
-  const pollingRefs = useRef<Record<string, ReturnType<typeof setInterval>>>({});
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const updateTask = useCallback((fileId: string, status: string) => {
-    setTaskMap((m) => ({ ...m, [fileId]: status }));
-    const persisted = loadPersistedTasks();
-    if (status === "success" || status === "error") {
-      delete persisted[fileId];
-    } else {
-      persisted[fileId] = { ...persisted[fileId], status };
-    }
-    savePersistedTasks(persisted);
-  }, []);
-
-  const startPolling = useCallback((fileId: string, taskId: string) => {
-    if (pollingRefs.current[fileId]) clearInterval(pollingRefs.current[fileId]);
-
-    pollingRefs.current[fileId] = setInterval(async () => {
+  const startPolling = useCallback((taskId: string, fileId: string) => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingRef.current = setInterval(async () => {
       try {
         const r = await fetch(`${API}/takeout/status/${taskId}`);
         const d = await r.json();
-        updateTask(fileId, d.status);
-        if (d.status === "success" || d.status === "error") {
-          clearInterval(pollingRefs.current[fileId]);
-          delete pollingRefs.current[fileId];
+        if (d.status === "downloading") setStatus("downloading");
+        if (d.status === "processing") setStatus("processing");
+        if (d.status === "success" || d.status === "error" || d.status === "not_found") {
+          clearInterval(pollingRef.current!);
+          pollingRef.current = null;
+          savePersistedTasks({});
+          if (d.status === "not_found") {
+            // 서버 재시작으로 태스크 유실 → 재분석 유도
+            setStatus("error");
+            setErrorMsg("서버가 재시작되어 분석이 중단됐습니다. 재분석을 눌러주세요.");
+            return;
+          }
           if (d.status === "success") {
             const newStats: AnalysisStats = {
               saved: d.saved ?? 0,
@@ -426,177 +432,164 @@ function DriveTab({ onSuccess }: { onSuccess: () => void }) {
               shorts_count: d.shorts_count ?? 0,
               category_stats: d.category_stats ?? {},
             };
-            setStatsMap((m) => {
-              const next = { ...m, [fileId]: newStats };
-              savePersistedStats(next);
-              return next;
-            });
+            const analyzed = loadAnalyzedFiles();
+            analyzed[fileId] = newStats;
+            localStorage.setItem(ANALYZED_KEY, JSON.stringify(analyzed));
+            setStats(newStats);
+            setStatus("success");
             onSuccess();
+          } else {
+            setStatus("error");
+            setErrorMsg(d.message || "분석 중 오류가 발생했습니다");
           }
         }
-      } catch {
-        // 일시적 오류는 무시하고 계속 폴링
-      }
+      } catch { /* 일시적 오류 무시 */ }
     }, 3000);
-  }, [updateTask, onSuccess]);
+  }, [onSuccess]);
 
-  const fetchFiles = useCallback(async () => {
-    setLoading(true);
-    setCountdown(30);
+  const runAuto = useCallback(async (force = false) => {
+    if (!token) return;
+
+    // 이미 완료된 결과가 있고 강제 재분석 아니면 표시만
+    const analyzed = loadAnalyzedFiles();
+    if (!force && Object.keys(analyzed).length > 0) {
+      const lastStats = Object.values(analyzed).at(-1)!;
+      setStats(lastStats);
+      setStatus("success");
+      return;
+    }
+
+    setStatus("searching");
     try {
-      const res = await fetch(`${API}/takeout/drive/files`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const data = await res.json();
-      setFiles(data.files || []);
-    } catch {
-      setFiles([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  // 페이지 마운트 시 이전 진행 중 태스크 복원
-  useEffect(() => {
-    const persisted = loadPersistedTasks();
-    const initial: Record<string, string> = {};
-    for (const [fileId, { taskId, status }] of Object.entries(persisted)) {
-      if (status !== "success" && status !== "error") {
-        initial[fileId] = status;
-        startPolling(fileId, taskId);
-      }
-    }
-    if (Object.keys(initial).length > 0) {
-      setTaskMap(initial);
-    }
-    return () => {
-      Object.values(pollingRefs.current).forEach(clearInterval);
-    };
-  }, [startPolling]);
-
-  useEffect(() => { fetchFiles(); }, [fetchFiles]);
-
-  // 파일 없으면 30초마다 자동 재검색
-  useEffect(() => {
-    if (files.length > 0) return;
-    const poll = setInterval(fetchFiles, 30000);
-    const tick = setInterval(() => setCountdown((c) => (c <= 1 ? 30 : c - 1)), 1000);
-    return () => { clearInterval(poll); clearInterval(tick); };
-  }, [files.length, fetchFiles]);
-
-  const triggerFile = async (fileId: string) => {
-    updateTask(fileId, "downloading");
-    try {
-      const res = await fetch(`${API}/takeout/drive/trigger/${fileId}`, {
+      const res = await fetch(`${API}/takeout/drive/auto`, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      const taskId = data.task_id;
+
+      if (data.status === "no_files") {
+        setStatus("waiting");
+        return;
+      }
+
+      setFileName(data.file_name || "");
+      setStatus("downloading");
 
       const persisted = loadPersistedTasks();
-      persisted[fileId] = { taskId, status: "downloading" };
+      persisted[data.file_id] = { taskId: data.task_id, status: "downloading" };
       savePersistedTasks(persisted);
 
-      startPolling(fileId, taskId);
+      startPolling(data.task_id, data.file_id);
     } catch {
-      updateTask(fileId, "error");
+      setStatus("error");
+      setErrorMsg("Drive 연결에 실패했습니다");
     }
-  };
+  }, [token, startPolling]);
 
-  const statusLabel = (s: string) => {
-    const map: Record<string, string> = {
-      downloading: "다운로드 중...",
-      processing: "분석 중...",
-      success: "완료 ✅",
-      error: "오류 ❌",
-    };
-    return map[s] ?? s;
-  };
+  // 마운트 시 이전 진행 중 태스크 복원 또는 자동 시작
+  useEffect(() => {
+    const persisted = loadPersistedTasks();
+    const inProgress = Object.entries(persisted).find(
+      ([, v]) => v.status !== "success" && v.status !== "error"
+    );
+    if (inProgress) {
+      const [fileId, { taskId, status: s }] = inProgress;
+      setStatus(s as "downloading" | "processing");
+      startPolling(taskId, fileId);
+    } else {
+      runAuto();
+    }
+    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
+  }, [resetKey, runAuto, startPolling]);
 
-  if (loading) {
+  // 파일 없으면 30초마다 재시도
+  useEffect(() => {
+    if (status !== "waiting") return;
+    const poll = setInterval(() => runAuto(), 30000);
+    const tick = setInterval(() => setCountdown((c) => (c <= 1 ? 30 : c - 1)), 1000);
+    return () => { clearInterval(poll); clearInterval(tick); };
+  }, [status, runAuto]);
+
+  if (!token) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-14">
-        <div className="h-7 w-7 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
-        <p className="text-sm text-gray-400">Drive 파일 검색 중...</p>
+      <div className="flex flex-col items-center gap-4 py-14 text-center">
+        <p className="text-sm text-gray-500">Google 계정 연동이 필요합니다</p>
+        <a
+          href="http://localhost:8000/api/v1/auth/login"
+          className="rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 transition-colors"
+        >
+          Google 로그인
+        </a>
       </div>
     );
   }
 
-  if (files.length === 0) {
+  if (status === "searching") {
+    return (
+      <div className="flex flex-col items-center gap-3 py-14">
+        <div className="h-7 w-7 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
+        <p className="text-sm text-gray-500">Drive에서 Takeout 파일 탐색 중...</p>
+      </div>
+    );
+  }
+
+  if (status === "waiting") {
     return (
       <div className="flex flex-col items-center gap-3 py-14 text-center">
         <div className="h-7 w-7 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
         <p className="text-sm text-gray-500">Drive에서 Takeout 파일을 기다리는 중...</p>
         <div className="flex items-center gap-2 text-xs text-gray-400">
-          <span>{countdown}초 후 자동 재검색</span>
+          <span>{countdown}초 후 자동 재확인</span>
           <span>·</span>
-          <button onClick={fetchFiles} className="text-violet-600 underline">지금 확인</button>
+          <button onClick={() => runAuto()} className="text-violet-600 underline">지금 확인</button>
         </div>
-        {!token && (
-          <p className="text-xs text-amber-600">
-            ⚠ Google 계정 연동 필요 →{" "}
-            <a href="http://localhost:8000/api/v1/auth/login" className="underline">Google 로그인</a>
-          </p>
-        )}
         <p className="text-xs text-gray-400">가이드는 <span className="font-medium text-gray-500">? 가이드</span> 탭을 확인하세요</p>
       </div>
     );
   }
 
+  if (status === "downloading" || status === "processing") {
+    return (
+      <div className="flex flex-col items-center gap-3 py-14 text-center">
+        <div className="h-7 w-7 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
+        <p className="text-sm font-medium text-gray-700">
+          {status === "downloading" ? "파일 다운로드 중..." : "분석 중..."}
+        </p>
+        {fileName && <p className="text-xs text-gray-400">{fileName}</p>}
+        <p className="text-xs text-gray-400">페이지를 벗어나도 계속 진행됩니다</p>
+      </div>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <div className="flex flex-col items-center gap-3 py-14 text-center">
+        <p className="text-sm text-red-500">{errorMsg}</p>
+        <button onClick={() => runAuto(true)} className="text-xs text-violet-600 underline">다시 시도</button>
+      </div>
+    );
+  }
+
+  if (status === "success" && stats) {
+    return (
+      <div className="p-6 space-y-4">
+        <AnalysisSummary stats={stats} />
+        <div className="flex justify-end">
+          <button
+            onClick={() => runAuto(true)}
+            className="text-xs text-gray-400 hover:text-gray-600 underline"
+          >
+            재분석
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">Drive에서 {files.length}개 파일을 찾았습니다</p>
-        <button onClick={fetchFiles} className="text-xs text-gray-400 hover:text-gray-600 underline">
-          새로고침
-        </button>
-      </div>
-      <div className="space-y-3">
-        {files.map((f) => {
-          const taskStatus = taskMap[f.id];
-          const isRunning = taskStatus === "downloading" || taskStatus === "processing";
-          const stats = statsMap[f.id];
-          return (
-            <div key={f.id} className="space-y-3">
-              <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">🗜</span>
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">{f.name}</p>
-                    <p className="text-xs text-gray-400">
-                      {formatSize(f.size)} · {new Date(f.modifiedTime).toLocaleDateString("ko-KR")}
-                    </p>
-                  </div>
-                </div>
-                {taskStatus ? (
-                  isRunning ? (
-                    <span className="flex items-center gap-1.5 text-xs font-medium text-violet-600">
-                      <span className="h-3 w-3 animate-spin rounded-full border-2 border-violet-200 border-t-violet-600 inline-block" />
-                      {statusLabel(taskStatus)}
-                    </span>
-                  ) : (
-                    <span className={`text-xs font-medium ${taskStatus === "success" ? "text-emerald-600" : "text-red-500"}`}>
-                      {statusLabel(taskStatus)}
-                    </span>
-                  )
-                ) : (
-                  <button
-                    onClick={() => triggerFile(f.id)}
-                    className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 transition-colors"
-                  >
-                    분석 시작
-                  </button>
-                )}
-              </div>
-              {/* 분석 완료 후 결과 요약 */}
-              {taskStatus === "success" && stats && (
-                <AnalysisSummary stats={stats} />
-              )}
-            </div>
-          );
-        })}
-      </div>
+    <div className="flex flex-col items-center gap-3 py-14">
+      <div className="h-7 w-7 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
+      <p className="text-sm text-gray-400">연결 중...</p>
     </div>
   );
 }
@@ -712,9 +705,9 @@ export default function IndexerPage() {
 
   const onSuccess = () => setRefreshKey((k) => k + 1);
   const onReset = () => {
-    // DB 초기화 시 Drive 분석 결과도 함께 초기화
     localStorage.removeItem(STATS_KEY);
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(ANALYZED_KEY);
     setDriveResetKey((k) => k + 1);
     setRefreshKey((k) => k + 1);
   };

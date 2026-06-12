@@ -54,6 +54,22 @@ async def list_drive_files(user: User = Depends(get_current_user_dep)):
     return {"files": files}
 
 
+@router.post("/drive/auto")
+async def auto_trigger(
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user_dep),
+):
+    """Drive에서 최신 Takeout 파일 자동 탐지 후 분석 시작"""
+    files = await find_takeout_in_drive(user)
+    if not files:
+        return {"status": "no_files"}
+
+    latest = sorted(files, key=lambda f: f.get("modifiedTime", ""), reverse=True)[0]
+    task_id = str(uuid.uuid4())
+    background_tasks.add_task(run_drive_takeout, task_id, latest["id"], user)
+    return {"status": "started", "task_id": task_id, "file_id": latest["id"], "file_name": latest["name"]}
+
+
 @router.post("/drive/trigger/{file_id}")
 async def trigger_drive_file(
     file_id: str,
