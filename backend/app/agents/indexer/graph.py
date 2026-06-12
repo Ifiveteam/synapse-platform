@@ -2,16 +2,16 @@ import time
 
 from langgraph.graph import END, StateGraph
 
-from app.agents.indexer.db import save_vectors
 from app.agents.indexer.prompt import classify_batch
 from app.agents.indexer.state import IndexerState
-from app.agents.indexer.tool import add_keywords, parse_takeout_json, preprocess, vectorize
+from app.agents.indexer.tool import add_keywords, parse_takeout_json, parse_takeout_zip, preprocess, vectorize
 
 
 def node_parse(state: IndexerState) -> IndexerState:
-    """노드 1: JSON 파싱"""
+    """노드 1: ZIP 또는 JSON 파싱"""
     try:
-        raw_data = parse_takeout_json(state["json_path"])
+        path = state["json_path"]
+        raw_data = parse_takeout_zip(path) if path.endswith(".zip") else parse_takeout_json(path)
         return {**state, "raw_data": raw_data, "error": None}
     except Exception as e:
         return {**state, "raw_data": [], "error": str(e)}
@@ -21,9 +21,9 @@ def node_preprocess(state: IndexerState) -> IndexerState:
     """노드 2: 전처리"""
     try:
         cleaned_data = preprocess(state["raw_data"])
-        return {**state, "cleaned_data": cleaned_data, "error": None}
+        return {**state, "cleaned_data": cleaned_data, "filtered_count": len(cleaned_data), "error": None}
     except Exception as e:
-        return {**state, "cleaned_data": [], "error": str(e)}
+        return {**state, "cleaned_data": [], "filtered_count": 0, "error": str(e)}
 
 
 def node_classify(state: IndexerState) -> IndexerState:
@@ -31,7 +31,7 @@ def node_classify(state: IndexerState) -> IndexerState:
     try:
         limit = state.get("limit", 100)
         cleaned_data = state["cleaned_data"][:limit]
-        batch_size = 10
+        batch_size = 20
         result = []
 
         for i in range(0, len(cleaned_data), batch_size):
@@ -45,7 +45,6 @@ def node_classify(state: IndexerState) -> IndexerState:
             total = len(cleaned_data)
             done = min(i + batch_size, total)
             print(f"분류 진행중... {done}/{total}")
-            time.sleep(1)
 
         return {**state, "cleaned_data": result, "error": None}
     except Exception as e:
@@ -70,10 +69,14 @@ def node_vectorize(state: IndexerState) -> IndexerState:
         return {**state, "error": str(e)}
 
 
-def node_save(state: IndexerState) -> IndexerState:
+async def node_save(state: IndexerState) -> IndexerState:
     """노드 6: DB 저장"""
     try:
-        save_vectors(state["cleaned_data"])
+        from app.agents.indexer.repository import save_vectors
+        from app.core.database.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as session:
+            await save_vectors(state["cleaned_data"], session)
         return {**state, "saved_count": len(state["cleaned_data"]), "error": None}
     except Exception as e:
         return {**state, "saved_count": 0, "error": str(e)}

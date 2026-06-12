@@ -3,9 +3,11 @@ import os
 import re
 import time
 
-from groq import Groq
+from dotenv import load_dotenv
+from openai import OpenAI
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+load_dotenv(override=True)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 CATEGORY_LIST = [
     "게임",
@@ -60,7 +62,6 @@ KEYWORD_PROMPT = """당신은 YouTube 영상 제목에서 핵심 키워드를 �
 """
 
 
-
 def classify_batch(titles: list[str]) -> list[str]:
     """영상 제목 배치 분류"""
     prompt = SYSTEM_PROMPT + "\n\n영상 제목 목록:\n"
@@ -70,13 +71,14 @@ def classify_batch(titles: list[str]) -> list[str]:
     for attempt in range(3):
         try:
             response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
+                response_format={"type": "json_object"},
             )
             text = response.choices[0].message.content.strip()
-            text = re.sub(r"```json|```", "", text).strip()
-            result = json.loads(text)
+            parsed = json.loads(text)
+            result = parsed if isinstance(parsed, list) else list(parsed.values())[0]
             if len(result) != len(titles):
                 result = result + ["기타"] * (len(titles) - len(result))
             return result
@@ -96,13 +98,14 @@ def extract_keywords_batch(titles: list[str]) -> list[list[str]]:
     for attempt in range(3):
         try:
             response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
+                response_format={"type": "json_object"},
             )
             text = response.choices[0].message.content.strip()
-            text = re.sub(r"```json|```", "", text).strip()
-            result = json.loads(text)
+            parsed = json.loads(text)
+            result = parsed if isinstance(parsed, list) else list(parsed.values())[0]
             if len(result) != len(titles):
                 result = result + [[]] * (len(titles) - len(result))
             return result

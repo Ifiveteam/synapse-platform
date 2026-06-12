@@ -16,6 +16,7 @@ settings = get_settings()
 
 engine = create_async_engine(
     settings.database_url,
+    connect_args={"ssl": True} if settings.database_needs_ssl else {},
     pool_pre_ping=True,
     pool_recycle=300,
     echo=settings.debug,

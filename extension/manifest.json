@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Synapse",
+  "version": "1.0.0",
+  "description": "YouTube 시청 기록 자동 수집",
+  "permissions": ["activeTab"],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "http://localhost:8000/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

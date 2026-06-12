@@ -20,19 +20,19 @@ export const AGENTS: Agent[] = [
     id: "aggregator",
     name: "Aggregator",
     description: "수많은 디지털 자아들을 모아 트렌드를 읽어내는 시장 분석가",
-    status: "planned",
+    status: "dev",
   },
   {
     id: "archiver",
     name: "Archiver",
     description: "사용자가 의도적으로 수집한 지식을 내재화하고 함께 토론하는 지적 동반자",
-    status: "planned",
+    status: "dev",
   },
   {
     id: "indexer",
     name: "Indexer",
     description: "사용자의 무의식적인 디지털 발자국을 빠짐없이 기록하고 정돈하는 기억 저장소",
-    status: "planned",
+    status: "dev",
   },
   {
     id: "navigator",
