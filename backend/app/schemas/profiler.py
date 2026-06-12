@@ -1,3 +1,5 @@
+"""Profiler API Pydantic 스키마."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -6,9 +8,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.agents.profiler.base import (
     AnomalyItem,
-    BehaviorEventSummary,
     BehaviorPatterns,
-    IdealGap,
     JobStatus,
     LayerB,
     NotificationPayload,
@@ -79,12 +79,3 @@ class SnapshotResponse(BaseModel):
 class CompareResponse(BaseModel):
     delta: ProfileCompareDelta
     anomalies: list[AnomalyItem] = Field(default_factory=list)
-
-
-class IdealGapResponse(BaseModel):
-    ideal_gap: IdealGap
-
-
-class BehaviorEventsResponse(BaseModel):
-    user_id: str
-    summary: BehaviorEventSummary

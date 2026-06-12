@@ -10,17 +10,10 @@ from app.agents.profiler.base.axes import (
 from app.agents.profiler.base.graph import GraphEdge, GraphNode, GraphViewData
 from app.agents.profiler.base.insights import (
     AnomalyItem,
-    IdealGap,
-    IdealProfile,
     ProfileCompareDelta,
     ProfilerSnapshot,
 )
-from app.agents.profiler.base.job import (
-    BehaviorEvent,
-    BehaviorEventSummary,
-    JobStatus,
-    PersonaInfo,
-)
+from app.agents.profiler.base.job import JobStatus, PersonaInfo
 from app.agents.profiler.base.layer_b import LayerB, LayerBDelta
 from app.agents.profiler.base.profile import (
     BehaviorPatterns,
@@ -28,6 +21,7 @@ from app.agents.profiler.base.profile import (
     ProfilerAnalysisOutput,
     ProfilerResult,
     Top5Interest,
+    profiler_result_from_state,
 )
 from app.agents.profiler.base.record import (
     IndexedRecord,
@@ -48,16 +42,12 @@ __all__ = [
     "AnomalyItem",
     "AxesDelta",
     "DEFAULT_FROM_ADDRESS",
-    "BehaviorEvent",
-    "BehaviorEventSummary",
     "BehaviorPatterns",
     "EmailChannel",
     "InAppChannel",
     "GraphEdge",
     "GraphNode",
     "GraphViewData",
-    "IdealGap",
-    "IdealProfile",
     "IndexedRecord",
     "IndexedRecordsBundle",
     "JobStatus",
@@ -70,6 +60,7 @@ __all__ = [
     "ProfileInterpretation",
     "ProfilerAnalysisOutput",
     "ProfilerResult",
+    "profiler_result_from_state",
     "ProfilerSnapshot",
     "SourceType",
     "Synapse8Axes",

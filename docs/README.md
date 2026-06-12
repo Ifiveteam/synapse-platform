@@ -8,7 +8,7 @@
 | 폴더 | 에이전트 |
 |------|----------|
 | `indexer/` | Indexer |
-| `profile/` | Profiler |
+| `profile/` | Profiler — [README](./profile/README.md), [IMPLEMENTATION](./profile/IMPLEMENTATION.md), [SYNAPSE_8](./profile/SYNAPSE_8.md) |
 | `navigator/` | Navigator |
 | `aggregator/` | Aggregator |
 | `achiver/` | Archiver |
