@@ -28,4 +28,3 @@ class ProfilerState(TypedDict):
     investigation_log: NotRequired[list[str]]
     llm_used: NotRequired[bool]
     notification: NotRequired[NotificationPayload]
-    error: NotRequired[str]

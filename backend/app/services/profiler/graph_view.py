@@ -13,7 +13,7 @@ from app.agents.profiler.base import (
     IndexedRecord,
     ProfilerResult,
 )
-from app.agents.profiler.subagent.scoring import (
+from app.agents.profiler.tools import (
     TAG_AXIS_WEIGHTS,
     filter_search_records,
     filter_watch_records,
@@ -154,3 +154,13 @@ def build_knowledge_graph(records: list[IndexedRecord]) -> GraphViewData:
         nodes=list(nodes.values()),
         edges=_finalize_edges(edges, nodes),
     )
+
+
+def build_graph(
+    records: list[IndexedRecord],
+    profile: ProfilerResult | None,
+    kind: str,
+) -> GraphViewData:
+    if kind == "knowledge":
+        return build_knowledge_graph(records)
+    return build_taste_graph(records, profile)
