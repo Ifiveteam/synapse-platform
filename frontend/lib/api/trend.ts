@@ -6,6 +6,50 @@ export interface ProfileAxis {
   avg_score: number;
 }
 
+export interface CognitiveAxisScore {
+  subject: string;
+  key: string;
+  score: number;
+  interpretation: string;
+}
+
+export interface KeywordItem {
+  rank: number;
+  keyword: string;
+  metrics: string;
+  change: string;
+}
+
+export interface GapAnalysis {
+  intersection_keywords: string[];
+  intersection_interpretation: string;
+  internal_only_keywords: string[];
+  internal_only_interpretation: string;
+  external_only_keywords: string[];
+  external_only_interpretation: string;
+  filter_bubble_scenario: string;
+}
+
+export interface B2BRecommendations {
+  content_strategy: string[];
+  marketing: string[];
+  platform_policy: string[];
+}
+
+export interface DashboardReport {
+  headline_summary: string;
+  neutrality_score: number;
+  neutrality_status: string;
+  neutrality_reason: string;
+  radar_chart_data: CognitiveAxisScore[];
+  dominant_axes: string[];
+  deficient_axes: string[];
+  macro_trend_internal: KeywordItem[];
+  macro_trend_external: KeywordItem[];
+  gap_analysis: GapAnalysis;
+  recommendations: B2BRecommendations;
+}
+
 export interface AnalyzeResponse {
   post_id: string;
 }
@@ -26,7 +70,7 @@ export interface TrendPostResponse {
   generated_at: string;
   cohort_size: number;
   axes: ProfileAxis[];
-  report_markdown: string;
+  report: DashboardReport;
 }
 
 export async function fetchTrendPosts(): Promise<TrendPostListResponse> {
@@ -42,10 +86,14 @@ export async function fetchTrendPosts(): Promise<TrendPostListResponse> {
   return response.json() as Promise<TrendPostListResponse>;
 }
 
-export async function analyzeTrend(): Promise<AnalyzeResponse> {
+export async function analyzeTrend(email?: string): Promise<AnalyzeResponse> {
   const response = await fetch(`${TREND_API_BASE}/analyze`, {
     method: "POST",
-    headers: { Accept: "application/json" },
+    headers: {
+      Accept: "application/json",
+      ...(email ? { "Content-Type": "application/json" } : {}),
+    },
+    body: email ? JSON.stringify({ email }) : undefined,
   });
 
   if (!response.ok) {

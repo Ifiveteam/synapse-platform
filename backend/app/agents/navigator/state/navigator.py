@@ -9,7 +9,7 @@ from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
-from .schemas import (
+from app.agents.navigator.schemas import (
     Guide,
     IdealDesignResponse,
     IdealRadarChart,

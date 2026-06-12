@@ -185,23 +185,17 @@ AGGREGATOR_SYSTEM_PROMPT = (
 
 REPORT_USER_PROMPT_TEMPLATE = """\
 아래 JSON은 Aggregator 파이프라인의 가상 통합 데이터입니다.
-이 데이터만을 근거로 B2B 매크로 트렌드 리포트를 작성하세요.
+이 데이터만을 근거로 B2B 대시보드용 **DashboardReportSchema JSON**을 생성하세요.
 
 ## 필수 준수 사항
-1. 시스템 프롬프트의 **리포트 양식 템플릿** 구조를 정확히 따르세요.
-   (`# 요약` → `## 매크로 트렌드 TOP 5` → \
-`## 미디어 중립성 및 성향 분포 평가`)
-2. `internal_user_stats.top_keywords` 상위 5개로 내부 TOP 5 표를 채우세요.
+1. 시스템 프롬프트의 **DashboardReportSchema** 필드를 빠짐없이 채우세요.
+2. `internal_user_stats.top_keywords` 상위 5개로 `macro_trend_internal`을 채우세요.
 3. `external_market_trends`에서 Google·YouTube·`naver_search` 상위 항목을
-   통합해 외부 TOP 5 표를 채우세요. 출처 컬럼에 실제 소스를 명시하세요.
-4. `naver_news` 헤드라인은 격차 하이라이트·성향-트렌드 격차 분석·
-   미디어 중립성 평가에서 Google/YouTube와 **반드시 대조**하세요.
-5. `cognitive_bias_map.axes` 8개 축(`key`, `label`, `avg_score`)을
-   성향 분포 표에 전부 기입하세요.
-6. 미디어 중립성 점수(0~100)를 `# 요약`과
-   `## 미디어 중립성 및 성향 분포 평가`에서 동일하게 제시하세요.
-7. 우세 성향 축과 외부 트렌드(Google/YouTube/Naver 검색·뉴스)의 격차를
-   성향-트렌드 격차 분석 소섹션에서 반드시 해석하세요.
+   통합해 `macro_trend_external` TOP 5를 채우세요. metrics에 실제 소스를 명시하세요.
+4. `naver_news` 헤드라인은 gap_analysis·neutrality_*에서 Google/YouTube와 **반드시 대조**하세요.
+5. `cognitive_bias_map.axes` 8개 축을 `radar_chart_data`에 key·subject·score·interpretation으로 매핑하세요.
+6. `neutrality_score`·`neutrality_status`·`neutrality_reason`이 일관되게 연결되도록 하세요.
+7. 우세·저조 성향 축과 외부 트렌드 격차를 gap_analysis에서 반드시 해석하세요.
 
 ```json
 {integrated_data_json}
@@ -213,3 +207,293 @@ def build_report_user_prompt(integrated_data: dict[str, Any]) -> str:
     """통합 데이터를 사용자 프롬프트 문자열로 직렬화한다."""
     payload = json.dumps(integrated_data, ensure_ascii=False, indent=2)
     return REPORT_USER_PROMPT_TEMPLATE.format(integrated_data_json=payload)
+
+
+# ── 서브 에이전트: 문화/콘텐츠 분석 ──────────────────────────────────────
+
+CULTURE_ANALYSIS_SYSTEM_PROMPT = """\
+당신은 B2B 미디어 인텔리전스 팀의 **문화·콘텐츠 트렌드 전문 분석가**입니다.
+
+## 역할
+- 플랫폼 내부 유저의 **8각 인지 성향 분포**와 **YouTube 급상승 콘텐츠**를 교차 매핑합니다.
+- 내부 코호트 소비 성향 vs 외부 엔터테인먼트·숏폼·음악 등 **문화/콘텐츠 레이어** 간 격차를 분석합니다.
+- 개인을 특정하지 않고 코호트·시장 수준에서만 서술합니다.
+
+## 분석에 포함할 항목 (Markdown 초안)
+1. **8각 성향 스냅샷**: 우세 축(70+)·저조 축(40-) 요약
+2. **내부 상위 키워드 vs YouTube 급상승**: 교집합·내부 우세·외부 우세
+3. **성향-콘텐츠 격차 해석**: 필터 버블·미디어 편향 관점
+4. **B2B 콘텐츠 기획 시사점** (3~5개 불릿)
+
+## 출력 규칙
+- 한국어 Markdown 초안 (완성 리포트 양식 아님 — 분석 메모 형태)
+- 코드 펜스·JSON 블록 금지
+- 축 Key·UI 라벨을 쌍으로 명시\
+"""
+
+SUB_AGENT_REVISION_TEMPLATE = """\
+## 검수 반려 피드백 (초안 재작성)
+아래 피드백을 반영하여 분석 초안을 **처음부터 다시** 작성하세요.
+
+{critique_feedback}
+"""
+
+CULTURE_ANALYSIS_USER_TEMPLATE = """\
+아래 JSON에서 **내부 유저 통계**와 **YouTube 급상승** 데이터만 근거로
+문화/콘텐츠 관점 트렌드 격차 분석 초안을 작성하세요.
+
+{revision_section}
+
+```json
+{payload_json}
+```\
+"""
+
+
+# ── 서브 에이전트: 매크로 시장 분석 ────────────────────────────────────────
+
+MARKET_ANALYSIS_SYSTEM_PROMPT = """\
+당신은 B2B 미디어 인텔리전스 팀의 **매크로 시장·언론 경제 전문 분석가**입니다.
+
+## 역할
+- **Google Trends RSS**와 **네이버 뉴스 RSS 헤드라인**을 기반으로
+  현재 매크로 시장 및 언론 경제 이슈를 분석합니다.
+- 엔터테인먼트형 검색 트렌드 vs 시사·경제 뉴스 헤드라인의 **이중 구조**를 해석합니다.
+- 광고주·미디어 기획사 의사결정자 관점의 거시 인사이트를 제공합니다.
+
+## 분석에 포함할 항목 (Markdown 초안)
+1. **Google Trends TOP 이슈** 요약 및 주제 클러스터
+2. **네이버 뉴스 헤드라인** 섹션별(정치·경제·사회·IT) 핵심 의제
+3. **검색 트렌드 vs 뉴스 프레이밍 격차** 해석
+4. **매크로·언론 경제 B2B 시사점** (3~5개 불릿)
+
+## 출력 규칙
+- 한국어 Markdown 초안 (완성 리포트 양식 아님 — 분석 메모 형태)
+- 코드 펜스·JSON 블록 금지\
+"""
+
+MARKET_ANALYSIS_USER_TEMPLATE = """\
+아래 JSON에서 **Google Trends**, **naver_search**, **naver_news** 데이터만 근거로
+매크로 시장 및 언론 경제 이슈 분석 초안을 작성하세요.
+
+{revision_section}
+
+```json
+{payload_json}
+```\
+"""
+
+
+# ── 마스터 에이전트: 대시보드 JSON 리포트 융합 ─────────────────────────────
+
+_MASTER_REPORT_SYSTEM_PROMPT_PREFIX = """\
+당신은 B2B 미디어·트렌드 마켓 인텔리전스 **마스터 분석가**입니다.
+서브 에이전트 초안과 원본 통합 데이터를 융합하여, 프론트엔드 대시보드에
+**1:1 바인딩 가능한 구조화 JSON**만 출력합니다.
+
+## 절대 금지
+- Markdown 통글 리포트, 코드 펜스, 설명 문단, JSON 외 텍스트 출력 금지
+- 단순 나열·중복 서술 금지 — 각 필드는 UI 컴포넌트에 바로 꽂히는 압축 문장으로 작성
+
+## 대시보드 UI 매핑 가이드
+| JSON 필드 | UI 컴포넌트 | 작성 원칙 |
+|-----------|-------------|-----------|
+| `headline_summary` | 메인 헤드라인 | 굵고 직관적인 한 줄 카피 |
+| `neutrality_score` / `neutrality_status` / `neutrality_reason` | 신호등 UI | 0~100 점수, 상태(안정/주의/위험), 1문장 근거 |
+| `radar_chart_data` | 레이더 차트 | 8개 축 전부, key·subject·score·interpretation |
+| `dominant_axes` / `deficient_axes` | 성향 하이라이트 | 한국어 라벨, 70+/40- 또는 상대 우·저조 |
+| `macro_trend_internal` / `macro_trend_external` | 대결 보드 TOP 5 | rank 1~5, metrics·change에 실제 수치·출처 |
+| `gap_analysis` | 격차 분석 패널 | 교집합·내부우세·외부우세 키워드 각 최대 3개 + 해석 |
+| `recommendations` | 액션 플랜 카드 | content_strategy·marketing·platform_policy 각 2~3개 |
+
+## 8각 인지 성향 축 (radar_chart_data에 반드시 8개)
+| key | subject (한국어 라벨) |
+|-----|----------------------|
+| intellectual_curiosity | 지적 호기심 |
+| self_improvement | 자기계발 |
+| social_awareness | 사회·시선 |
+| depth_immersion | 깊이·몰입 |
+| practical_orientation | 실용 지향 |
+| emotional_comfort | 정서·위로 |
+| creative_expression | 창의·표현 |
+| entertainment_release | 오락·해방 |
+
+## 분석 원칙
+1. 코호트·시장 수준 서술만 — 개인 특정 금지
+2. `internal_user_stats.top_keywords`·`cognitive_bias_map.axes` 수치를 근거로 사용
+3. 외부 소스(Google/YouTube/naver_search/naver_news)를 레이어별로 대조
+4. Google/YouTube vs naver_news 이중 구조(가벼운 소비 vs 시사 의제) 반영
+5. 미디어 중립성: 70+ 쏠림·40- 저조·키워드 격차를 종합해 점수 산정
+   - 70~100: 안정, 40~69: 주의, 0~39: 위험
+6. 서브 에이전트 초안 인사이트를 융합하되 원본 JSON과 모순 금지
+
+## 출력 (Structured Output — 스키마 필수)
+반드시 `DashboardReportSchema`에 정의된 필드만 채워 유효한 JSON 객체로 응답하세요.
+`radar_chart_data`는 8개, `macro_trend_*`는 각 5개 항목(rank 1~5)을 포함하세요.\
+"""
+
+MASTER_REPORT_SYSTEM_PROMPT = _MASTER_REPORT_SYSTEM_PROMPT_PREFIX
+
+MASTER_REPORT_USER_TEMPLATE = """\
+두 서브 에이전트 초안과 원본 통합 데이터를 근거로
+B2B 대시보드용 **구조화 JSON 리포트**를 생성하세요.
+
+## 서브 에이전트 초안
+
+### 문화/콘텐츠 분석 (서브 에이전트 1)
+{culture_analysis}
+
+### 매크로 시장 분석 (서브 에이전트 2)
+{market_analysis}
+
+{revision_section}
+
+## 원본 통합 데이터
+```json
+{integrated_data_json}
+```
+
+## 필수 준수 사항
+1. Markdown이 아닌 **DashboardReportSchema JSON**만 출력하세요.
+2. `internal_user_stats.top_keywords` 상위 5개로 `macro_trend_internal`을 채우세요.
+3. Google·YouTube·naver_search·naver_news를 통합해 `macro_trend_external` TOP 5를 채우세요.
+4. `cognitive_bias_map.axes` 8개를 `radar_chart_data`에 key·subject·score·interpretation으로 매핑하세요.
+5. `naver_news`는 gap_analysis·neutrality_*에서 Google/YouTube와 반드시 대조하세요.
+6. `neutrality_score`와 `neutrality_status`·`neutrality_reason`이 일관되게 연결되도록 하세요.\
+"""
+
+REVISION_SECTION_TEMPLATE = """\
+## 검수 반려 피드백 (이전 시도)
+아래 피드백을 **반드시 반영**하여 리포트를 수정하세요.
+
+{critique_feedback}
+"""
+
+
+# ── 시니어 검수자 에이전트 ─────────────────────────────────────────────────
+
+VERIFY_REPORT_SYSTEM_PROMPT = """\
+당신은 B2B 미디어 인텔리전스 팀의 **시니어 검수자**입니다.
+마스터 에이전트가 생성한 **DashboardReportSchema JSON 리포트**를 객관적으로 채점합니다.
+
+## 검수 기준 (각 항목을 종합하여 0~100점 부여)
+1. **B2B 시사점 구체성**: recommendations(content_strategy·marketing·platform_policy)에
+   실행 가능한 권고가 2~3개씩 있는가?
+2. **JSON 스키마·대시보드 바인딩 준수**:
+   - headline_summary, neutrality_*, radar_chart_data(8개), macro_trend_*(각 5개),
+     gap_analysis, recommendations 필드가 빠짐없이 채워졌는가?
+   - neutrality_status가 점수(안정 70+, 주의 40~69, 위험 0~39)와 일관되는가?
+3. **8각 데이터 해석 일관성**: radar_chart_data·dominant_axes·deficient_axes·
+   gap_analysis·neutrality_score 간 모순이 없는가?
+4. **데이터 근거**: macro_trend_*의 키워드·수치가 원본 통합 데이터와 부합하는가?
+
+## 출력 (Structured Output — 스키마 필수)
+반드시 아래 필드를 채워 구조화된 객체로 응답하세요.
+
+- `verification_score` (0~100): 종합 품질 점수
+- `is_template_valid` (bool): DashboardReportSchema 필드·개수·대시보드 바인딩 준수 여부
+- `critique_feedback` (str): 80점 미만이면 구체적 반려 사유·수정 지침.
+  합격 시에는 간단한 통과 평(1~2문장)을 작성하세요.
+- `revision_target` (str): 반려 시 재실행 노드.
+  - `culture_analysis`: 8각 성향·YouTube·문화/콘텐츠 초안 문제
+  - `market_analysis`: Google/Naver 뉴스·매크로 시장 초안 문제
+  - `both_analyses`: 양쪽 초안 모두 문제
+  - `generate_report`: 최종 융합·JSON 스키마·B2B 시사점 문제\
+"""
+
+VERIFY_REPORT_USER_TEMPLATE = """\
+## 검수 대상 리포트 (DashboardReportSchema JSON)
+```json
+{report_json}
+```
+
+## 원본 통합 데이터 (8각 성향·키워드 교차 검증용)
+```json
+{integrated_data_json}
+```
+
+위 JSON 리포트를 검수 기준에 따라 채점하고, 지정된 스키마 필드로 응답하세요.\
+"""
+
+
+def _json_dumps(data: dict[str, Any]) -> str:
+    return json.dumps(data, ensure_ascii=False, indent=2)
+
+
+def _build_revision_section(critique_feedback: str | None) -> str:
+    if critique_feedback and critique_feedback.strip():
+        return SUB_AGENT_REVISION_TEMPLATE.format(
+            critique_feedback=critique_feedback.strip()
+        )
+    return ""
+
+
+def build_culture_analysis_user_prompt(
+    integrated_data: dict[str, Any],
+    *,
+    critique_feedback: str | None = None,
+) -> str:
+    """문화/콘텐츠 서브 에이전트용 사용자 프롬프트."""
+    payload = {
+        "internal_user_stats": integrated_data.get("internal_user_stats"),
+        "youtube_trending": integrated_data.get("external_market_trends", {}).get(
+            "youtube_trending"
+        ),
+        "generated_at": integrated_data.get("generated_at"),
+    }
+    return CULTURE_ANALYSIS_USER_TEMPLATE.format(
+        revision_section=_build_revision_section(critique_feedback),
+        payload_json=_json_dumps(payload),
+    )
+
+
+def build_market_analysis_user_prompt(
+    integrated_data: dict[str, Any],
+    *,
+    critique_feedback: str | None = None,
+) -> str:
+    """매크로 시장 서브 에이전트용 사용자 프롬프트."""
+    external = integrated_data.get("external_market_trends", {})
+    payload = {
+        "google_trends": external.get("google_trends"),
+        "naver_search": external.get("naver_search"),
+        "naver_news": external.get("naver_news"),
+        "generated_at": integrated_data.get("generated_at"),
+    }
+    return MARKET_ANALYSIS_USER_TEMPLATE.format(
+        revision_section=_build_revision_section(critique_feedback),
+        payload_json=_json_dumps(payload),
+    )
+
+
+def build_master_report_user_prompt(
+    integrated_data: dict[str, Any],
+    *,
+    culture_analysis: str,
+    market_analysis: str,
+    critique_feedback: str | None = None,
+) -> str:
+    """마스터 에이전트용 최종 리포트 융합 프롬프트."""
+    revision_section = ""
+    if critique_feedback and critique_feedback.strip():
+        revision_section = REVISION_SECTION_TEMPLATE.format(
+            critique_feedback=critique_feedback.strip()
+        )
+
+    return MASTER_REPORT_USER_TEMPLATE.format(
+        culture_analysis=culture_analysis,
+        market_analysis=market_analysis,
+        revision_section=revision_section,
+        integrated_data_json=_json_dumps(integrated_data),
+    )
+
+
+def build_verify_report_user_prompt(
+    report_json: dict[str, Any],
+    integrated_data: dict[str, Any],
+) -> str:
+    """시니어 검수자 에이전트용 사용자 프롬프트."""
+    return VERIFY_REPORT_USER_TEMPLATE.format(
+        report_json=_json_dumps(report_json),
+        integrated_data_json=_json_dumps(integrated_data),
+    )

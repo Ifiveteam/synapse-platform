@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 from datetime import UTC, datetime
@@ -11,6 +12,8 @@ from typing import Any, TypedDict
 
 import feedparser
 import httpx
+
+logger = logging.getLogger(__name__)
 
 GOOGLE_TRENDS_RSS_URL = "https://trends.google.com/trending/rss?geo=KR"
 YOUTUBE_TRENDING_API_URL = "https://www.googleapis.com/youtube/v3/videos"
@@ -55,51 +58,19 @@ _YOUTUBE_CATEGORY_BY_ID: dict[str, str] = {
     "29": "비영리/사회운동",
 }
 
-_YOUTUBE_FALLBACK_TRENDING: tuple[tuple[str, str, int], ...] = (
-    ("K-팝 신곡 챌린지", "음악", 4_200_000),
-    ("AI 활용 꿀팁", "과학/기술", 1_850_000),
-    ("프로야구 하이라이트", "스포츠", 3_100_000),
-    ("넷플릭스 신작 리뷰", "엔터테인먼트", 2_640_000),
-    ("주식 초보 가이드", "교육", 980_000),
-    ("홈트 10분 루틴", "하우투/스타일", 1_420_000),
-    ("인디 게임 플레이", "게임", 760_000),
-    ("MZ 재테크 토크", "뉴스/정치", 1_150_000),
-)
-
-_NAVER_SEARCH_FALLBACK: tuple[tuple[str, int], ...] = (
-    ("전세 사기 예방", 1),
-    ("AI 스타트업", 2),
-    ("프로야구 순위", 3),
-    ("장마 대비", 4),
-    ("반도체 실적", 5),
-    ("총선 여론", 6),
-    ("넷플릭스 신작", 7),
-    ("비트코인 시세", 8),
-)
-
-_NAVER_NEWS_RSS_FEEDS: tuple[tuple[str, str, str], ...] = (
-    ("politics", "정치", "https://news.naver.com/main/rss/section.naver?sid=101"),
-    ("economy", "경제", "https://news.naver.com/main/rss/section.naver?sid=102"),
-    ("society", "사회", "https://news.naver.com/main/rss/section.naver?sid=103"),
-    ("it_science", "IT/과학", "https://news.naver.com/rss/sections/105.xml"),
-)
-
-_NAVER_NEWS_FALLBACK_FEEDS: tuple[tuple[str, str, str], ...] = (
+_NEWS_RSS_FEEDS: tuple[tuple[str, str, str], ...] = (
     ("politics", "정치", "https://www.yna.co.kr/rss/politics.xml"),
     ("economy", "경제", "https://www.yna.co.kr/rss/economy.xml"),
     ("society", "사회", "https://www.yna.co.kr/rss/society.xml"),
     ("it_science", "IT/과학", "https://www.yna.co.kr/rss/industry.xml"),
 )
 
-_NAVER_NEWS_FALLBACK: tuple[tuple[str, str, str], ...] = (
-    ("정부, 하반기 경기 부양책 검토", "연합뉴스", "경제"),
-    ("AI 규제 프레임워크 논의 본격화", "한국경제", "IT/과학"),
-    ("지방선거 이후 여야 정책 협상 주목", "조선일보", "정치"),
-    ("장마 전 지역별 대비 점검 강화", "KBS", "사회"),
-    ("2분기 실적 발표 주간, 증시 변동성 확대", "매일경제", "경제"),
-    ("MZ세대 재테크 트렌드 리포트 공개", "머니투데이", "경제"),
+_NAVER_OPENAPI_SECTION_QUERIES: tuple[tuple[str, str], ...] = (
+    ("정치", "정치"),
+    ("경제", "경제"),
+    ("사회", "사회"),
+    ("IT 과학", "IT/과학"),
 )
-
 
 class GoogleTrendItem(TypedDict):
     keyword: str
@@ -171,22 +142,39 @@ def _parse_google_trend_entry(entry: Any, rank: int) -> GoogleTrendItem:
     }
 
 
-def _build_youtube_fallback_trending() -> list[YouTubeTrendItem]:
-    return [
-        {
-            "keyword": keyword,
-            "rank": index,
-            "category": category,
-            "estimated_views": views,
-        }
-        for index, (keyword, category, views) in enumerate(
-            _YOUTUBE_FALLBACK_TRENDING, start=1
-        )
-    ]
-
-
 def _resolve_youtube_category(category_id: str) -> str:
     return _YOUTUBE_CATEGORY_BY_ID.get(category_id, "엔터테인먼트")
+
+
+def _extract_youtube_api_error_message(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+        error = payload.get("error", {})
+        if isinstance(error, dict):
+            return str(error.get("message", "")).strip()
+    except ValueError:
+        pass
+    return ""
+
+
+def _log_youtube_api_failure(response: httpx.Response) -> None:
+    status = response.status_code
+    detail = _extract_youtube_api_error_message(response)
+
+    if status == 403:
+        logger.warning(
+            "YouTube Data API 403 Forbidden%s. "
+            "Google Cloud Console에서 YouTube Data API v3 활성화, "
+            "API 키 애플리케이션 제한, 일일 쿼터를 확인하세요.",
+            f": {detail}" if detail else "",
+        )
+        return
+
+    logger.warning(
+        "YouTube Data API 요청 실패: HTTP %s%s",
+        status,
+        f" — {detail}" if detail else "",
+    )
 
 
 def _parse_youtube_api_items(items: list[dict[str, Any]]) -> list[YouTubeTrendItem]:
@@ -256,18 +244,6 @@ def _parse_naver_realtime_payload(
     return trending
 
 
-def _build_naver_search_fallback() -> list[NaverSearchTrendItem]:
-    return [
-        {
-            "keyword": keyword,
-            "rank": rank,
-            "search_volume_hint": (NAVER_SEARCH_LIMIT - rank + 1) * 100,
-            "state": "f",
-        }
-        for keyword, rank in _NAVER_SEARCH_FALLBACK
-    ]
-
-
 def _strip_html(text: str) -> str:
     return re.sub(r"<[^>]+>", "", text).strip()
 
@@ -324,22 +300,6 @@ def _parse_news_feed_entries(
         )
 
     return items
-
-
-def _build_naver_news_fallback() -> list[NaverNewsTrendItem]:
-    return [
-        {
-            "headline": headline,
-            "rank": index,
-            "press": press,
-            "section": section,
-            "published_at": datetime.now(tz=UTC).isoformat(),
-            "link": "",
-        }
-        for index, (headline, press, section) in enumerate(
-            _NAVER_NEWS_FALLBACK, start=1
-        )
-    ]
 
 
 async def _fetch_rss_feed_text(client: httpx.AsyncClient, url: str) -> str | None:
@@ -412,11 +372,16 @@ async def fetch_google_trending_keywords() -> list[GoogleTrendItem]:
 async def fetch_youtube_trending_videos() -> list[YouTubeTrendItem]:
     """YouTube Data API로 급상승 동영상을 수집한다.
 
-    API 키가 없거나 요청이 실패하면 Fallback 데이터를 반환한다.
+    API 키가 없거나 요청이 실패하면 빈 목록을 반환한다.
+    403 시 Cloud Console 설정 안내를 로그에 남긴다.
     """
     api_key = os.getenv(YOUTUBE_API_KEY_ENV_VAR)
     if not api_key:
-        return _build_youtube_fallback_trending()
+        logger.warning(
+            "%s가 설정되지 않아 YouTube 급상승 데이터를 수집하지 않습니다.",
+            YOUTUBE_API_KEY_ENV_VAR,
+        )
+        return []
 
     params = {
         "part": "snippet,statistics",
@@ -429,24 +394,30 @@ async def fetch_youtube_trending_videos() -> list[YouTubeTrendItem]:
     try:
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
             response = await client.get(YOUTUBE_TRENDING_API_URL, params=params)
-            response.raise_for_status()
+            if response.is_error:
+                _log_youtube_api_failure(response)
+                return []
             payload = response.json()
-    except (httpx.HTTPError, ValueError):
-        return _build_youtube_fallback_trending()
+    except httpx.HTTPError as exc:
+        logger.warning("YouTube Data API 네트워크 오류: %s", exc)
+        return []
+    except ValueError as exc:
+        logger.warning("YouTube Data API 응답 파싱 실패: %s", exc)
+        return []
 
     items = payload.get("items", [])
     if not items:
-        return _build_youtube_fallback_trending()
+        logger.warning("YouTube Data API가 급상승 항목을 반환하지 않았습니다.")
+        return []
 
-    parsed = _parse_youtube_api_items(items)
-    return parsed or _build_youtube_fallback_trending()
+    return _parse_youtube_api_items(items)
 
 
 async def fetch_naver_trending_keywords() -> list[NaverSearchTrendItem]:
     """네이버 기준 실시간 핫 키워드를 수집한다.
 
     시그널(signal.bz) 공개 API를 우선 사용하고,
-    실패 시 isignal 대안·Fallback을 반환한다.
+    실패 시 isignal 대안 엔드포인트를 시도한다.
     """
     endpoints = (NAVER_REALTIME_PRIMARY_URL, NAVER_REALTIME_FALLBACK_URL)
 
@@ -464,11 +435,11 @@ async def fetch_naver_trending_keywords() -> list[NaverSearchTrendItem]:
             except (httpx.HTTPError, ValueError, TypeError):
                 continue
 
-    return _build_naver_search_fallback()
+    return []
 
 
 async def fetch_naver_news_trends() -> list[NaverNewsTrendItem]:
-    """네이버 뉴스 섹션 RSS(또는 대체 피드)에서 주요 헤드라인을 수집한다."""
+    """연합뉴스 섹션 RSS와(부족 시) 네이버 검색 Open API로 주요 헤드라인을 수집한다."""
     collected: list[NaverNewsTrendItem] = []
 
     async with httpx.AsyncClient(
@@ -476,7 +447,7 @@ async def fetch_naver_news_trends() -> list[NaverNewsTrendItem]:
         headers=_BROWSER_HEADERS,
         follow_redirects=True,
     ) as client:
-        for _section_key, section_label, feed_url in _NAVER_NEWS_RSS_FEEDS:
+        for _section_key, section_label, feed_url in _NEWS_RSS_FEEDS:
             feed_text = await _fetch_rss_feed_text(client, feed_url)
             if feed_text:
                 collected.extend(
@@ -488,25 +459,19 @@ async def fetch_naver_news_trends() -> list[NaverNewsTrendItem]:
                 )
 
         if len(collected) < NAVER_NEWS_LIMIT // 2:
-            for _section_key, section_label, feed_url in _NAVER_NEWS_FALLBACK_FEEDS:
-                feed_text = await _fetch_rss_feed_text(client, feed_url)
-                if feed_text:
-                    collected.extend(
-                        _parse_news_feed_entries(
-                            feed_text,
-                            section_key=_section_key,
-                            section_label=section_label,
-                        )
-                    )
-
-        if len(collected) < NAVER_NEWS_LIMIT // 2:
-            openapi_queries = (
-                ("정치", "정치"),
-                ("경제", "경제"),
-                ("사회", "사회"),
-                ("IT 과학", "IT/과학"),
+            has_openapi = bool(
+                os.getenv(NAVER_CLIENT_ID_ENV_VAR)
+                and os.getenv(NAVER_CLIENT_SECRET_ENV_VAR)
             )
-            for query, section_label in openapi_queries:
+            if not has_openapi:
+                logger.info(
+                    "뉴스 RSS 수집이 부족합니다(%s건). %s/%s 설정 시 "
+                    "네이버 검색 Open API로 보완합니다.",
+                    len(collected),
+                    NAVER_CLIENT_ID_ENV_VAR,
+                    NAVER_CLIENT_SECRET_ENV_VAR,
+                )
+            for query, section_label in _NAVER_OPENAPI_SECTION_QUERIES:
                 collected.extend(
                     await _fetch_naver_openapi_news(
                         client,
@@ -516,7 +481,7 @@ async def fetch_naver_news_trends() -> list[NaverNewsTrendItem]:
                 )
 
     if not collected:
-        return _build_naver_news_fallback()
+        return []
 
     deduped: list[NaverNewsTrendItem] = []
     seen_headlines: set[str] = set()
