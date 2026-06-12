@@ -23,6 +23,7 @@ class IndexerState(TypedDict):
 
     # 전처리 결과
     cleaned_data: list[VideoItem]
+    filtered_count: int | None  # 노이즈 제거 후, limit 적용 전 개수
 
     # 에러
     error: str | None
@@ -31,3 +32,10 @@ class IndexerState(TypedDict):
     saved_count: int | None
 
     limit: int | None
+
+
+class ExtensionState(TypedDict):
+    videos: list[dict]
+    cleaned_data: list[VideoItem]
+    error: str | None
+    saved_count: int | None

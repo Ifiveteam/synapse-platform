@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import logging
 
+from app.core.env import load_backend_env
+
+load_backend_env()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import api_router
-from app.core.env import load_backend_env
-
-load_backend_env()
 
 logging.basicConfig(
     level=logging.INFO,
