@@ -1,9 +1,11 @@
+import asyncio
 import json
 import os
 import re
 import time
 import urllib.request
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -18,11 +20,16 @@ def parse_takeout_zip(zip_path: str) -> list[dict]:
     target_names = ["watch-history.json", "시청_기록.json", "시청 기록.json"]
 
     with zipfile.ZipFile(zip_path, "r") as z:
-        for name in z.namelist():
+        all_names = z.namelist()
+        print(f"[ZIP] 파일 목록 ({len(all_names)}개): {all_names[:20]}")
+        for name in all_names:
             if any(target in name for target in target_names):
+                print(f"[ZIP] 시청 기록 발견: {name}")
                 with z.open(name) as f:
                     data = json.load(f)
+                    print(f"[ZIP] 항목 수: {len(data)}")
                     return data
+    print(f"[ZIP] 시청 기록 파일 없음. 전체 목록: {all_names}")
     return []
 
 
@@ -92,6 +99,8 @@ def preprocess(data: list[dict]) -> list[dict]:
 
 def vectorize(items: list[dict]) -> list[dict]:
     """제목 + 채널명 벡터화 (OpenAI text-embedding-3-small)"""
+    if not items:
+        return []
     texts = [f"{item['title']} {item['channel']}" for item in items]
     response = _openai_client.embeddings.create(
         model="text-embedding-3-small",
@@ -179,29 +188,32 @@ def get_video_info(video_url: str) -> dict:
 
 
 def add_keywords(items: list[dict]) -> list[dict]:
-    """LLM으로 제목 + description 키워드 추출 + 쇼츠 여부"""
+    """LLM으로 제목 + description 키워드 추출 + 쇼츠 여부 (YouTube API 병렬 호출)"""
     from app.agents.indexer.prompt import extract_keywords_batch
 
-    batch_size = 10
+    # YouTube API 병렬 호출
+    urls = [item.get("url", "") for item in items]
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        video_infos = list(executor.map(get_video_info, urls))
+
+    # LLM 키워드 추출 (배치)
+    batch_size = 20
     result = []
 
     for i in range(0, len(items), batch_size):
         batch = items[i : i + batch_size]
+        infos = video_infos[i : i + batch_size]
 
         texts = []
-        video_infos = []
-        for item in batch:
-            info = get_video_info(item.get("url", ""))
-            video_infos.append(info)
+        for item, info in zip(batch, infos):
             text = item["title"]
             if info["description"]:
                 text += " " + info["description"][:100]
             texts.append(text)
 
         keywords_list = extract_keywords_batch(texts)
-        time.sleep(1)
 
-        for item, keywords, info in zip(batch, keywords_list, video_infos, strict=False):
+        for item, keywords, info in zip(batch, keywords_list, infos, strict=False):
             result.append({
                 **item,
                 "keywords": keywords,

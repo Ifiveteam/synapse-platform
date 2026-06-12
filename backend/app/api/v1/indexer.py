@@ -5,6 +5,7 @@ from collections import Counter
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from pydantic import BaseModel
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.indexer.graph import graph
@@ -137,6 +138,15 @@ async def get_videos(session: AsyncSession = Depends(get_db)):
         }
         for v in videos
     ]
+
+
+@router.delete("/videos")
+async def delete_all_videos(session: AsyncSession = Depends(get_db)):
+    """수집된 영상 전체 삭제"""
+    from app.models.video_vector import VideoVector
+    await session.execute(delete(VideoVector))
+    await session.commit()
+    return {"message": "전체 삭제 완료"}
 
 
 @router.get("/status")

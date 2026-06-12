@@ -18,6 +18,7 @@ class IndexerState(TypedDict):
     json_path: str
     raw_data: list[dict]
     cleaned_data: list[VideoItem]
+    filtered_count: int | None  # 노이즈 제거 후, limit 적용 전 개수
     error: str | None
     saved_count: int | None
     limit: int | None

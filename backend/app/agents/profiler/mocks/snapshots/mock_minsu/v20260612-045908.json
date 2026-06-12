@@ -1,0 +1,163 @@
+{
+  "version": "v20260612-045908",
+  "user_id": "mock_minsu",
+  "computed_at": "2026-06-12T04:59:08.400439Z",
+  "result": {
+    "user_id": "mock_minsu",
+    "computed_at": "2026-06-12T04:59:08.400439Z",
+    "axes": {
+      "intellectual_curiosity": 24,
+      "practical_orientation": 38,
+      "emotional_comfort": 65,
+      "social_awareness": 35,
+      "creative_expression": 53,
+      "entertainment_release": 100,
+      "self_improvement": 35,
+      "depth_immersion": 34
+    },
+    "layer_b": {
+      "search_active_ratio": 0.2,
+      "viewing_concentration": 0.498,
+      "taste_diversity_index": 62.3,
+      "exploration_depth": 0.159
+    },
+    "top5_interests": [
+      {
+        "rank": 1,
+        "label": "예능저장소",
+        "score": 1.0,
+        "evidence": [
+          "런닝맨 하이라이트",
+          "예능 레전드 장면"
+        ]
+      },
+      {
+        "rank": 2,
+        "label": "잠오는소리",
+        "score": 0.455,
+        "evidence": [
+          "ASMR 힐링 10분"
+        ]
+      },
+      {
+        "rank": 3,
+        "label": "웃긴짤연구소",
+        "score": 0.16,
+        "evidence": [
+          "웃참 실패 모음 #42",
+          "밈 리뷰: 이번 주 핫한 짤"
+        ]
+      },
+      {
+        "rank": 4,
+        "label": "K-POP클립",
+        "score": 0.039,
+        "evidence": [
+          "아이돌 무대 실수 모음"
+        ]
+      },
+      {
+        "rank": 5,
+        "label": "검색: 웃긴 짤 모음",
+        "score": 0.023,
+        "evidence": [
+          "웃긴 짤 모음"
+        ]
+      }
+    ],
+    "summary": "mock_minsu 사용자는 entertainment_release, emotional_comfort 성향이 두드러지는 소비 패턴을 보입니다. 채널 편중도 50%, 검색 활동 20%, 탐색 깊이 16%입니다. (규칙 기반 분석 — Gemini API 키 미설정)",
+    "interpretation": {
+      "consumption_mode": "균형형",
+      "primary_lever": "탐색 깊이",
+      "sovereignty_verdict": "양호",
+      "radar_gap_insight": "레이더 상위 축(오락·해방)과 보완 축(지적 호기심) 사이 균형을 보며 소비 패턴을 조정할 여지가 있습니다."
+    },
+    "axis_notes": {
+      "intellectual_curiosity": "intellectual_curiosity 점수 24 — 태그·시청 패턴 기반 추정",
+      "practical_orientation": "practical_orientation 점수 38 — 태그·시청 패턴 기반 추정",
+      "emotional_comfort": "emotional_comfort 점수 65 — 태그·시청 패턴 기반 추정",
+      "social_awareness": "social_awareness 점수 35 — 태그·시청 패턴 기반 추정",
+      "creative_expression": "creative_expression 점수 53 — 태그·시청 패턴 기반 추정",
+      "entertainment_release": "entertainment_release 점수 100 — 태그·시청 패턴 기반 추정",
+      "self_improvement": "self_improvement 점수 35 — 태그·시청 패턴 기반 추정",
+      "depth_immersion": "depth_immersion 점수 34 — 태그·시청 패턴 기반 추정"
+    },
+    "investigation_log": [
+      "loaded 10 indexed records",
+      "layer_b: search_active_ratio=0.2",
+      "layer_b: viewing_concentration=0.498",
+      "layer_b: exploration_depth=0.159",
+      "top channel by watch time: 예 (능s)",
+      "patterns: weekend_ratio=0.4",
+      "agent: llm_mode=fallback_rules",
+      "fallback: rule-based axis scoring applied",
+      "layer_b: taste_diversity_index=62.3",
+      "interpretation: mode=균형형",
+      "interpretation: lever=탐색 깊이",
+      "interpretation: verdict=양호",
+      "notify: mail skipped (mail_not_configured)"
+    ],
+    "llm_used": false,
+    "behavior_patterns": {
+      "hour_distribution": {
+        "morning": 0.0,
+        "afternoon": 0.0,
+        "evening": 0.6,
+        "night": 0.4
+      },
+      "weekend_ratio": 0.4,
+      "top_repeated_channels": [
+        {
+          "channel": "웃긴짤연구소",
+          "count": 4
+        },
+        {
+          "channel": "예능저장소",
+          "count": 2
+        },
+        {
+          "channel": "K-POP클립",
+          "count": 1
+        },
+        {
+          "channel": "잠오는소리",
+          "count": 1
+        }
+      ],
+      "top_repeated_tags": [
+        {
+          "tag": "shorts",
+          "count": 6
+        },
+        {
+          "tag": "meme",
+          "count": 5
+        },
+        {
+          "tag": "variety",
+          "count": 4
+        },
+        {
+          "tag": "entertainment_release",
+          "count": 2
+        },
+        {
+          "tag": "gaming",
+          "count": 1
+        },
+        {
+          "tag": "asmr",
+          "count": 1
+        },
+        {
+          "tag": "healing",
+          "count": 1
+        },
+        {
+          "tag": "emotional_comfort",
+          "count": 1
+        }
+      ]
+    }
+  }
+}
