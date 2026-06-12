@@ -10,8 +10,9 @@ from app.agents.aggregator.state import (
     MAX_REVIEW_ATTEMPTS,
     REVIEW_PASS_THRESHOLD,
     AggregatorState,
+    RevisionTarget,
 )
-from app.agents.aggregator.sub_agent.schemas import RevisionTarget, VerificationResult
+from app.agents.aggregator.sub_agent.schemas import VerificationResult
 from app.agents.aggregator.trace import log_route_decision
 
 RouteAfterVerifyReturn = (

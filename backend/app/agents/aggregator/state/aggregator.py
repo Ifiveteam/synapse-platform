@@ -2,21 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Literal, NotRequired, TypedDict
+from typing import NotRequired, TypedDict
 
 from app.agents.aggregator.base import IntegratedData
+from app.agents.aggregator.state.types import RevisionTarget
 from app.schemas.report import DashboardReportSchema
 from app.services.notification import NotificationPayload
-
-RevisionTarget = Literal[
-    "generate_report",
-    "culture_analysis",
-    "market_analysis",
-    "both_analyses",
-]
-
-MAX_REVIEW_ATTEMPTS = 3
-REVIEW_PASS_THRESHOLD = 80
 
 
 class AggregatorState(TypedDict):

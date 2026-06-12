@@ -1,11 +1,5 @@
 import { TREND_API_BASE } from "@/lib/api/config";
 
-export interface ProfileAxis {
-  key: string;
-  label: string;
-  avg_score: number;
-}
-
 export interface CognitiveAxisScore {
   subject: string;
   key: string;
@@ -69,7 +63,6 @@ export interface TrendPostResponse {
   post_id: string;
   generated_at: string;
   cohort_size: number;
-  axes: ProfileAxis[];
   report: DashboardReport;
 }
 

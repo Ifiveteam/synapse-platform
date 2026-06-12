@@ -2,18 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, Field, field_validator
 
-from app.agents.aggregator.state.aggregator import REVIEW_PASS_THRESHOLD
-
-RevisionTarget = Literal[
-    "generate_report",
-    "culture_analysis",
-    "market_analysis",
-    "both_analyses",
-]
+from app.agents.aggregator.state.types import REVIEW_PASS_THRESHOLD, RevisionTarget
 
 _CULTURE_FEEDBACK_MARKERS: tuple[str, ...] = (
     "문화",

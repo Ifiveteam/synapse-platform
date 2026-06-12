@@ -1,22 +1,18 @@
-"""Aggregator 분석 완료 알림 (이메일 + PDF 첨부)."""
+"""notify 노드 — 분석 완료 이메일·PDF 첨부."""
 
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
 from typing import Any
 
-from app.agents.aggregator.report import (
-    coerce_dashboard_report,
-    dashboard_report_to_markdown,
-)
+from app.agents.aggregator.nodes._helpers import NODE_NOTIFY
+from app.agents.aggregator.report import coerce_dashboard_report
 from app.agents.aggregator.state import AggregatorState
 from app.agents.aggregator.trace import log_node_enter, logger
 from app.services.email import EmailAttachment, send_email
 from app.services.notification import build_notification, mask_email
-from app.services.pdf import convert_markdown_to_pdf_async
+from app.services.trend.pdf import build_trend_report_pdf, trend_report_pdf_filename
 
-_NODE_NOTIFY = "notify"
 _SUBJECT = "[Synapse] B2B 트렌드 분석 완료"
 
 
@@ -26,12 +22,6 @@ def _report_url(state: AggregatorState) -> str:
     if post_id:
         return f"{frontend_url}/agents/aggregator/posts/{post_id}"
     return f"{frontend_url}/agents/aggregator/posts"
-
-
-def _pdf_filename(post_id: str) -> str:
-    suffix = post_id[:8] if post_id else "report"
-    date_part = datetime.now(UTC).strftime("%Y%m%d")
-    return f"B2B_Trend_Report_{suffix}_{date_part}.pdf"
 
 
 def _build_short_email_body(report_url: str, *, has_pdf: bool) -> str:
@@ -76,19 +66,17 @@ async def _build_pdf_attachment(state: AggregatorState) -> EmailAttachment | Non
     if not raw_report:
         return None
 
-    report = coerce_dashboard_report(raw_report)
-    markdown = dashboard_report_to_markdown(report)
-    pdf_bytes = await convert_markdown_to_pdf_async(markdown)
     post_id = state.get("post_id", "")
+    pdf_bytes = await build_trend_report_pdf(raw_report)
     return EmailAttachment(
-        filename=_pdf_filename(post_id),
+        filename=trend_report_pdf_filename(post_id=post_id),
         content=pdf_bytes,
     )
 
 
 async def notify_node(state: AggregatorState) -> dict[str, Any]:
     """분석 완료 후 선택적 이메일 발송. notify_email이 없으면 스킵한다."""
-    log_node_enter(_NODE_NOTIFY, state=state)
+    log_node_enter(NODE_NOTIFY, state=state)
 
     recipient = state.get("notify_email")
     if not recipient:
