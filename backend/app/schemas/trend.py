@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
+
+from app.schemas.report import DashboardReportSchema
 
 
 class KeywordStatSchema(BaseModel):
@@ -22,12 +24,20 @@ class ProfileAxisSchema(BaseModel):
 class DashboardResponse(BaseModel):
     generated_at: datetime
     top_keywords: list[KeywordStatSchema]
-    report_markdown: str
+    report: DashboardReportSchema
 
 
 class GraphViewResponse(BaseModel):
     cohort_size: int = Field(ge=0)
     axes: list[ProfileAxisSchema] = Field(min_length=8, max_length=8)
+
+
+class AnalyzeRequest(BaseModel):
+    email: EmailStr | None = Field(
+        default=None,
+        examples=["you@ifive.site"],
+        description="분석 완료 시 결과 링크를 받을 이메일 (선택)",
+    )
 
 
 class AnalyzeResponse(BaseModel):
@@ -50,4 +60,4 @@ class TrendPostResponse(BaseModel):
     generated_at: datetime
     cohort_size: int = Field(ge=0)
     axes: list[ProfileAxisSchema] = Field(min_length=8, max_length=8)
-    report_markdown: str
+    report: DashboardReportSchema

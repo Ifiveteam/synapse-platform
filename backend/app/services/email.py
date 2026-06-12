@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import base64
 import os
 from dataclasses import dataclass
 
 DEFAULT_FROM_ADDRESS = "synapse@ifive.site"
+
+
+@dataclass
+class EmailAttachment:
+    filename: str
+    content: bytes
 
 
 @dataclass
@@ -26,6 +33,7 @@ def send_email(
     text: str,
     *,
     from_email: str | None = None,
+    attachments: list[EmailAttachment] | None = None,
 ) -> MailDeliveryResult:
     """텍스트 메일 발송. 실패해도 예외를 던지지 않고 MailDeliveryResult로 반환."""
     api_key = os.getenv("RESEND_API_KEY", "").strip()
@@ -43,14 +51,21 @@ def send_email(
         import resend
 
         resend.api_key = api_key
-        resend.Emails.send(
-            {
-                "from": sender,
-                "to": [to],
-                "subject": subject,
-                "text": text,
-            }
-        )
+        payload: dict[str, object] = {
+            "from": sender,
+            "to": [to],
+            "subject": subject,
+            "text": text,
+        }
+        if attachments:
+            payload["attachments"] = [
+                {
+                    "filename": item.filename,
+                    "content": base64.b64encode(item.content).decode(),
+                }
+                for item in attachments
+            ]
+        resend.Emails.send(payload)
         return MailDeliveryResult(
             attempted=True,
             sent=True,

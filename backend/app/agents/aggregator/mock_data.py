@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import random
 from datetime import UTC, datetime
-from typing import TypedDict
+
+from app.agents.aggregator.base import (
+    CognitiveProfileMap,
+    InternalUserStats,
+    KeywordStat,
+    ProfileAxisScore,
+)
 
 # 프로파일러 에이전트와 공유하는 8각 인지 차트 축 (0~100: 높을수록 해당 성향이 강함)
+# TODO: profiler/base/axes.py SSOT로 통합 예정
 COGNITIVE_BIAS_AXES: tuple[tuple[str, str], ...] = (
     ("intellectual_curiosity", "지적 호기심"),
     ("self_improvement", "자기계발"),
@@ -47,29 +54,6 @@ _INTERNAL_KEYWORD_POOL: tuple[str, ...] = (
     "여행 브이로그",
     "주식 초보",
 )
-
-
-class KeywordStat(TypedDict):
-    keyword: str
-    frequency: int
-    trend_delta_pct: float
-
-
-class ProfileAxisScore(TypedDict):
-    key: str
-    label: str
-    avg_score: float
-
-
-class CognitiveProfileMap(TypedDict):
-    axes: list[ProfileAxisScore]
-    cohort_size: int
-    measurement_period: str
-
-
-class InternalUserStats(TypedDict):
-    top_keywords: list[KeywordStat]
-    cognitive_bias_map: CognitiveProfileMap
 
 
 def _build_top_keywords(rng: random.Random, count: int = 10) -> list[KeywordStat]:
