@@ -1,11 +1,8 @@
-import asyncio
 import json
 import os
 import re
-import time
 import urllib.request
 import zipfile
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -40,65 +37,52 @@ def parse_takeout_json(json_path: str) -> list[dict]:
 
 
 def is_ad(item: dict) -> bool:
-    """광고 여부 판별"""
     details = item.get("details", [])
     return any("광고" in d.get("name", "") for d in details)
 
 
 def extract_title(raw_title: str) -> str:
-    """'영상제목 을(를) 시청했습니다.' → '영상제목' 추출"""
     return re.sub(r"\s*을\(를\)\s*시청했습니다\.$", "", raw_title).strip()
 
 
 def normalize_timestamp(time_str: str) -> str:
-    """타임스탬프 UTC 기준으로 정규화 → 'YYYY-MM-DD HH:MM:SS' 형식"""
     if not time_str:
         return ""
     try:
         dt = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
-        dt_utc = dt.astimezone(timezone.utc)
-        return dt_utc.strftime("%Y-%m-%d %H:%M:%S")
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
         return time_str
 
 
 def preprocess(data: list[dict]) -> list[dict]:
-    """전처리 - 노이즈 제거 + 텍스트 클렌징 + 타임스탬프 정규화"""
     cleaned = []
     for item in data:
         if is_ad(item):
             continue
-
-        if not item.get("titleUrl"):
+        url = item.get("titleUrl", "")
+        if "watch?v=" not in url and "/shorts/" not in url:
             continue
-
-        raw_title = item.get("title", "")
-        title = extract_title(raw_title)
-        title = title.strip()
-
+        title = extract_title(item.get("title", "")).strip()
         if not title:
             continue
-
         subtitles = item.get("subtitles", [])
         channel = subtitles[0].get("name", "") if subtitles else ""
         channel_url = subtitles[0].get("url", "") if subtitles else ""
         watched_at = normalize_timestamp(item.get("time", ""))
-
         cleaned.append(
             {
                 "title": title,
                 "channel": channel,
                 "channel_url": channel_url,
-                "url": item.get("titleUrl", ""),
+                "url": url,
                 "watched_at": watched_at,
             }
         )
-
     return cleaned
 
 
 def vectorize(items: list[dict]) -> list[dict]:
-    """제목 + 채널명 벡터화 (OpenAI text-embedding-3-small)"""
     if not items:
         return []
     texts = [f"{item['title']} {item['channel']}" for item in items]
@@ -106,121 +90,258 @@ def vectorize(items: list[dict]) -> list[dict]:
         model="text-embedding-3-small",
         input=texts,
     )
+    return [
+        {**item, "embedding": emb.embedding} for item, emb in zip(items, response.data)
+    ]
+
+
+def _extract_video_id(url: str) -> str | None:
+    m = re.search(r"(?:v=|shorts/)([^&?/]+)", url)
+    return m.group(1) if m else None
+
+
+def _parse_duration(duration_str: str) -> int:
+    m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration_str or "PT0S")
+    if not m:
+        return 0
+    return (
+        int(m.group(1) or 0) * 3600 + int(m.group(2) or 0) * 60 + int(m.group(3) or 0)
+    )
+
+
+def get_videos_info_batch(urls: list[str]) -> list[dict]:
+    """YouTube API 배치 호출 (50개/요청) — 2000개 → 40번 호출"""
+    api_key = os.getenv("YOUTUBE_API_KEY")
+    url_is_shorts = {url: "/shorts/" in url for url in urls}
+
+    if not api_key:
+        return [
+            {
+                "description": "",
+                "duration": 0,
+                "is_shorts": url_is_shorts[u],
+                "tags": [],
+            }
+            for u in urls
+        ]
+
+    id_to_url: dict[str, str] = {}
+    for url in urls:
+        vid_id = _extract_video_id(url)
+        if vid_id:
+            id_to_url[vid_id] = url
+
+    api_results: dict[str, dict] = {}
+    video_ids = list(id_to_url.keys())
+
+    total_batches = (len(video_ids) + 49) // 50
+    for i in range(0, len(video_ids), 50):
+        batch = video_ids[i : i + 50]
+        batch_num = i // 50 + 1
+        print(f"[YouTube API] 배치 {batch_num}/{total_batches} ({len(batch)}개)")
+        api_url = (
+            "https://www.googleapis.com/youtube/v3/videos"
+            f"?part=snippet,contentDetails&id={','.join(batch)}&key={api_key}"
+        )
+        try:
+            with urllib.request.urlopen(api_url, timeout=15) as resp:
+                data = json.loads(resp.read())
+                for item in data.get("items", []):
+                    vid_id = item["id"]
+                    snippet = item.get("snippet", {})
+                    content = item.get("contentDetails", {})
+                    tags = snippet.get("tags", [])
+                    duration = _parse_duration(content.get("duration", "PT0S"))
+                    tag_shorts = any(t.lower() in ("#shorts", "shorts") for t in tags)
+                    api_results[vid_id] = {
+                        "description": snippet.get("description", ""),
+                        "duration": duration,
+                        "tags": [
+                            t for t in tags if t.lower() not in ("#shorts", "shorts")
+                        ],
+                        "tag_is_shorts": tag_shorts,
+                        "duration_is_shorts": 0 < duration <= 60,
+                    }
+        except Exception as e:
+            print(f"[YouTube API 배치] 에러 (ids {i}~{i + 50}): {e}")
+
     result = []
-    for item, emb_data in zip(items, response.data, strict=False):
-        result.append({**item, "embedding": emb_data.embedding})
+    url_shorts_count = 0
+    tag_shorts_count = 0
+    duration_shorts_count = 0
+    for url in urls:
+        vid_id = _extract_video_id(url)
+        url_shorts = url_is_shorts[url]
+        if vid_id and vid_id in api_results:
+            info = api_results[vid_id]
+            is_shorts = (
+                url_shorts or info["tag_is_shorts"] or info["duration_is_shorts"]
+            )
+            if url_shorts:
+                url_shorts_count += 1
+            if info["tag_is_shorts"]:
+                tag_shorts_count += 1
+            if info["duration_is_shorts"]:
+                duration_shorts_count += 1
+            result.append(
+                {
+                    "description": info["description"],
+                    "duration": info["duration"],
+                    "is_shorts": is_shorts,
+                    "tags": info["tags"],
+                }
+            )
+        else:
+            if url_shorts:
+                url_shorts_count += 1
+            result.append(
+                {"description": "", "duration": 0, "is_shorts": url_shorts, "tags": []}
+            )
+    print(
+        f"[Shorts 감지] URL: {url_shorts_count}건 / 태그: {tag_shorts_count}건 / 60초이하: {duration_shorts_count}건 / API응답: {len(api_results)}건/{len(urls)}건"
+    )
     return result
 
 
-def is_shorts_by_redirect(video_url: str) -> bool:
-    """shorts/ URL 리다이렉트로 쇼츠 여부 판별"""
-    match = re.search(r"(?:v=|shorts/)([^&?]+)", video_url)
-    if not match:
-        return False
-    video_id = match.group(1)
-    shorts_url = f"https://www.youtube.com/shorts/{video_id}"
-    try:
-        req = urllib.request.Request(
-            shorts_url,
-            headers={"User-Agent": "Mozilla/5.0"}
-        )
-        with urllib.request.urlopen(req, timeout=5) as response:
-            final_url = response.url
-            return "shorts" in final_url
-    except Exception:
-        return False
+_KW_NOISE = {
+    "shorts",
+    "youtube",
+    "youtuber",
+    "viral",
+    "video",
+    "재생목록",
+    "구독",
+    "영상",
+    "동영상",
+    "공식",
+    "official",
+    "무료",
+    "전체",
+    "모음",
+    "최신",
+    "ver",
+    "버전",
+    "편집",
+    "다시보기",
+    "highlight",
+    "full",
+}
+_KW_PARTICLES = {
+    "는",
+    "은",
+    "이",
+    "가",
+    "을",
+    "를",
+    "의",
+    "에",
+    "에서",
+    "로",
+    "으로",
+    "와",
+    "과",
+    "도",
+    "만",
+    "고",
+    "한",
+    "하는",
+    "에게",
+    "처럼",
+    "보다",
+}
+
+
+def _extract_words(text: str) -> list[str]:
+    """텍스트에서 의미있는 단어 추출 (2글자 이상, 불용어 제외)"""
+    words = re.split(r"[\s\[\]\(\)\|/\-_,.!?~·×X×]+", text or "")
+    result = []
+    for w in words:
+        w = w.strip()
+        if len(w) < 2:
+            continue
+        if w.lower() in _KW_NOISE or w in _KW_PARTICLES:
+            continue
+        if w.isdigit():
+            continue
+        result.append(w)
+    return result
+
+
+def extract_hashtags(
+    description: str, tags: list[str] | None = None, title: str = ""
+) -> list[str]:
+    """여러 소스를 합쳐 최소 3~5개 키워드 추출"""
+    seen: set[str] = set()
+    result: list[str] = []
+
+    def _add(items: list[str]) -> None:
+        for w in items:
+            if w.lower() not in seen and len(result) < 5:
+                seen.add(w.lower())
+                result.append(w)
+
+    # 1. YouTube API tags
+    if tags:
+        _add([t for t in tags if t.lower() not in _KW_NOISE])
+    # 2. 디스크립션 해시태그
+    _add(
+        [
+            h
+            for h in re.findall(r"#([\w가-힣]+)", description or "")
+            if h.lower() not in _KW_NOISE
+        ]
+    )
+    # 3. 제목 해시태그
+    _add(
+        [
+            h
+            for h in re.findall(r"#([\w가-힣]+)", title or "")
+            if h.lower() not in _KW_NOISE
+        ]
+    )
+    # 4. 부족하면 디스크립션 100자 단어로 채움 (제목 단어 제외)
+    if len(result) < 3:
+        _add(_extract_words((description or "")[:100]))
+
+    return result
 
 
 def get_video_info(video_url: str) -> dict:
-    """YouTube URL에서 description, duration, is_shorts 한 번에 가져오기"""
-    api_key = os.getenv("YOUTUBE_API_KEY")
-    if not api_key:
-        return {"description": "", "duration": 0, "is_shorts": False}
-
-    match = re.search(r"(?:v=|shorts/)([^&?]+)", video_url)
-    if not match:
-        return {"description": "", "duration": 0, "is_shorts": False}
-
-    video_id = match.group(1)
-    url = (
-        f"https://www.googleapis.com/youtube/v3/videos"
-        f"?part=snippet,contentDetails&id={video_id}&key={api_key}"
-    )
-
-    try:
-        with urllib.request.urlopen(url) as response:
-            data = json.loads(response.read())
-            items = data.get("items", [])
-            if not items:
-                return {"description": "", "duration": 0, "is_shorts": False}
-
-            snippet = items[0].get("snippet", {})
-            content = items[0].get("contentDetails", {})
-
-            description = snippet.get("description", "")
-            tags = snippet.get("tags", [])
-            is_shorts = any(t.lower() in ("#shorts", "shorts") for t in tags)
-
-            duration_str = content.get("duration", "PT0S")
-            m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration_str)
-            duration = 0
-            if m:
-                h = int(m.group(1) or 0)
-                mins = int(m.group(2) or 0)
-                s = int(m.group(3) or 0)
-                duration = h * 3600 + mins * 60 + s
-
-            # 태그에 없으면 리다이렉트로 확인
-            if not is_shorts:
-                is_shorts = is_shorts_by_redirect(video_url)
-
-            # 그래도 안되면 60초 기준
-            if not is_shorts and duration <= 60:
-                is_shorts = True
-
-            return {
-                "description": description,
-                "duration": duration,
-                "is_shorts": is_shorts,
-            }
-    except Exception:
-        return {"description": "", "duration": 0, "is_shorts": False}
+    """단일 영상 정보 조회 (extension graph용)"""
+    infos = get_videos_info_batch([video_url])
+    return infos[0]
 
 
 def add_keywords(items: list[dict]) -> list[dict]:
-    """LLM으로 제목 + description 키워드 추출 + 쇼츠 여부 (YouTube API 병렬 호출)"""
+    """YouTube API 배치 보강 + LLM 키워드 추출"""
     from app.agents.indexer.prompt import extract_keywords_batch
 
-    # YouTube API 병렬 호출
     urls = [item.get("url", "") for item in items]
-    with ThreadPoolExecutor(max_workers=20) as executor:
-        video_infos = list(executor.map(get_video_info, urls))
+    video_infos = get_videos_info_batch(urls)
 
-    # LLM 키워드 추출 (배치)
     batch_size = 20
     result = []
-
     for i in range(0, len(items), batch_size):
         batch = items[i : i + batch_size]
         infos = video_infos[i : i + batch_size]
 
-        texts = []
-        for item, info in zip(batch, infos):
-            text = item["title"]
-            if info["description"]:
-                text += " " + info["description"][:100]
-            texts.append(text)
-
+        texts = [
+            item["title"] + (" " + info["description"] if info["description"] else "")
+            for item, info in zip(batch, infos)
+        ]
         keywords_list = extract_keywords_batch(texts)
 
         for item, keywords, info in zip(batch, keywords_list, infos, strict=False):
-            result.append({
-                **item,
-                "keywords": keywords,
-                "title_keywords": keywords,
-                "desc_keywords": [],
-                "duration": info["duration"],
-                "is_shorts": info["is_shorts"],
-            })
+            result.append(
+                {
+                    **item,
+                    "description": info["description"],
+                    "keywords": keywords,
+                    "title_keywords": keywords,
+                    "desc_keywords": [],
+                    "duration": info["duration"],
+                    "is_shorts": info["is_shorts"],
+                }
+            )
 
     return result

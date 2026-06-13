@@ -12,6 +12,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: synapse
+      POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "5432:5432"
     volumes:
@@ -27,7 +28,9 @@ services:
 
   # ── FastAPI 백엔드 ────────────────────────────────────
   backend:
-    image: ${DOCKER_HUB_USERNAME}/synapse-backend:${IMAGE_TAG:-latest}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: synapse-backend
     restart: unless-stopped
     environment:
@@ -35,6 +38,16 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - NAVIGATOR_MODEL=${NAVIGATOR_MODEL:-gpt-4o}
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL}
+      - NAVER_CLIENT_ID=${NAVER_CLIENT_ID}
+      - NAVER_CLIENT_SECRET=${NAVER_CLIENT_SECRET}
+      - FRONTEND_BASE_URL=${FRONTEND_BASE_URL:-http://localhost:3000}
     expose:
       - "8000"
     networks:
@@ -49,9 +62,59 @@ services:
       retries: 3
       start_period: 15s
 
+  # ── Redis ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: synapse-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - synapse-net
+
+  # ── Celery Worker ─────────────────────────────────────
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: synapse-celery-worker
+    restart: unless-stopped
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/synapse
+      - REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+    networks:
+      - synapse-net
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # ── Celery Beat (스케줄러) ────────────────────────────
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: synapse-celery-beat
+    restart: unless-stopped
+    command: celery -A app.celery_app beat --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/synapse
+      - REDIS_URL=redis://redis:6379/0
+    networks:
+      - synapse-net
+    depends_on:
+      - redis
+      - celery-worker
+
   # ── Nginx ─────────────────────────────────────────────
   nginx:
-    image: ${DOCKER_HUB_USERNAME}/synapse-nginx:${IMAGE_TAG:-latest}
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
     container_name: synapse-nginx
     restart: unless-stopped
     ports:

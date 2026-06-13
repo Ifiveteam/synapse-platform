@@ -3,7 +3,16 @@ from __future__ import annotations
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ARRAY, Boolean, DateTime, Integer, String, Text
+from sqlalchemy import (
+    ARRAY,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database.base import Base
@@ -25,3 +34,7 @@ class VideoVector(Base):
     duration: Mapped[int | None] = mapped_column(Integer)
     is_shorts: Mapped[bool | None] = mapped_column(Boolean)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM))
+    weight: Mapped[float | None] = mapped_column(Float, default=1.0)
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True, index=True
+    )
