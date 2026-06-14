@@ -6,8 +6,12 @@ import tempfile
 import httpx
 
 
-async def _get(client: httpx.AsyncClient, url: str, token: str, **kwargs) -> httpx.Response:
-    response = await client.get(url, headers={"Authorization": f"Bearer {token}"}, **kwargs)
+async def _get(
+    client: httpx.AsyncClient, url: str, token: str, **kwargs
+) -> httpx.Response:
+    response = await client.get(
+        url, headers={"Authorization": f"Bearer {token}"}, **kwargs
+    )
     if response.status_code == 401:
         return response
     return response
@@ -15,7 +19,6 @@ async def _get(client: httpx.AsyncClient, url: str, token: str, **kwargs) -> htt
 
 async def refresh_user_token(user) -> str | None:
     """유저의 refresh_token으로 access_token 갱신 후 DB 저장"""
-    from sqlalchemy.ext.asyncio import AsyncSession
     from app.core.database.session import AsyncSessionLocal
 
     if not user.refresh_token:
@@ -38,7 +41,9 @@ async def refresh_user_token(user) -> str | None:
 
     async with AsyncSessionLocal() as session:
         from sqlalchemy import select
+
         from app.models.user import User
+
         result = await session.execute(select(User).where(User.id == user.id))
         db_user = result.scalar_one_or_none()
         if db_user:
@@ -62,14 +67,21 @@ async def find_takeout_in_drive(user) -> list[dict]:
     }
 
     async with httpx.AsyncClient() as client:
-        response = await _get(client, "https://www.googleapis.com/drive/v3/files", token, params=params)
+        response = await _get(
+            client, "https://www.googleapis.com/drive/v3/files", token, params=params
+        )
 
     if response.status_code == 401:
         token = await refresh_user_token(user)
         if not token:
             return []
         async with httpx.AsyncClient() as client:
-            response = await _get(client, "https://www.googleapis.com/drive/v3/files", token, params=params)
+            response = await _get(
+                client,
+                "https://www.googleapis.com/drive/v3/files",
+                token,
+                params=params,
+            )
 
     if response.status_code != 200:
         print(f"[Drive] 파일 조회 실패: {response.status_code} {response.text}")
@@ -95,7 +107,9 @@ async def download_drive_file(file_id: str, user) -> str | None:
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=600) as client:
-            async with client.stream("GET", url, headers=headers, params=params) as response:
+            async with client.stream(
+                "GET", url, headers=headers, params=params
+            ) as response:
                 if response.status_code == 401:
                     token = await refresh_user_token(user)
                     if not token:
@@ -103,7 +117,7 @@ async def download_drive_file(file_id: str, user) -> str | None:
                     headers = {"Authorization": f"Bearer {token}"}
 
                 if response.status_code == 401:
-                    print(f"[Drive] 토큰 갱신 후에도 401")
+                    print("[Drive] 토큰 갱신 후에도 401")
                     return None
 
                 if response.status_code != 200:
@@ -115,16 +129,19 @@ async def download_drive_file(file_id: str, user) -> str | None:
                 async for chunk in response.aiter_bytes(chunk_size=1024 * 1024):
                     tmp.write(chunk)
                     total += len(chunk)
-                print(f"[Drive] 다운로드 완료: {total / 1024 / 1024:.1f} MB → {tmp.name}")
+                print(
+                    f"[Drive] 다운로드 완료: {total / 1024 / 1024:.1f} MB → {tmp.name}"
+                )
     finally:
         tmp.close()
 
     return tmp.name
 
 
-async def run_takeout_pipeline(file_path: str) -> dict:
+async def run_takeout_pipeline(file_path: str, user_id: int | None = None) -> dict:
     """ZIP 또는 JSON 파일 → Indexer pipeline 실행"""
     from collections import Counter
+
     from app.agents.indexer.graph import graph
 
     result = await graph.ainvoke(
@@ -134,7 +151,9 @@ async def run_takeout_pipeline(file_path: str) -> dict:
             "cleaned_data": [],
             "error": None,
             "saved_count": None,
-            "limit": 100,
+            "limit": 2000,
+            "reindex": True,
+            "user_id": user_id,
         }
     )
 

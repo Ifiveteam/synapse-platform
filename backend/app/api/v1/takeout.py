@@ -21,11 +21,14 @@ async def run_drive_takeout(task_id: str, file_id: str, user: User) -> None:
 
         file_path = await download_drive_file(file_id, user)
         if not file_path:
-            takeout_status[task_id] = {"status": "error", "message": "Drive 파일 다운로드 실패"}
+            takeout_status[task_id] = {
+                "status": "error",
+                "message": "Drive 파일 다운로드 실패",
+            }
             return
 
         takeout_status[task_id] = {"status": "processing"}
-        result = await run_takeout_pipeline(file_path)
+        result = await run_takeout_pipeline(file_path, user_id=user.id)
 
         if result.get("error"):
             print(f"[Pipeline] 오류: {result['error']}")
@@ -33,7 +36,9 @@ async def run_drive_takeout(task_id: str, file_id: str, user: User) -> None:
             return
 
         saved = result.get("saved_count", 0)
-        print(f"[Pipeline] 완료: {saved}개 저장됨 (원본 {result.get('raw_count', 0)}개 파싱)")
+        print(
+            f"[Pipeline] 완료: {saved}개 저장됨 (원본 {result.get('raw_count', 0)}개 파싱)"
+        )
         takeout_status[task_id] = {
             "status": "success",
             "saved": saved,
@@ -67,7 +72,12 @@ async def auto_trigger(
     latest = sorted(files, key=lambda f: f.get("modifiedTime", ""), reverse=True)[0]
     task_id = str(uuid.uuid4())
     background_tasks.add_task(run_drive_takeout, task_id, latest["id"], user)
-    return {"status": "started", "task_id": task_id, "file_id": latest["id"], "file_name": latest["name"]}
+    return {
+        "status": "started",
+        "task_id": task_id,
+        "file_id": latest["id"],
+        "file_name": latest["name"],
+    }
 
 
 @router.post("/drive/trigger/{file_id}")

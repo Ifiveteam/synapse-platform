@@ -21,6 +21,7 @@ interface Video {
   is_shorts: boolean;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface DriveFile {
   id: string;
   name: string;
@@ -49,6 +50,7 @@ function formatDuration(sec: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function formatSize(bytes: string) {
   const n = parseInt(bytes || "0");
   if (n > 1024 * 1024 * 1024) return `${(n / 1024 / 1024 / 1024).toFixed(1)} GB`;
@@ -265,6 +267,7 @@ const GUIDE_STEPS = [
   { num: 4, title: "내보내기 요청", desc: '완료되면 Drive에 "Takeout" 폴더가 생성됩니다. (수 분~수 시간 소요)' },
 ];
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function TakeoutGuide({ onNext }: { onNext: () => void }) {
   return (
     <div className="p-6 flex flex-col gap-5">
@@ -374,6 +377,7 @@ function savePersistedTasks(tasks: Record<string, { taskId: string; status: stri
   localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function loadPersistedStats(): Record<string, AnalysisStats> {
   try {
     return JSON.parse(localStorage.getItem(STATS_KEY) || "{}");
@@ -382,6 +386,7 @@ function loadPersistedStats(): Record<string, AnalysisStats> {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function savePersistedStats(stats: Record<string, AnalysisStats>) {
   localStorage.setItem(STATS_KEY, JSON.stringify(stats));
 }
@@ -603,9 +608,12 @@ function VideoList({ refreshKey, onReset }: { refreshKey: number; onReset: () =>
 
   useEffect(() => {
     setLoading(true);
-    fetch(`${API}/indexer/videos`)
+    const token = useAuthStore.getState().token;
+    fetch(`${API}/indexer/videos`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
       .then((r) => r.json())
-      .then((data) => { setVideos(data); setLoading(false); })
+      .then((data) => { setVideos(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => setLoading(false));
   }, [refreshKey]);
 
@@ -613,7 +621,11 @@ function VideoList({ refreshKey, onReset }: { refreshKey: number; onReset: () =>
     if (!confirm("수집된 영상을 모두 삭제할까요?")) return;
     setResetting(true);
     try {
-      await fetch(`${API}/indexer/videos`, { method: "DELETE" });
+      const token = useAuthStore.getState().token;
+      await fetch(`${API}/indexer/videos`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       onReset();
     } finally {
       setResetting(false);
@@ -652,18 +664,20 @@ function VideoList({ refreshKey, onReset }: { refreshKey: number; onReset: () =>
           <tbody>
             {videos.map((v, i) => (
               <tr key={v.id} className="border-b hover:bg-gray-50">
-                <td className="p-3 text-gray-400">{i + 1}</td>
-                <td className="p-3">
-                  <div className="flex items-center gap-2">
+                <td className="p-3 text-gray-400">
+                  <div className="flex items-center gap-1.5">
+                    <span>{i + 1}</span>
                     {v.is_shorts && (
-                      <span className="rounded px-1.5 py-0.5 text-xs bg-red-100 text-red-600 font-medium shrink-0">
-                        Shorts
+                      <span className="rounded px-1 py-0.5 text-xs bg-red-100 text-red-600 font-medium leading-none shrink-0">
+                        숏츠
                       </span>
                     )}
-                    <a href={v.url} target="_blank" rel="noreferrer" className="hover:underline text-blue-600">
-                      {v.title}
-                    </a>
                   </div>
+                </td>
+                <td className="p-3">
+                  <a href={v.url} target="_blank" rel="noreferrer" className="hover:underline text-blue-600">
+                    {v.title}
+                  </a>
                 </td>
                 <td className="p-3 text-gray-600">{v.channel}</td>
                 <td className="p-3">
@@ -687,7 +701,7 @@ function VideoList({ refreshKey, onReset }: { refreshKey: number; onReset: () =>
 export default function IndexerPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { token, setToken, setUser } = useAuthStore();
+  const { setToken, setUser } = useAuthStore();
   const [tab, setTab] = useState<Tab>("upload");
   const [refreshKey, setRefreshKey] = useState(0);
 

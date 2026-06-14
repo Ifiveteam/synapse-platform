@@ -32,6 +32,12 @@ class IndexerState(TypedDict):
     saved_count: int | None
 
     limit: int | None
+    reindex: bool | None
+
+    # 실행 메타
+    started_at: float | None
+    run_log: str | None
+    user_id: int | None
 
 
 class ExtensionState(TypedDict):
