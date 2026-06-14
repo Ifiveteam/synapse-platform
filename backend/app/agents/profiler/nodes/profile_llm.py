@@ -36,7 +36,7 @@ from app.agents.profiler.tools import (
     get_tag_distribution,
 )
 
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+PROFILER_GEMINI_MODEL = "gemini-2.5-flash"
 MAX_TOOL_ITERATIONS = 1
 
 _TOOL_TO_EVIDENCE_KEY: dict[str, str] = {
@@ -50,14 +50,6 @@ _MAX_CHANNELS = 10
 _MAX_TAGS = 15
 _MAX_QUERIES = 10
 _MAX_SAMPLES = 6
-
-
-def get_gemini_api_key() -> str | None:
-    return os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-
-
-def get_gemini_model() -> str:
-    return os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
 
 
 def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
@@ -261,7 +253,7 @@ def run_llm_analysis(
     layer_b: LayerB,
     investigation_log: list[str],
 ) -> ProfilerAnalysisOutput:
-    api_key = get_gemini_api_key()
+    api_key = os.getenv("GOOGLE_API_KEY")
 
     if not api_key:
         return fallback_analysis(user_id, records, layer_b, investigation_log)
@@ -270,7 +262,7 @@ def run_llm_analysis(
     tool_by_name = {tool.name: tool for tool in tools}
 
     model = ChatGoogleGenerativeAI(
-        model=get_gemini_model(),
+        model=PROFILER_GEMINI_MODEL,
         temperature=0.2,
         google_api_key=api_key,
     )
@@ -357,7 +349,7 @@ def profile_llm_node(state: ProfilerState) -> dict:
     layer_b = state["layer_b"]
     log = list(state.get("investigation_log", []))
 
-    llm_used = bool(get_gemini_api_key())
+    llm_used = bool(os.getenv("GOOGLE_API_KEY"))
     log.append(f"agent: llm_mode={'gemini_tools' if llm_used else 'fallback_rules'}")
 
     analysis = run_llm_analysis(state["user_id"], records, layer_b, log)

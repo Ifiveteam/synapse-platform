@@ -8,10 +8,10 @@ from app.core.env import load_backend_env
 
 load_backend_env()
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
-from app.api.v1 import api_router
+from app.api.v1 import api_router  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +33,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://localhost",
+        "http://localhost:5173",
         "http://localhost:3000",
     ],
     allow_credentials=True,
