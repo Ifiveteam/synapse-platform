@@ -99,7 +99,7 @@ export function MyAnalysesPage() {
         </div>
 
         <Button size="sm" className="shrink-0 gap-1.5" asChild>
-          <Link to={ROUTES.profiler}>
+          <Link to={ROUTES.upload}>
             <Plus size={16} />
             새로 추가
           </Link>

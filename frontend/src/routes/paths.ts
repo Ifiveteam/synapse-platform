@@ -3,6 +3,7 @@ import type { AgentId } from "@/lib/agents";
 export const ROUTES = {
   home: "/",
   login: "/login",
+  upload: "/upload",
   setup: "/setup",
   profiler: "/agents/profiler",
   myAnalyses: "/me/analyses",

@@ -37,7 +37,7 @@ export function HomeHeader() {
           </Button>
         ) : (
           <Button size="sm" onClick={openLoginModal}>
-            Sign Up
+            로그인
           </Button>
         )}
       </div>

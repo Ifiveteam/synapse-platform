@@ -1,6 +1,8 @@
 import { ArrowRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { GraphMiniSvg } from "@/components/home/graph-mini-svg";
+import { ROUTES } from "@/routes";
 import { useAuthStore } from "@/stores/auth";
 import { useShellStore } from "@/stores/shell";
 
@@ -28,12 +30,14 @@ function GoogleIcon() {
 }
 
 export function LoginPanel() {
+  const navigate = useNavigate();
   const loginMock = useAuthStore((s) => s.loginMock);
   const closeLoginModal = useShellStore((s) => s.closeLoginModal);
 
   const handleLogin = () => {
     loginMock();
     closeLoginModal();
+    navigate(ROUTES.upload);
   };
 
   return (
