@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,7 @@ def _client_secret() -> str:
 
 def _frontend_url() -> str:
     return os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
+
 
 SCOPES = [
     "openid",
@@ -125,11 +127,8 @@ async def get_current_user(
     authorization: str | None = None,
     session: AsyncSession = Depends(get_db),
 ) -> User:
-    from fastapi import Header
     raise HTTPException(status_code=501, detail="Use get_current_user_dep")
 
-
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -139,14 +138,20 @@ async def get_current_user_dep(
     session: AsyncSession = Depends(get_db),
 ) -> User:
     if not credentials:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="인증이 필요합니다")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="인증이 필요합니다"
+        )
     user_id = decode_access_token(credentials.credentials)
     if not user_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="유효하지 않은 토큰")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="유효하지 않은 토큰"
+        )
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="유저를 찾을 수 없습니다")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="유저를 찾을 수 없습니다"
+        )
     return user
 
 
@@ -165,3 +170,33 @@ class UserResponse(BaseModel):
 @router.get("/me", response_model=UserResponse)
 async def get_me(user: User = Depends(get_current_user_dep)) -> UserResponse:
     return UserResponse.model_validate(user)
+
+
+class DevLoginResponse(BaseModel):
+    access_token: str
+    user: UserResponse
+
+
+@router.post("/dev-login", response_model=DevLoginResponse)
+async def dev_login(session: AsyncSession = Depends(get_db)):
+    """로컬 개발용 — Google OAuth 없이 즉시 로그인."""
+    google_id = "dev-local-user"
+    result = await session.execute(select(User).where(User.google_id == google_id))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        user = User(
+            google_id=google_id,
+            email="dev@synapse.local",
+            name="Synapse Dev",
+            picture=None,
+        )
+        session.add(user)
+        await session.flush()
+        await session.refresh(user)
+
+    token = create_access_token(user.id)
+    return DevLoginResponse(
+        access_token=token,
+        user=UserResponse.model_validate(user),
+    )
