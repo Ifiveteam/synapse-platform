@@ -15,6 +15,10 @@ Desktop.ini
 # Environment & secrets (.env.example 은 커밋)
 **/.env
 **/.env.local
+**/.env.*.local
+**/.env.development
+**/.env.production
+!**/.env.example
 
 # Python (backend)
 __pycache__/
