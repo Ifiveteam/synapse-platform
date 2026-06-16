@@ -43,18 +43,24 @@ export function useTracking() {
    * 로컬 state를 직접 바꾸지 않고 storage만 갱신한다.
    * onChanged 리스너가 모든 컨텍스트의 UI를 한 번에 동기화한다.
    */
-  const toggleTracking = () => {
+  const setTracking = (enabled: boolean) => {
     if (!isExtensionContextValid() || !chrome.storage?.local) {
       return
     }
 
     chrome.storage.local.set({
-      [STORAGE_KEYS.TRACKING_STATUS]: !isTracking,
+      [STORAGE_KEYS.TRACKING_STATUS]: enabled,
     })
+  }
+
+  /** FAB 등 클릭 토글 UI용 — storage 단일 소스 유지 */
+  const toggleTracking = () => {
+    setTracking(!isTracking)
   }
 
   return {
     isTracking,
+    setTracking,
     toggleTracking,
   }
 }

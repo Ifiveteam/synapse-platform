@@ -11,6 +11,8 @@ export interface TrackingPayload {
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
+export { API_BASE }
+
 /**
  * 정산된 페이지 체류 세션을 backend DB로 전송한다.
  * sessionManager.endCurrentSession()에서 fire-and-forget으로 호출된다.
