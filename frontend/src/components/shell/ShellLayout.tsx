@@ -24,8 +24,16 @@ export function ShellLayout() {
   const urlToken = searchParams.get("token");
 
   useEffect(() => {
-    if (urlToken) setToken(urlToken);
-  }, [urlToken, setToken]);
+    if (!urlToken) return;
+    setToken(urlToken);
+    const params = new URLSearchParams(searchParams);
+    params.delete("token");
+    const search = params.toString();
+    navigate(
+      { pathname: location.pathname, search: search ? `?${search}` : "" },
+      { replace: true },
+    );
+  }, [urlToken, setToken, searchParams, location.pathname, navigate]);
 
   useEffect(() => {
     const activeToken = token ?? urlToken;

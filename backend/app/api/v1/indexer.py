@@ -1,7 +1,9 @@
 import os
 import tempfile
-import uuid
+import uuid as uuid_mod
 from collections import Counter
+from pathlib import Path
+from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from pydantic import BaseModel
@@ -18,6 +20,14 @@ router = APIRouter(prefix="/indexer", tags=["indexer"])
 analysis_status: dict = {}
 
 
+def _temp_upload_path(file: UploadFile) -> str:
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".zip", ".json"}:
+        suffix = ".json"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        return tmp.name
+
+
 class VideoTrackRequest(BaseModel):
     title: str
     channel: str
@@ -29,7 +39,11 @@ class VideoTrackRequest(BaseModel):
 
 
 async def run_analysis(
-    task_id: str, tmp_path: str, limit: int = 2000, reindex: bool = False
+    task_id: str,
+    tmp_path: str,
+    user_id: UUID,
+    limit: int = 2000,
+    reindex: bool = False,
 ):
     """백그라운드 분석 실행"""
     try:
@@ -44,6 +58,7 @@ async def run_analysis(
                 "saved_count": None,
                 "limit": limit,
                 "reindex": reindex,
+                "user_id": user_id,
             }
         )
 
@@ -53,7 +68,11 @@ async def run_analysis(
             analysis_status[task_id] = {"status": "error", "message": result["error"]}
             return
 
-        categories = [item.get("category", "") for item in result["cleaned_data"]]
+        from app.agents.indexer.prompt import normalize_category
+
+        categories = [
+            normalize_category(item.get("category")) for item in result["cleaned_data"]
+        ]
         category_stats = dict(Counter(categories).most_common())
 
         videos = [
@@ -84,15 +103,16 @@ async def run_analysis(
 async def analyze(  # noqa: B008
     file: UploadFile = File(...),  # noqa: B008
     background_tasks: BackgroundTasks = BackgroundTasks(),  # noqa: B008
+    user=Depends(get_current_user_dep),
 ):
     """테이크아웃 JSON 파일 업로드 → 백그라운드 분석 시작"""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
-        content = await file.read()
+    tmp_path = _temp_upload_path(file)
+    content = await file.read()
+    with open(tmp_path, "wb") as tmp:
         tmp.write(content)
-        tmp_path = tmp.name
 
-    task_id = str(uuid.uuid4())
-    background_tasks.add_task(run_analysis, task_id, tmp_path, 2000)
+    task_id = str(uuid_mod.uuid4())
+    background_tasks.add_task(run_analysis, task_id, tmp_path, user.id, 2000)
 
     return {"status": "started", "task_id": task_id}
 
@@ -101,15 +121,16 @@ async def analyze(  # noqa: B008
 async def reindex(
     file: UploadFile = File(...),  # noqa: B008
     background_tasks: BackgroundTasks = BackgroundTasks(),  # noqa: B008
+    user=Depends(get_current_user_dep),
 ):
     """재분석 - 기존 데이터 삭제 후 파이프라인 처음부터 재실행"""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
-        content = await file.read()
+    tmp_path = _temp_upload_path(file)
+    content = await file.read()
+    with open(tmp_path, "wb") as tmp:
         tmp.write(content)
-        tmp_path = tmp.name
 
-    task_id = str(uuid.uuid4())
-    background_tasks.add_task(run_analysis, task_id, tmp_path, 2000, reindex=True)
+    task_id = str(uuid_mod.uuid4())
+    background_tasks.add_task(run_analysis, task_id, tmp_path, user.id, 2000, True)
 
     return {"status": "started", "task_id": task_id}
 
@@ -118,15 +139,16 @@ async def reindex(
 async def analyze_sample(  # noqa: B008
     file: UploadFile = File(...),  # noqa: B008
     background_tasks: BackgroundTasks = BackgroundTasks(),  # noqa: B008
+    user=Depends(get_current_user_dep),
 ):
     """샘플 모드 - 20개만 처리 (시연용)"""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
-        content = await file.read()
+    tmp_path = _temp_upload_path(file)
+    content = await file.read()
+    with open(tmp_path, "wb") as tmp:
         tmp.write(content)
-        tmp_path = tmp.name
 
-    task_id = str(uuid.uuid4())
-    background_tasks.add_task(run_analysis, task_id, tmp_path, 20)
+    task_id = str(uuid_mod.uuid4())
+    background_tasks.add_task(run_analysis, task_id, tmp_path, user.id, 20)
 
     return {"status": "started", "task_id": task_id, "mode": "sample"}
 
@@ -144,18 +166,18 @@ async def get_videos(
     session: AsyncSession = Depends(get_db), user=Depends(get_current_user_dep)
 ):
     """수집된 영상 목록 조회 (최신순, 본인 데이터만)"""
-    from app.agents.indexer.repository import get_all_videos
+    from app.repositories.indexer_repository import get_all_videos
 
     videos = await get_all_videos(session, user_id=user.id)
     return [
         {
-            "id": v.id,
-            "title": v.title,
+            "id": str(v.id),
+            "title": v.title or "",
             "channel": v.channel,
             "url": v.url,
             "watched_at": str(v.watched_at) if v.watched_at else "",
             "category": v.category or "",
-            "keywords": v.keywords or [],
+            "keywords": v.tags if isinstance(v.tags, list) else [],
             "duration": v.duration or 0,
             "is_shorts": v.is_shorts or False,
         }
@@ -168,9 +190,15 @@ async def delete_all_videos(
     session: AsyncSession = Depends(get_db), user=Depends(get_current_user_dep)
 ):
     """본인 영상 전체 삭제"""
-    from app.models.video_vector import VideoVector
+    from app.models.user_feature_snapshot import UserFeatureSnapshot
+    from app.models.user_video_watch import UserVideoWatch
 
-    await session.execute(delete(VideoVector).where(VideoVector.user_id == user.id))
+    await session.execute(
+        delete(UserFeatureSnapshot).where(UserFeatureSnapshot.user_id == user.id)
+    )
+    await session.execute(
+        delete(UserVideoWatch).where(UserVideoWatch.user_id == user.id)
+    )
     await session.commit()
     return {"message": "전체 삭제 완료"}
 
@@ -210,6 +238,6 @@ async def track_video(
     background_tasks: BackgroundTasks = BackgroundTasks(),  # noqa: B008
 ):
     """익스텐션에서 실시간 영상 수집"""
-    task_id = str(uuid.uuid4())
+    task_id = str(uuid_mod.uuid4())
     background_tasks.add_task(run_extension_analysis, task_id, video.model_dump())
     return {"status": "started", "task_id": task_id}

@@ -45,8 +45,11 @@ function loadAnalyzedFiles(): Record<string, AnalysisStats> {
 
 function AnalysisSummary({ stats }: { stats: AnalysisStats }) {
   const noiseRemoved = stats.raw_count - (stats.filtered_count ?? stats.cleaned_count);
-  const normalCount = stats.cleaned_count - stats.shorts_count;
-  const topCategories = Object.entries(stats.category_stats).slice(0, 3);
+  const longCount = stats.cleaned_count - stats.shorts_count;
+  const categoryTotal = Object.values(stats.category_stats).reduce((sum, n) => sum + n, 0);
+  const topCategories = Object.entries(stats.category_stats)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
 
   return (
     <div className="space-y-4 rounded-2xl border border-violet-100 bg-violet-50 p-5">
@@ -55,8 +58,8 @@ function AnalysisSummary({ stats }: { stats: AnalysisStats }) {
         {[
           { label: "파싱", value: stats.raw_count, sub: "원본 항목", color: "text-gray-700" },
           { label: "노이즈 제거", value: noiseRemoved, sub: "광고·삭제됨", color: "text-orange-600" },
-          { label: "일반 영상", value: normalCount, sub: "처리 완료", color: "text-violet-700" },
-          { label: "숏츠", value: stats.shorts_count, sub: "Shorts 분류", color: "text-red-500" },
+          { label: "분류 완료", value: stats.cleaned_count, sub: "2개월 시청 기록", color: "text-violet-700" },
+          { label: "숏츠", value: stats.shorts_count, sub: `롱폼 ${longCount.toLocaleString()}건`, color: "text-red-500" },
         ].map((item) => (
           <div key={item.label} className="rounded-xl border border-gray-100 bg-white px-3 py-3 text-center">
             <p className={`text-xl font-bold ${item.color}`}>{item.value.toLocaleString()}</p>
@@ -67,7 +70,9 @@ function AnalysisSummary({ stats }: { stats: AnalysisStats }) {
       </div>
       {topCategories.length > 0 && (
         <div>
-          <p className="mb-2 text-xs font-medium text-gray-500">카테고리 분류</p>
+          <p className="mb-2 text-xs font-medium text-gray-500">
+            카테고리 분류 (상위 5 · 합계 {categoryTotal.toLocaleString()}건)
+          </p>
           <div className="flex flex-wrap gap-2">
             {topCategories.map(([cat, count]) => (
               <span
@@ -81,10 +86,18 @@ function AnalysisSummary({ stats }: { stats: AnalysisStats }) {
         </div>
       )}
       <p className="text-xs text-gray-400">
-        총 <span className="font-semibold text-gray-600">{stats.saved}</span>개 저장됨
+        DB 샘플 저장 <span className="font-semibold text-gray-600">{stats.saved}</span>건
+        {categoryTotal !== stats.cleaned_count && stats.cleaned_count > 0 ? (
+          <span className="text-orange-600"> · 분류 합계 불일치</span>
+        ) : null}
       </p>
     </div>
   );
+}
+
+function authHeaders(): HeadersInit {
+  const token = useAuthStore.getState().token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 function DirectUploadTab({
@@ -148,7 +161,17 @@ function DirectUploadTab({
       form.append("file", file);
 
       try {
-        const res = await fetch(`${API}/indexer/analyze`, { method: "POST", body: form });
+        const res = await fetch(`${API}/indexer/analyze`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: form,
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(
+            typeof body.detail === "string" ? body.detail : "업로드에 실패했습니다.",
+          );
+        }
         const data = await res.json();
         const taskId = data.task_id;
 
@@ -177,9 +200,9 @@ function DirectUploadTab({
             /* 일시적 오류 무시 */
           }
         }, 3000);
-      } catch {
+      } catch (err) {
         setStatus("error");
-        setMessage("업로드 실패. 서버가 실행 중인지 확인하세요.");
+        setMessage(err instanceof Error ? err.message : "업로드 실패. 서버가 실행 중인지 확인하세요.");
       }
     },
     [onSuccess],

@@ -2,13 +2,13 @@ from langgraph.graph import END, StateGraph
 
 from app.agents.indexer.prompt import classify_batch, extract_keywords_batch
 from app.agents.indexer.state import ExtensionState
-from app.agents.indexer.tool import get_video_info, vectorize
+from app.agents.indexer.tool import get_video_info
 
 
 async def node_noise_filter(state: ExtensionState) -> ExtensionState:
     """노드 1: 노이즈 필터링 — 쇼츠 제외, 중복 제거"""
-    from app.agents.indexer.repository import is_duplicate
     from app.core.database.session import AsyncSessionLocal
+    from app.repositories.indexer_repository import is_duplicate
 
     filtered = []
     async with AsyncSessionLocal() as session:
@@ -66,20 +66,11 @@ def node_classify(state: ExtensionState) -> ExtensionState:
         return {**state, "error": str(e)}
 
 
-def node_vectorize(state: ExtensionState) -> ExtensionState:
-    """노드 4: 벡터화"""
-    try:
-        vectorized = vectorize(state["cleaned_data"])
-        return {**state, "cleaned_data": vectorized, "error": None}
-    except Exception as e:
-        return {**state, "error": str(e)}
-
-
 async def node_save(state: ExtensionState) -> ExtensionState:
     """노드 5: DB 저장"""
     try:
-        from app.agents.indexer.repository import save_vectors
         from app.core.database.session import AsyncSessionLocal
+        from app.repositories.indexer_repository import save_vectors
 
         async with AsyncSessionLocal() as session:
             await save_vectors(state["cleaned_data"], session)
@@ -101,7 +92,6 @@ builder = StateGraph(ExtensionState)
 builder.add_node("noise_filter", node_noise_filter)
 builder.add_node("keywords", node_keywords)
 builder.add_node("classify", node_classify)
-builder.add_node("vectorize", node_vectorize)
 builder.add_node("save", node_save)
 
 builder.set_entry_point("noise_filter")
@@ -113,10 +103,7 @@ builder.add_conditional_edges(
     "keywords", should_continue, {"continue": "classify", "end": END}
 )
 builder.add_conditional_edges(
-    "classify", should_continue, {"continue": "vectorize", "end": END}
-)
-builder.add_conditional_edges(
-    "vectorize", should_continue, {"continue": "save", "end": END}
+    "classify", should_continue, {"continue": "save", "end": END}
 )
 builder.add_edge("save", END)
 

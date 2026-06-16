@@ -5,8 +5,8 @@ import {
   UploadPanel,
   resetDriveUploadState,
 } from "@/components/upload/upload-panel";
-import { fetchMe } from "@/api/auth";
 import { API_BASE_URL } from "@/lib/env";
+import { ROUTES } from "@/routes";
 import { useAuthStore } from "@/stores/auth";
 
 const API = `${API_BASE_URL}/api/v1`;
@@ -139,19 +139,15 @@ function VideoList({ refreshKey, onReset }: { refreshKey: number; onReset: () =>
 export function IndexerPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { setToken, setUser } = useAuthStore();
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // 구 OAuth 콜백(/agents/indexer?token=) → 업로드 화면으로
   useEffect(() => {
     const urlToken = searchParams.get("token");
     if (urlToken) {
-      setToken(urlToken);
-      fetchMe(urlToken).then((u) => {
-        if (u) setUser(u);
-      });
-      navigate("/agents/indexer");
+      navigate(`${ROUTES.upload}?token=${encodeURIComponent(urlToken)}`, { replace: true });
     }
-  }, [searchParams, setToken, setUser, navigate]);
+  }, [searchParams, navigate]);
 
   const onSuccess = () => setRefreshKey((k) => k + 1);
   const onReset = () => {

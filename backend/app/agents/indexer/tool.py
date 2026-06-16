@@ -95,9 +95,20 @@ def vectorize(items: list[dict]) -> list[dict]:
     ]
 
 
-def _extract_video_id(url: str) -> str | None:
+def extract_video_id(url: str) -> str | None:
     m = re.search(r"(?:v=|shorts/)([^&?/]+)", url)
     return m.group(1) if m else None
+
+
+def thumbnail_url_for(url: str) -> str | None:
+    """공개 썸네일 URL (API 없이 사용 가능)."""
+    video_id = extract_video_id(url)
+    if not video_id:
+        return None
+    return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+
+
+_extract_video_id = extract_video_id
 
 
 def _parse_duration(duration_str: str) -> int:
@@ -121,6 +132,7 @@ def get_videos_info_batch(urls: list[str]) -> list[dict]:
                 "duration": 0,
                 "is_shorts": url_is_shorts[u],
                 "tags": [],
+                "thumbnail_url": thumbnail_url_for(u),
             }
             for u in urls
         ]
@@ -153,6 +165,12 @@ def get_videos_info_batch(urls: list[str]) -> list[dict]:
                     tags = snippet.get("tags", [])
                     duration = _parse_duration(content.get("duration", "PT0S"))
                     tag_shorts = any(t.lower() in ("#shorts", "shorts") for t in tags)
+                    thumbs = snippet.get("thumbnails", {})
+                    thumb = (
+                        thumbs.get("high", {}).get("url")
+                        or thumbs.get("medium", {}).get("url")
+                        or thumbs.get("default", {}).get("url")
+                    )
                     api_results[vid_id] = {
                         "description": snippet.get("description", ""),
                         "duration": duration,
@@ -161,6 +179,7 @@ def get_videos_info_batch(urls: list[str]) -> list[dict]:
                         ],
                         "tag_is_shorts": tag_shorts,
                         "duration_is_shorts": 0 < duration <= 60,
+                        "thumbnail_url": thumb,
                     }
         except Exception as e:
             print(f"[YouTube API 배치] 에러 (ids {i}~{i + 50}): {e}")
@@ -189,13 +208,21 @@ def get_videos_info_batch(urls: list[str]) -> list[dict]:
                     "duration": info["duration"],
                     "is_shorts": is_shorts,
                     "tags": info["tags"],
+                    "thumbnail_url": info.get("thumbnail_url")
+                    or thumbnail_url_for(url),
                 }
             )
         else:
             if url_shorts:
                 url_shorts_count += 1
             result.append(
-                {"description": "", "duration": 0, "is_shorts": url_shorts, "tags": []}
+                {
+                    "description": "",
+                    "duration": 0,
+                    "is_shorts": url_shorts,
+                    "tags": [],
+                    "thumbnail_url": thumbnail_url_for(url),
+                }
             )
     print(
         f"[Shorts 감지] URL: {url_shorts_count}건 / 태그: {tag_shorts_count}건 / 60초이하: {duration_shorts_count}건 / API응답: {len(api_results)}건/{len(urls)}건"

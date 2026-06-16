@@ -1,17 +1,20 @@
+import uuid
 from typing import TypedDict
 
 
-class VideoItem(TypedDict):
+class VideoItem(TypedDict, total=False):
     title: str
     channel: str
     channel_url: str
     url: str
     watched_at: str
     category: str
-    embedding: list[float]
     keywords: list[str]
     duration: int
     is_shorts: bool
+    description: str
+    thumbnail_url: str
+    transcript: str
 
 
 class IndexerState(TypedDict):
@@ -21,9 +24,15 @@ class IndexerState(TypedDict):
     # 파싱 결과
     raw_data: list[dict]
 
-    # 전처리 결과
+    # 전처리 결과 (2개월 전체)
     cleaned_data: list[VideoItem]
-    filtered_count: int | None  # 노이즈 제거 후, limit 적용 전 개수
+    filtered_count: int | None
+    analysis_start: str | None
+    analysis_end: str | None
+
+    # 샘플 (카테고리×타입별 최신 5개)
+    sampled_data: list[VideoItem]
+    sample_count: int | None
 
     # 에러
     error: str | None
@@ -37,7 +46,7 @@ class IndexerState(TypedDict):
     # 실행 메타
     started_at: float | None
     run_log: str | None
-    user_id: int | None
+    user_id: uuid.UUID | None
 
 
 class ExtensionState(TypedDict):

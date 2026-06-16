@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { GraphMiniSvg } from "@/components/home/graph-mini-svg";
+import { API_BASE_URL } from "@/lib/env";
 import { ROUTES } from "@/routes";
 import { useAuthStore } from "@/stores/auth";
 import { useShellStore } from "@/stores/shell";
@@ -34,7 +35,13 @@ export function LoginPanel() {
   const loginMock = useAuthStore((s) => s.loginMock);
   const closeLoginModal = useShellStore((s) => s.closeLoginModal);
 
-  const handleLogin = () => {
+  // 실제 Google OAuth: 백엔드 /auth/login → 구글 동의 → 콜백에서 ?token= 으로 복귀
+  const handleGoogleLogin = () => {
+    window.location.href = `${API_BASE_URL}/api/v1/auth/login`;
+  };
+
+  // 개발 편의: 백엔드 없이 즉시 게스트 진입 (목 토큰 → /me 검증 스킵)
+  const handleGuestLogin = () => {
     loginMock();
     closeLoginModal();
     navigate(ROUTES.upload);
@@ -62,7 +69,7 @@ export function LoginPanel() {
 
           <button
             type="button"
-            onClick={handleLogin}
+            onClick={handleGoogleLogin}
             className="border-border hover:bg-secondary mt-6 flex w-full items-center gap-3 rounded-full border bg-card px-5 py-3.5 text-sm font-medium transition-colors"
           >
             <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
@@ -70,6 +77,14 @@ export function LoginPanel() {
             </span>
             <span className="flex-1 text-left">Google로 계속하기</span>
             <ArrowRight size={16} className="text-muted-foreground" />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleGuestLogin}
+            className="text-muted-foreground hover:text-foreground mt-3 w-full text-xs underline-offset-4 transition-colors hover:underline"
+          >
+            게스트로 둘러보기 (개발용)
           </button>
 
           <p className="text-muted-foreground mt-5 text-xs">

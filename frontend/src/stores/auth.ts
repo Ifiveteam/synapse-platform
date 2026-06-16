@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export interface AuthUser {
-  id: number;
+  id: string;
   email: string;
   name: string;
   picture: string | null;
@@ -11,7 +11,7 @@ export interface AuthUser {
 export const MOCK_AUTH_TOKEN = "mock-dev-token";
 
 const MOCK_USER: AuthUser = {
-  id: 1,
+  id: "mock-guest",
   email: "dev@synapse.local",
   name: "Synapse Dev",
   picture: null,

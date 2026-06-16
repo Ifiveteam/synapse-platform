@@ -30,6 +30,7 @@ dependencies = [
     "python-jose[cryptography]>=3.5.0",
     "psycopg[binary,pool]>=3.3.4",
     "celery[redis]>=5.4.0",
+    "youtube-transcript-api>=1.0.0",
 ]
 
 [dependency-groups]

@@ -19,8 +19,8 @@ def update_weights_task(self):
 
 
 async def _update_weights():
-    from app.agents.indexer.repository import update_all_weights
     from app.core.database.session import AsyncSessionLocal
+    from app.repositories.indexer_repository import update_all_weights
 
     async with AsyncSessionLocal() as session:
         count = await update_all_weights(session)

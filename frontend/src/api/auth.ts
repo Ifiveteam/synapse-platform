@@ -1,7 +1,7 @@
 import { API_BASE_URL } from "@/lib/env";
 
 export interface AuthUser {
-  id: number;
+  id: string;
   email: string;
   name: string;
   picture: string | null;
