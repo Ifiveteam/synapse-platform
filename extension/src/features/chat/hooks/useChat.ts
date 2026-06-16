@@ -107,7 +107,7 @@ export function useChat() {
       const contextAtSend = await queryActiveTabContext()
       setCurrentContext(contextAtSend)
 
-      const response = await fetch(`${API_BASE}/api/v1/chat/stream`, {
+      const response = await fetch(`${API_BASE}/api/v1/archiver/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
