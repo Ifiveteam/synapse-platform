@@ -2,5 +2,6 @@
 
 
 def import_all_models() -> None:
+    import app.models.chat  # noqa: F401
     import app.models.user  # noqa: F401
     import app.models.video_vector  # noqa: F401
