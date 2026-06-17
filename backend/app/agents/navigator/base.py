@@ -15,9 +15,8 @@ from .schemas import (
     IdealType,
     ProfilerData,
     Quest,
-    RadarChart,
 )
-from .state import NavigatorState, NavigatorStep
+from .state import NavigatorState
 from .tool import (
     compare_radar,
     compute_dominant_weak,
@@ -52,8 +51,8 @@ class NavigatorAgent:
 
     def design_ideal_auto(
         self,
-        user_id:        str,
-        profiler_data:  ProfilerData,
+        user_id: str,
+        profiler_data: ProfilerData,
         top5_interests: list[str],
     ) -> IdealDesignResponse:
         """
@@ -62,9 +61,11 @@ class NavigatorAgent:
         """
         dominant, weak = compute_dominant_weak(profiler_data.layer_a)
         proposals, opposite_guide = generate_all_ideals(
-            profiler_data.layer_a, dominant, weak,
-            layer_b        = profiler_data.layer_b,
-            top5_interests = top5_interests,
+            profiler_data.layer_a,
+            dominant,
+            weak,
+            layer_b=profiler_data.layer_b,
+            top5_interests=top5_interests,
         )
         return IdealDesignResponse(
             user_id=user_id,
@@ -82,15 +83,15 @@ class NavigatorAgent:
 
     def generate_guide_and_quests(
         self,
-        profiler_data:  ProfilerData,
+        profiler_data: ProfilerData,
         selected_ideal: IdealRadarChart,
         top5_interests: list[str],
     ) -> tuple[Guide, list[Quest]]:
         """이상향 확정 후 가이드 + 퀘스트 즉시 생성 (Layer B 보강 포함)"""
         comparison = compare_radar(profiler_data.layer_a, selected_ideal)
-        guide      = generate_guide(comparison, top5_interests)
-        quests     = generate_quests(comparison, top5_interests, count=3)
-        quests     = enrich_quests_with_layer_b(quests, profiler_data.layer_b)
+        guide = generate_guide(comparison, top5_interests)
+        quests = generate_quests(comparison, top5_interests, count=3)
+        quests = enrich_quests_with_layer_b(quests, profiler_data.layer_b)
         return guide, quests
 
     # ──────────────────────────────────────────
@@ -99,30 +100,34 @@ class NavigatorAgent:
 
     async def run(
         self,
-        user_id:             str,
-        profiler_data:       ProfilerData,
-        top5_interests:      list[str],
+        user_id: str,
+        profiler_data: ProfilerData,
+        top5_interests: list[str],
         selected_ideal_type: Optional[IdealType] = None,
     ) -> NavigatorState:
         """Navigator 전체 워크플로우 실행"""
         dominant, weak = compute_dominant_weak(profiler_data.layer_a)
-        proposals, _   = generate_all_ideals(
-            profiler_data.layer_a, dominant, weak,
-            layer_b        = profiler_data.layer_b,
-            top5_interests = top5_interests,
+        proposals, _ = generate_all_ideals(
+            profiler_data.layer_a,
+            dominant,
+            weak,
+            layer_b=profiler_data.layer_b,
+            top5_interests=top5_interests,
         )
-        target_type    = selected_ideal_type or IdealType.EXPANSION
-        selected       = next((p for p in proposals if p.ideal_type == target_type), proposals[0])
+        target_type = selected_ideal_type or IdealType.EXPANSION
+        selected = next(
+            (p for p in proposals if p.ideal_type == target_type), proposals[0]
+        )
 
         initial_state = NavigatorState(
-            user_id            = user_id,
-            current_radar      = profiler_data.layer_a,
-            layer_b            = profiler_data.layer_b,
-            top5_interests     = top5_interests,
-            is_ideal_confirmed = True,
-            selected_ideal     = selected,
-            ideal_type         = target_type,
-            ideal_proposals    = IdealDesignResponse(
+            user_id=user_id,
+            current_radar=profiler_data.layer_a,
+            layer_b=profiler_data.layer_b,
+            top5_interests=top5_interests,
+            is_ideal_confirmed=True,
+            selected_ideal=selected,
+            ideal_type=target_type,
+            ideal_proposals=IdealDesignResponse(
                 user_id=user_id,
                 proposals=proposals,
                 selected=selected,
@@ -138,7 +143,7 @@ class NavigatorAgent:
 
     async def chat(
         self,
-        state:        NavigatorState,
+        state: NavigatorState,
         user_message: str,
     ) -> AsyncIterator[str]:
         """유저 메시지를 받아 Navigator와 대화"""
@@ -153,7 +158,11 @@ class NavigatorAgent:
             _set_ideal_by_type(updated_state, IdealType.OPPOSITE)
         elif "확장" in user_message or "expansion" in user_message.lower():
             _set_ideal_by_type(updated_state, IdealType.EXPANSION)
-        elif "균형" in user_message or "balanced" in user_message.lower() or "밸런스" in user_message:
+        elif (
+            "균형" in user_message
+            or "balanced" in user_message.lower()
+            or "밸런스" in user_message
+        ):
             _set_ideal_by_type(updated_state, IdealType.BALANCED)
 
         async for chunk in self._graph.astream(updated_state, stream_mode="values"):
@@ -168,15 +177,15 @@ class NavigatorAgent:
 
     @staticmethod
     def create_initial_state(
-        user_id:        str,
-        profiler_data:  ProfilerData,
+        user_id: str,
+        profiler_data: ProfilerData,
         top5_interests: list[str],
     ) -> NavigatorState:
         return NavigatorState(
-            user_id        = user_id,
-            current_radar  = profiler_data.layer_a,
-            layer_b        = profiler_data.layer_b,
-            top5_interests = top5_interests,
+            user_id=user_id,
+            current_radar=profiler_data.layer_a,
+            layer_b=profiler_data.layer_b,
+            top5_interests=top5_interests,
         )
 
 
@@ -190,7 +199,7 @@ def _set_ideal_by_type(state: NavigatorState, ideal_type: IdealType) -> None:
         for p in state.ideal_proposals.proposals:
             if p.ideal_type == ideal_type:
                 state.selected_ideal = p
-                state.ideal_type     = ideal_type
+                state.ideal_type = ideal_type
                 break
 
 

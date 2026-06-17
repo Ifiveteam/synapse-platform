@@ -11,7 +11,6 @@ import httpx
 
 from .schemas import IdealRadarChart, Playlist, PlaylistItem
 
-
 YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3"
 
 
@@ -56,14 +55,13 @@ async def search_videos(
     }
 
     async with httpx.AsyncClient(timeout=10.0) as client:
-        search_resp = await client.get(f"{YOUTUBE_API_BASE}/search", params=search_params)
+        search_resp = await client.get(
+            f"{YOUTUBE_API_BASE}/search", params=search_params
+        )
         search_resp.raise_for_status()
         search_data = search_resp.json()
 
-    video_ids = [
-        item["id"]["videoId"]
-        for item in search_data.get("items", [])
-    ]
+    video_ids = [item["id"]["videoId"] for item in search_data.get("items", [])]
     if not video_ids:
         return []
 
@@ -75,19 +73,23 @@ async def search_videos(
     }
 
     async with httpx.AsyncClient(timeout=10.0) as client:
-        videos_resp = await client.get(f"{YOUTUBE_API_BASE}/videos", params=videos_params)
+        videos_resp = await client.get(
+            f"{YOUTUBE_API_BASE}/videos", params=videos_params
+        )
         videos_resp.raise_for_status()
         videos_data = videos_resp.json()
 
     results = []
     for item in videos_data.get("items", []):
         duration_iso = item["contentDetails"]["duration"]
-        results.append({
-            "video_id": item["id"],
-            "title": item["snippet"]["title"],
-            "channel": item["snippet"]["channelTitle"],
-            "duration_seconds": _parse_duration(duration_iso),
-        })
+        results.append(
+            {
+                "video_id": item["id"],
+                "title": item["snippet"]["title"],
+                "channel": item["snippet"]["channelTitle"],
+                "duration_seconds": _parse_duration(duration_iso),
+            }
+        )
 
     return results
 
@@ -105,13 +107,15 @@ async def build_playlist_items(
         try:
             videos = await search_videos(sq["query"], max_results=videos_per_query)
             for v in videos:
-                items.append(PlaylistItem(
-                    video_id=v["video_id"],
-                    title=v["title"],
-                    channel=v["channel"],
-                    duration_seconds=v["duration_seconds"],
-                    reason=sq.get("reason", ""),
-                ))
+                items.append(
+                    PlaylistItem(
+                        video_id=v["video_id"],
+                        title=v["title"],
+                        channel=v["channel"],
+                        duration_seconds=v["duration_seconds"],
+                        reason=sq.get("reason", ""),
+                    )
+                )
         except Exception:
             # 검색 실패 시 해당 쿼리 skip
             continue

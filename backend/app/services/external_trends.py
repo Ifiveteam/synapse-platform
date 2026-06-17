@@ -52,7 +52,7 @@ _YOUTUBE_CATEGORY_BY_ID: dict[str, str] = {
     "23": "코미디",
     "24": "엔터테인먼트",
     "25": "뉴스/정치",
-    "26": "하우투/스타일",
+    "26": "노하우/스타일",
     "27": "교육",
     "28": "과학/기술",
     "29": "비영리/사회운동",
@@ -71,6 +71,7 @@ _NAVER_OPENAPI_SECTION_QUERIES: tuple[tuple[str, str], ...] = (
     ("사회", "사회"),
     ("IT 과학", "IT/과학"),
 )
+
 
 class GoogleTrendItem(TypedDict):
     keyword: str
@@ -495,10 +496,7 @@ async def fetch_naver_news_trends() -> list[NaverNewsTrendItem]:
     deduped.sort(key=lambda row: row["published_at"], reverse=True)
     limited = deduped[:NAVER_NEWS_LIMIT]
 
-    return [
-        {**item, "rank": index}
-        for index, item in enumerate(limited, start=1)
-    ]
+    return [{**item, "rank": index} for index, item in enumerate(limited, start=1)]
 
 
 async def fetch_real_trends() -> ExternalMarketTrends:

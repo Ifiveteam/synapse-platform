@@ -1,31 +1,31 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ChevronLeft,
   ChevronRight,
   CircleDot,
+  Loader2,
   Plus,
 } from "lucide-react";
 
+import { fetchMyAnalyses } from "@/api/analyses";
+import { ApiError } from "@/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ANALYSIS_PAGE_SIZE,
-  MOCK_ANALYSIS_RESULTS,
+  isAnalysisPending,
   type AnalysisResultItem,
-  type AnalysisStatus,
-} from "@/lib/analyses/mock";
+} from "@/lib/analyses/types";
 import { ROUTES } from "@/routes";
 
-type FilterTab = "all" | AnalysisStatus;
+type FilterTab = "all" | "completed" | "pending";
 
 function AnalysisListItem({ item }: { item: AnalysisResultItem }) {
-  return (
-    <Link
-      to={ROUTES.analysisDetail(item.id)}
-      className="border-border hover:bg-secondary/60 flex items-center gap-4 rounded-2xl border bg-card px-4 py-4 transition-colors"
-    >
+  const pending = isAnalysisPending(item.status);
+  const content = (
+    <>
       <div className="bg-accent text-accent-foreground flex h-11 w-11 shrink-0 items-center justify-center rounded-full">
         <CircleDot size={20} />
       </div>
@@ -36,13 +36,32 @@ function AnalysisListItem({ item }: { item: AnalysisResultItem }) {
       </div>
 
       <Badge
-        variant={item.status === "completed" ? "secondary" : "orange"}
+        variant={pending ? "orange" : "secondary"}
         className="shrink-0"
       >
-        {item.status === "completed" ? "완료" : "미완료"}
+        {pending ? (item.status === "running" ? "분석 중" : "미완료") : "완료"}
       </Badge>
 
-      <ChevronRight size={18} className="text-muted-foreground shrink-0" />
+      {!pending && (
+        <ChevronRight size={18} className="text-muted-foreground shrink-0" />
+      )}
+    </>
+  );
+
+  if (pending) {
+    return (
+      <div className="border-border flex items-center gap-4 rounded-2xl border bg-card px-4 py-4 opacity-90">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      to={ROUTES.analysisDetail(item.id)}
+      className="border-border hover:bg-secondary/60 flex items-center gap-4 rounded-2xl border bg-card px-4 py-4 transition-colors"
+    >
+      {content}
     </Link>
   );
 }
@@ -50,11 +69,42 @@ function AnalysisListItem({ item }: { item: AnalysisResultItem }) {
 export function MyAnalysesPage() {
   const [filter, setFilter] = useState<FilterTab>("all");
   const [page, setPage] = useState(1);
+  const [items, setItems] = useState<AnalysisResultItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const list = await fetchMyAnalyses();
+        if (!cancelled) setItems(list);
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof ApiError
+              ? err.message
+              : "분석 목록을 불러오지 못했습니다.",
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = useMemo(() => {
-    if (filter === "all") return MOCK_ANALYSIS_RESULTS;
-    return MOCK_ANALYSIS_RESULTS.filter((item) => item.status === filter);
-  }, [filter]);
+    if (filter === "all") return items;
+    if (filter === "completed") {
+      return items.filter((item) => item.status === "completed");
+    }
+    return items.filter((item) => isAnalysisPending(item.status));
+  }, [filter, items]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ANALYSIS_PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -106,19 +156,36 @@ export function MyAnalysesPage() {
         </Button>
       </div>
 
-      <div className="flex flex-1 flex-col gap-3">
-        {pageItems.length > 0 ? (
-          pageItems.map((item) => (
-            <AnalysisListItem key={item.id} item={item} />
-          ))
-        ) : (
-          <div className="border-border text-muted-foreground rounded-2xl border border-dashed px-6 py-16 text-center text-sm">
-            해당하는 분석 결과가 없습니다.
-          </div>
-        )}
-      </div>
+      {loading && (
+        <div className="text-muted-foreground flex flex-1 items-center justify-center gap-2 py-16 text-sm">
+          <Loader2 className="size-4 animate-spin" />
+          목록 불러오는 중…
+        </div>
+      )}
 
-      {totalPages > 1 && (
+      {!loading && error && (
+        <div className="border-border text-destructive rounded-2xl border border-dashed px-6 py-16 text-center text-sm">
+          {error}
+        </div>
+      )}
+
+      {!loading && !error && (
+        <div className="flex flex-1 flex-col gap-3">
+          {pageItems.length > 0 ? (
+            pageItems.map((item) => (
+              <AnalysisListItem key={item.id} item={item} />
+            ))
+          ) : (
+            <div className="border-border text-muted-foreground rounded-2xl border border-dashed px-6 py-16 text-center text-sm">
+              {items.length === 0
+                ? "아직 분석 결과가 없습니다. 시청 기록을 업로드한 뒤 프로파일러가 완료되면 여기에 표시됩니다."
+                : "해당하는 분석 결과가 없습니다."}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!loading && !error && totalPages > 1 && (
         <div className="mt-8 flex items-center justify-center gap-2">
           <Button
             type="button"

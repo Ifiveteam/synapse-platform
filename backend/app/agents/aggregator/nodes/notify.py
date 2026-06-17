@@ -42,7 +42,9 @@ def _build_fallback_email_body(state: AggregatorState, report_url: str) -> str:
     """PDF·메일 발송 실패 시 상세 텍스트 fallback."""
     report = coerce_dashboard_report(state["report_json"])
     integrated_data = state["integrated_data"]
-    cohort_size = integrated_data["internal_user_stats"]["cognitive_bias_map"]["cohort_size"]
+    cohort_size = integrated_data["internal_user_stats"]["cognitive_bias_map"][
+        "cohort_size"
+    ]
     verification_score = state.get("verification_score", 0)
 
     return f"""Synapse Aggregator B2B 트렌드 분석이 완료되었습니다.

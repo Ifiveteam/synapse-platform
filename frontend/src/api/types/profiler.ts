@@ -1,5 +1,18 @@
 export type JobStatus = "pending" | "running" | "completed" | "failed";
 
+export interface DbProfileResponse {
+  user_id: string;
+  snapshot_id: string;
+  snapshot_date: string;
+  scores: Record<string, number>;
+  summary_text: string;
+  persona_label: string | null;
+  behavior_reasoning: string | null;
+  dominant_traits: string[] | null;
+  supporting_evidence: Record<string, unknown> | null;
+  tone_of_user: string | null;
+}
+
 export interface Synapse8Axes {
   intellectual_curiosity: number;
   practical_orientation: number;

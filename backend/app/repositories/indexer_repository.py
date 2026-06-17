@@ -1,18 +1,16 @@
-"""Async DB operations for the indexer agent."""
+"""Async DB operations for the indexer (user_watch_catalog)."""
 
 from __future__ import annotations
 
 import uuid
-from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.indexer.prompt import CATEGORY_LIST, normalize_category
-from app.models.user_feature_snapshot import UserFeatureSnapshot
-from app.models.user_video_watch import UserVideoWatch
+from app.models.user_watch_catalog import UserWatchCatalog
+from app.models.video_analysis import VideoAnalysis
 
 
 def parse_watched_at(value: str | datetime | None) -> datetime:
@@ -31,186 +29,159 @@ def parse_watched_at(value: str | datetime | None) -> datetime:
         return datetime.now(timezone.utc)
 
 
-def _watch_values(user_id: uuid.UUID, item: dict) -> dict:
+def catalog_row_values(user_id: uuid.UUID, item: dict) -> dict:
+    """Pipeline dict → user_watch_catalog insert/update values."""
     watched_at = parse_watched_at(item.get("watched_at"))
-    keywords = item.get("keywords") or []
+    tags = item.get("tags")
+    if tags is None and item.get("keywords"):
+        tags = item.get("keywords")
+
+    category_id = item.get("youtube_category_id") or item.get("category_id")
+    if category_id is not None:
+        category_id = str(category_id)[:10]
+
+    duration = item.get("duration_sec")
+    if duration is None:
+        duration = item.get("duration")
+
     return {
         "user_id": user_id,
-        "platform": "youtube",
+        "platform": item.get("platform") or "youtube",
         "channel": item.get("channel") or "unknown",
         "channel_url": item.get("channel_url"),
         "title": item.get("title"),
         "url": item.get("url"),
         "watched_at": watched_at,
-        "duration": item.get("duration", 0),
-        "is_shorts": item.get("is_shorts", False),
+        "youtube_category_id": category_id,
+        "duration_sec": duration,
+        "is_shorts": item.get("is_shorts"),
         "description": item.get("description"),
-        "category": item.get("category"),
-        "tags": keywords,
+        "tags": tags,
         "thumbnail_url": item.get("thumbnail_url"),
-        "transcript": item.get("transcript"),
+        "embedding_text": item.get("embedding_text"),
+        "embedding": item.get("embedding"),
     }
 
 
-def _build_feature_snapshot(
-    user_id: uuid.UUID,
-    items: list[dict],
-    analysis_start: datetime,
-    analysis_end: datetime,
-) -> dict | None:
-    if not items:
-        return None
-
-    total = len(items)
-
-    categories = [normalize_category(i.get("category")) for i in items]
-    cat_counter = Counter(categories)
-    category_ratio = {
-        cat: round(cat_counter.get(cat, 0) / total, 4) for cat in CATEGORY_LIST
-    }
-    category_top5 = [{"name": k, "count": v} for k, v in cat_counter.most_common(5)]
-
-    shorts = sum(1 for i in items if i.get("is_shorts"))
-    video_type_ratio = {
-        "short": round(shorts / total, 4),
-        "long": round((total - shorts) / total, 4),
-        "total": total,
-    }
-
-    channel_counter = Counter(i.get("channel") or "unknown" for i in items)
-    channel_top5 = [{"name": k, "count": v} for k, v in channel_counter.most_common(5)]
-
-    cat_channels: dict[str, set[str]] = defaultdict(set)
-    for item in items:
-        cat = normalize_category(item.get("category"))
-        cat_channels[cat].add(item.get("channel") or "unknown")
-    category_channel_diversity = {k: len(v) for k, v in cat_channels.items()}
-
-    return {
-        "user_id": user_id,
-        "analysis_start": analysis_start,
-        "analysis_end": analysis_end,
-        "category_ratio": category_ratio,
-        "video_type_ratio": video_type_ratio,
-        "channel_top5": channel_top5,
-        "category_top5": category_top5,
-        "category_channel_diversity": category_channel_diversity,
-    }
+_UPSERT_COLUMNS = (
+    "platform",
+    "channel",
+    "channel_url",
+    "title",
+    "watched_at",
+    "youtube_category_id",
+    "duration_sec",
+    "is_shorts",
+    "description",
+    "tags",
+    "thumbnail_url",
+    "embedding_text",
+    "embedding",
+)
 
 
-async def upsert_feature_snapshot(
+async def upsert_catalog_records(
     session: AsyncSession,
     user_id: uuid.UUID,
     items: list[dict],
-    analysis_start: datetime,
-    analysis_end: datetime,
-) -> None:
-    payload = _build_feature_snapshot(user_id, items, analysis_start, analysis_end)
-    if payload is None:
-        return
-
-    stmt = (
-        pg_insert(UserFeatureSnapshot)
-        .values(**payload)
-        .on_conflict_do_update(
-            constraint="uq_ufs_user_period",
-            set_={
-                "category_ratio": payload["category_ratio"],
-                "video_type_ratio": payload["video_type_ratio"],
-                "channel_top5": payload["channel_top5"],
-                "category_top5": payload["category_top5"],
-                "category_channel_diversity": payload["category_channel_diversity"],
-            },
-        )
-    )
-    await session.execute(stmt)
-
-
-async def save_watch_records(
-    session: AsyncSession,
-    user_id: uuid.UUID,
-    items: list[dict],
-) -> None:
-    for item in items:
-        values = _watch_values(user_id, item)
-        watch_stmt = (
-            pg_insert(UserVideoWatch)
-            .values(**values)
-            .on_conflict_do_update(
-                constraint="uq_uvw_user_url",
-                set_={
-                    "channel": values["channel"],
-                    "channel_url": values["channel_url"],
-                    "title": values["title"],
-                    "watched_at": values["watched_at"],
-                    "duration": values["duration"],
-                    "is_shorts": values["is_shorts"],
-                    "description": values["description"],
-                    "category": values["category"],
-                    "tags": values["tags"],
-                    "thumbnail_url": values["thumbnail_url"],
-                    "transcript": values["transcript"],
-                },
-            )
-        )
-        await session.execute(watch_stmt)
-
-
-async def save_vectors(
-    items: list[dict],
-    session: AsyncSession,
-    user_id: uuid.UUID | None = None,
-) -> None:
-    """레거시 호환 — watch + snapshot 한 번에 저장."""
-    if user_id is None:
-        raise ValueError("user_id is required to save watch records")
-
-    await save_watch_records(session, user_id, items)
-    if items:
-        watched_dates = [parse_watched_at(i.get("watched_at")) for i in items]
-        await upsert_feature_snapshot(
-            session,
-            user_id,
-            items,
-            min(watched_dates),
-            max(watched_dates),
-        )
-    await session.commit()
-
-
-async def update_all_weights(
-    session: AsyncSession, user_id: uuid.UUID | None = None
 ) -> int:
-    """Legacy hook — weight column removed in user_video_watch schema."""
-    _ = session, user_id
-    return 0
+    """Bulk upsert into user_watch_catalog. UNIQUE (user_id, url)."""
+    count = 0
+    for item in items:
+        if not item.get("url"):
+            continue
+        values = catalog_row_values(user_id, item)
+        insert_stmt = pg_insert(UserWatchCatalog).values(**values)
+        stmt = insert_stmt.on_conflict_do_update(
+            constraint="uq_uwc_user_url",
+            set_={col: getattr(insert_stmt.excluded, col) for col in _UPSERT_COLUMNS},
+        )
+        await session.execute(stmt)
+        count += 1
+    return count
 
 
-async def is_duplicate(
-    url: str,
+async def delete_user_catalog(
     session: AsyncSession,
-    user_id: uuid.UUID | None = None,
-) -> bool:
-    query = select(UserVideoWatch.id).where(UserVideoWatch.url == url).limit(1)
-    if user_id is not None:
-        query = query.where(UserVideoWatch.user_id == user_id)
-    result = await session.execute(query)
-    return result.scalar() is not None
+    user_id: uuid.UUID,
+    *,
+    include_analysis: bool = True,
+) -> None:
+    """Reindex: video_analysis then catalog (FK order)."""
+    if include_analysis:
+        await session.execute(
+            delete(VideoAnalysis).where(VideoAnalysis.user_id == user_id)
+        )
+    await session.execute(
+        delete(UserWatchCatalog).where(UserWatchCatalog.user_id == user_id)
+    )
 
 
-async def get_all_videos(
+async def count_catalog(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+) -> int:
+    result = await session.execute(
+        select(func.count())
+        .select_from(UserWatchCatalog)
+        .where(UserWatchCatalog.user_id == user_id)
+    )
+    return int(result.scalar() or 0)
+
+
+async def get_all_catalog(
     session: AsyncSession, user_id: uuid.UUID | None = None
-) -> list[UserVideoWatch]:
-    query = select(UserVideoWatch).order_by(UserVideoWatch.watched_at.desc())
+) -> list[UserWatchCatalog]:
+    query = select(UserWatchCatalog).order_by(UserWatchCatalog.watched_at.desc())
     if user_id is not None:
-        query = query.where(UserVideoWatch.user_id == user_id)
+        query = query.where(UserWatchCatalog.user_id == user_id)
     result = await session.execute(query)
     return list(result.scalars().all())
 
 
-async def create_user_vector(
-    session: AsyncSession, user_id: uuid.UUID | None = None
-) -> list[float]:
-    """임베딩 미사용 — 프로파일러 단계에서 video_analysis 생성 예정."""
-    _ = session, user_id
-    return []
+async def compute_catalog_stats(session: AsyncSession, user_id: uuid.UUID) -> dict:
+    """UI 집계 — catalog 쿼리만 사용."""
+    total = await count_catalog(session, user_id)
+
+    if total == 0:
+        return {
+            "total": 0,
+            "shorts_count": 0,
+            "long_count": 0,
+            "category_stats": {},
+            "channel_top5": [],
+        }
+
+    shorts_q = (
+        select(func.count())
+        .select_from(UserWatchCatalog)
+        .where(
+            UserWatchCatalog.user_id == user_id, UserWatchCatalog.is_shorts.is_(True)
+        )
+    )
+    shorts_count = (await session.execute(shorts_q)).scalar() or 0
+
+    cat_rows = await session.execute(
+        select(UserWatchCatalog.youtube_category_id, func.count())
+        .where(UserWatchCatalog.user_id == user_id)
+        .group_by(UserWatchCatalog.youtube_category_id)
+        .order_by(func.count().desc())
+    )
+    category_stats = {(row[0] or "unknown"): row[1] for row in cat_rows.all()}
+
+    ch_rows = await session.execute(
+        select(UserWatchCatalog.channel, func.count())
+        .where(UserWatchCatalog.user_id == user_id)
+        .group_by(UserWatchCatalog.channel)
+        .order_by(func.count().desc())
+        .limit(5)
+    )
+    channel_top5 = [{"name": row[0], "count": row[1]} for row in ch_rows.all()]
+
+    return {
+        "total": total,
+        "shorts_count": shorts_count,
+        "long_count": total - shorts_count,
+        "category_stats": category_stats,
+        "channel_top5": channel_top5,
+    }

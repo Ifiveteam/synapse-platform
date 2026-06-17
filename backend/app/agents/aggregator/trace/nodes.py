@@ -51,7 +51,9 @@ def log_integrated_data_summary(integrated_data: dict[str, Any]) -> None:
         logger.info("  │ %s", line)
 
     news_items = external.get("naver_news", [])
-    logger.info("  │ [외부 Naver 뉴스 헤드라인 TOP %s건]", min(len(news_items), KEYWORD_PREVIEW))
+    logger.info(
+        "  │ [외부 Naver 뉴스 헤드라인 TOP %s건]", min(len(news_items), KEYWORD_PREVIEW)
+    )
     for index, item in enumerate(news_items[:KEYWORD_PREVIEW], start=1):
         headline = item.get("headline") or item.get("title") or "?"
         section = item.get("section", "?")
@@ -67,7 +69,9 @@ def log_integrated_data_summary(integrated_data: dict[str, Any]) -> None:
 
 def log_culture_input(integrated_data: dict[str, Any]) -> None:
     internal = integrated_data.get("internal_user_stats", {})
-    youtube = integrated_data.get("external_market_trends", {}).get("youtube_trending", [])
+    youtube = integrated_data.get("external_market_trends", {}).get(
+        "youtube_trending", []
+    )
     logger.info("  ┌─ culture_analysis 입력 범위")
     logger.info("  │ 내부 유저 통계 + YouTube 급상승 (%s건)", len(youtube))
     logger.info(

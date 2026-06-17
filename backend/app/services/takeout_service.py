@@ -128,8 +128,6 @@ async def run_takeout_pipeline(
             "cleaned_data": [],
             "error": None,
             "saved_count": None,
-            "limit": 2000,
-            "reindex": True,
             "user_id": user_id,
         }
     )
@@ -141,10 +139,11 @@ async def run_takeout_pipeline(
 
     cleaned = result.get("cleaned_data", [])
     shorts_count = sum(1 for item in cleaned if item.get("is_shorts"))
-    from app.agents.indexer.prompt import normalize_category
-
-    categories = [normalize_category(item.get("category")) for item in cleaned]
-    category_stats = dict(Counter(categories).most_common())
+    category_stats = dict(
+        Counter(
+            str(item.get("youtube_category_id") or "unknown") for item in cleaned
+        ).most_common()
+    )
 
     return {
         **result,

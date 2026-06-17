@@ -3,8 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import DateTime, Float, ForeignKey, Index, String, Text, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database.base import Base
@@ -12,7 +12,7 @@ from app.core.database.mixin import TimestampMixin
 
 
 class UserProfileHistory(TimestampMixin, Base):
-    """성향 누적 스냅샷 (Core Truth). [프로파일러]"""
+    """성향 점수 + LLM 해석 스냅샷 (시점별). [프로파일러]"""
 
     __tablename__ = "user_profile_history"
 
@@ -56,6 +56,14 @@ class UserProfileHistory(TimestampMixin, Base):
     autonomy: Mapped[float | None] = mapped_column(Float, nullable=True)
     sociality: Mapped[float | None] = mapped_column(Float, nullable=True)
     sensitivity: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # LLM 해석
+    summary_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    persona_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    behavior_reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dominant_traits: Mapped[list | dict | None] = mapped_column(JSONB, nullable=True)
+    supporting_evidence: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    tone_of_user: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         Index("ix_uph_user_date", text("user_id"), text("snapshot_date DESC")),

@@ -1,14 +1,12 @@
 """Google OAuth 로직 (외부 통신 + 토큰/유저 영속화).
 
-API 진입점은 `api/v1/auth.py`에 유지하고, 여기선 HTTP 프레임워크를 모르는
-순수 로직(구글 통신, users/user_token upsert)만 담당한다.
+API 진입점은 `api/v1/auth.py`, orchestration은 `services/auth_service.py`.
 """
 
 from __future__ import annotations
 
 import os
-import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from urllib.parse import urlencode
 
 import httpx
@@ -30,9 +28,6 @@ SCOPES = [
     "profile",
     "https://www.googleapis.com/auth/drive.readonly",
 ]
-
-# 서비스 자체 refresh token 만료 (user_token.expires_at)
-SERVICE_REFRESH_EXPIRE_DAYS = 30
 
 
 def _client_id() -> str:
@@ -129,29 +124,21 @@ async def upsert_user_and_token(
 
     await session.flush()  # user.id 확보
 
-    # user_token upsert (1:1)
+    # user_token — google_refresh_token만 갱신 (서비스 refresh는 token_service)
     token_result = await session.execute(
         select(UserToken).where(UserToken.user_id == user.id)
     )
     token_row = token_result.scalar_one_or_none()
 
-    service_refresh = secrets.token_urlsafe(32)
-    expires_at = datetime.now(timezone.utc) + timedelta(
-        days=SERVICE_REFRESH_EXPIRE_DAYS
-    )
-
     if token_row is None:
         token_row = UserToken(
             user_id=user.id,
-            refresh_token=service_refresh,
+            refresh_token="",
             google_refresh_token=google_refresh,
-            expires_at=expires_at,
+            expires_at=datetime.now(timezone.utc),
         )
         session.add(token_row)
     else:
-        token_row.refresh_token = service_refresh
-        token_row.expires_at = expires_at
-        # 구글이 refresh_token을 재발급하지 않으면(재로그인 시 종종) 기존 값 유지
         if google_refresh:
             token_row.google_refresh_token = google_refresh
 

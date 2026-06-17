@@ -20,7 +20,9 @@ def truncate(text: str | None, *, limit: int = PREVIEW_CHARS) -> str:
     return f"{normalized[:limit]}… [총 {len(normalized):,}자]"
 
 
-def keyword_lines(items: list[dict[str, Any]], *, label_key: str = "keyword") -> list[str]:
+def keyword_lines(
+    items: list[dict[str, Any]], *, label_key: str = "keyword"
+) -> list[str]:
     lines: list[str] = []
     for index, item in enumerate(items[:KEYWORD_PREVIEW], start=1):
         keyword = item.get(label_key, "?")

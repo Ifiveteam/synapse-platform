@@ -8,11 +8,11 @@ from jose import JWTError, jwt
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "synapse-dev-secret-change-in-prod")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_DAYS = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
 
 def create_access_token(user_id: uuid.UUID | str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     return jwt.encode(
         {"sub": str(user_id), "exp": expire}, SECRET_KEY, algorithm=ALGORITHM
     )

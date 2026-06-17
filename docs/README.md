@@ -11,8 +11,8 @@
 |------|----------|
 | `frontend/` | [개요](./frontend/OVERVIEW.md), [폴더 구조](./frontend/FOLDER_STRUCTURE.md) |
 | `backend/` | [개요](./backend/OVERVIEW.md) — 로컬 dev: `docker compose -f docker-compose.dev.yml up` |
-| `indexer/` | Indexer |
-| `profile/` | Profiler — [README](./profile/README.md), [IMPLEMENTATION](./profile/IMPLEMENTATION.md), [SYNAPSE_8](./profile/SYNAPSE_8.md) |
+| `indexer/` | Indexer — [README](./indexer/README.md), [ARCHITECTURE](./indexer/ARCHITECTURE.md), [PIPELINE](./indexer/PIPELINE.md), [DATA](./indexer/DATA.md), [API](./indexer/API.md), [IMPLEMENTATION](./indexer/IMPLEMENTATION.md) |
+| `profile/` | Profiler — [README](./profile/README.md), [PIPELINE](./profile/PIPELINE.md) |
 | `navigator/` | Navigator |
 | `aggregator/` | Aggregator |
 | `achiver/` | Archiver |

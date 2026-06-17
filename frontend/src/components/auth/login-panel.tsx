@@ -35,7 +35,7 @@ export function LoginPanel() {
   const loginMock = useAuthStore((s) => s.loginMock);
   const closeLoginModal = useShellStore((s) => s.closeLoginModal);
 
-  // 실제 Google OAuth: 백엔드 /auth/login → 구글 동의 → 콜백에서 ?token= 으로 복귀
+  // 실제 Google OAuth: 백엔드 /auth/login → 구글 동의 → 콜백(쿠키) → /upload
   const handleGoogleLogin = () => {
     window.location.href = `${API_BASE_URL}/api/v1/auth/login`;
   };

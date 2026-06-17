@@ -1,122 +1,116 @@
+"""노드: YouTube API 메타 + URL 썸네일 + 숏츠."""
+
+from __future__ import annotations
+
 import asyncio
+import json
+import os
+import urllib.request
 
-from app.agents.indexer.sampling import select_samples
 from app.agents.indexer.state import IndexerState
+from app.agents.indexer.tool import (
+    _extract_video_id,
+    is_shorts,
+    parse_duration_iso,
+    thumbnail_url_for,
+)
 
 
-async def node_light_enrich(state: IndexerState) -> IndexerState:
-    """YouTube API로 duration·숏츠·description·썸네일 URL 보강."""
-    try:
-        from app.agents.indexer.tool import extract_hashtags, get_videos_info_batch
-
-        items = state["cleaned_data"]
-        urls = [item.get("url", "") for item in items]
-        print(f"[Enrich] YouTube API 보강 시작 ({len(items)}개)")
-
-        video_infos = await asyncio.get_event_loop().run_in_executor(
-            None, get_videos_info_batch, urls
-        )
-
-        enriched = [
-            {
-                **item,
-                "description": info["description"],
-                "duration": info["duration"],
-                "is_shorts": info["is_shorts"],
-                "thumbnail_url": info.get("thumbnail_url"),
-                "keywords": extract_hashtags(
-                    info["description"], info["tags"], item.get("title", "")
-                ),
-            }
-            for item, info in zip(items, video_infos, strict=False)
-        ]
-        return {**state, "cleaned_data": enriched, "error": None}
-    except Exception as e:
-        return {**state, "error": str(e)}
-
-
-async def node_classify(state: IndexerState) -> IndexerState:
-    """2개월 전체 데이터 대상 GPT 카테고리 분류."""
-    try:
-        from app.agents.indexer.prompt import (
-            DEFAULT_CATEGORY,
-            classify_batch,
-            normalize_category,
-        )
-
-        items = state["cleaned_data"]
-        texts = [
-            item["title"]
-            + (" " + item["description"][:100] if item.get("description") else "")
-            for item in items
-        ]
-
-        batch_size = 30
-        parallel = 5
-        batches = [texts[i : i + batch_size] for i in range(0, len(texts), batch_size)]
-
-        loop = asyncio.get_event_loop()
-        categories: list[str] = []
-
-        for i in range(0, len(batches), parallel):
-            group = batches[i : i + parallel]
-            futures = [loop.run_in_executor(None, classify_batch, b) for b in group]
-            group_results = await asyncio.gather(*futures)
-            for result in group_results:
-                categories.extend(result)
-            done = min((i + parallel) * batch_size, len(texts))
-            print(f"[분류] {done}/{len(texts)}")
-
-        classified = [
-            {
-                **item,
-                "category": normalize_category(
-                    categories[j] if j < len(categories) else DEFAULT_CATEGORY
-                ),
-            }
-            for j, item in enumerate(items)
-        ]
-        print(
-            f"[분류] 완료 {len(classified)}건 "
-            f"(카테고리 {len({c['category'] for c in classified})}종)"
-        )
-        return {**state, "cleaned_data": classified, "error": None}
-    except Exception as e:
-        return {**state, "error": str(e)}
-
-
-def node_sample(state: IndexerState) -> IndexerState:
-    """카테고리 × 숏츠/롱폼별 최신 5개 샘플 선정."""
-    sampled = select_samples(state["cleaned_data"], per_group=5)
-    print(f"[Sample] {len(state['cleaned_data'])}건 → 샘플 {len(sampled)}건")
-    return {
-        **state,
-        "sampled_data": sampled,
-        "sample_count": len(sampled),
-        "error": None,
+def fetch_youtube_metadata_batch(urls: list[str]) -> list[dict]:
+    """videos.list 배치 — category, duration, description, tags. quota: 1 unit / 50 IDs."""
+    api_key = os.getenv("YOUTUBE_API_KEY")
+    empty = {
+        "description": "",
+        "duration_sec": 0,
+        "tags": [],
+        "youtube_category_id": None,
     }
 
+    if not api_key:
+        return [dict(empty) for _ in urls]
 
-async def node_heavy_enrich(state: IndexerState) -> IndexerState:
-    """샘플 영상만 자막·썸네일 URL 보강."""
+    id_to_url: dict[str, str] = {}
+    for url in urls:
+        vid_id = _extract_video_id(url)
+        if vid_id:
+            id_to_url[vid_id] = url
+
+    api_results: dict[str, dict] = {}
+    video_ids = list(id_to_url.keys())
+    total_batches = (len(video_ids) + 49) // 50
+
+    for i in range(0, len(video_ids), 50):
+        batch = video_ids[i : i + 50]
+        batch_num = i // 50 + 1
+        print(f"[enrich] YouTube API 배치 {batch_num}/{total_batches} ({len(batch)}개)")
+        api_url = (
+            "https://www.googleapis.com/youtube/v3/videos"
+            f"?part=snippet,contentDetails&id={','.join(batch)}&key={api_key}"
+        )
+        try:
+            with urllib.request.urlopen(api_url, timeout=15) as resp:
+                data = json.loads(resp.read())
+                for item in data.get("items", []):
+                    vid_id = item["id"]
+                    snippet = item.get("snippet", {})
+                    content = item.get("contentDetails", {})
+                    api_results[vid_id] = {
+                        "description": snippet.get("description", ""),
+                        "duration_sec": parse_duration_iso(
+                            content.get("duration", "PT0S")
+                        ),
+                        "tags": snippet.get("tags") or [],
+                        "youtube_category_id": snippet.get("categoryId"),
+                    }
+        except Exception as e:
+            print(f"[enrich] YouTube API 배치 에러 (ids {i}~{i + 50}): {e}")
+
+    result: list[dict] = []
+    for url in urls:
+        vid_id = _extract_video_id(url)
+        if vid_id and vid_id in api_results:
+            result.append(dict(api_results[vid_id]))
+        else:
+            result.append(dict(empty))
+
+    print(f"[enrich] YouTube API 응답 {len(api_results)}건 / 요청 {len(urls)}건")
+    return result
+
+
+async def node_enrich(state: IndexerState) -> IndexerState:
+    """YouTube API 메타 + URL 썸네일 + 숏츠."""
     try:
-        from app.agents.indexer.tool import thumbnail_url_for
-        from app.agents.indexer.transcript import fetch_transcript
+        items = state.get("cleaned_data") or []
+        if not items:
+            return {**state, "cleaned_data": [], "error": None}
 
-        samples = state.get("sampled_data") or []
-        if not samples:
-            return {**state, "sampled_data": [], "error": None}
+        urls = [item.get("url", "") for item in items]
+        print(f"[enrich] 보강 시작 ({len(items)}개)")
 
-        print(f"[HeavyEnrich] 샘플 {len(samples)}건 자막·썸네일 수집")
-        loop = asyncio.get_event_loop()
-        enriched: list[dict] = []
+        api_rows = await asyncio.get_event_loop().run_in_executor(
+            None, fetch_youtube_metadata_batch, urls
+        )
 
-        for item in samples:
+        merged: list[dict] = []
+        for item, api_row in zip(items, api_rows, strict=False):
             url = item.get("url", "")
-            thumb = item.get("thumbnail_url") or thumbnail_url_for(url)
-            transcript = await loop.run_in_executor(None, fetch_transcript, url)
-            enriched.append({**item, "thumbnail_url": thumb, "transcript": transcript})
+            duration = api_row.get("duration_sec")
+            if duration is None:
+                duration = item.get("duration_sec") or item.get("duration")
+            thumb = thumbnail_url_for(url)
+            merged.append(
+                {
+                    **item,
+                    **api_row,
+                    "duration_sec": duration,
+                    "thumbnail_url": thumb,
+                    "is_shorts": is_shorts(url, duration),
+                }
+            )
 
-        return {**state, "sampled_data": enriched, "error": None}
+        shorts = sum(1 for row in merged if row.get("is_shorts"))
+        print(f"[enrich] 숏츠 {shorts}건")
+
+        return {**state, "cleaned_data": merged, "error": None}
     except Exception as e:
         return {**state, "error": str(e)}

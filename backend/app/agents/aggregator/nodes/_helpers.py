@@ -17,9 +17,6 @@ NODE_NOTIFY = "notify"
 def require_integrated_data(state: AggregatorState) -> dict[str, Any]:
     integrated_data = state.get("integrated_data")
     if integrated_data is None:
-        msg = (
-            "integrated_data가 상태에 없습니다. "
-            "assemble_data 노드 이후에 실행하세요."
-        )
+        msg = "integrated_data가 상태에 없습니다. assemble_data 노드 이후에 실행하세요."
         raise ValueError(msg)
     return integrated_data

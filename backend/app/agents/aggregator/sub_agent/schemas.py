@@ -76,8 +76,12 @@ class VerificationResult(BaseModel):
             return "generate_report"
 
         feedback_lower = self.critique_feedback.lower()
-        culture_hit = any(marker in feedback_lower for marker in _CULTURE_FEEDBACK_MARKERS)
-        market_hit = any(marker in feedback_lower for marker in _MARKET_FEEDBACK_MARKERS)
+        culture_hit = any(
+            marker in feedback_lower for marker in _CULTURE_FEEDBACK_MARKERS
+        )
+        market_hit = any(
+            marker in feedback_lower for marker in _MARKET_FEEDBACK_MARKERS
+        )
 
         if culture_hit and market_hit:
             return "both_analyses"
