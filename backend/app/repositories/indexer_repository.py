@@ -139,6 +139,134 @@ async def get_all_catalog(
     return list(result.scalars().all())
 
 
+def _listable_channel_conditions():
+    """Placeholder·빈 채널명은 상위 채널 집계에서 제외."""
+    trimmed = func.trim(UserWatchCatalog.channel)
+    return (
+        UserWatchCatalog.channel.isnot(None),
+        trimmed != "",
+        func.lower(trimmed) != "unknown",
+    )
+
+
+async def fetch_top_categories(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    limit: int = 5,
+) -> list[dict[str, int | str]]:
+    """user_watch_catalog GROUP BY youtube_category_id — 상위 N개."""
+    rows = await session.execute(
+        select(UserWatchCatalog.youtube_category_id, func.count())
+        .where(UserWatchCatalog.user_id == user_id)
+        .group_by(UserWatchCatalog.youtube_category_id)
+        .order_by(func.count().desc())
+        .limit(limit)
+    )
+    return [
+        {"category_id": str(row[0] or "unknown"), "count": int(row[1])}
+        for row in rows.all()
+    ]
+
+
+async def fetch_top_channels(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    limit: int = 5,
+) -> list[dict[str, int | str]]:
+    """user_watch_catalog GROUP BY channel — 상위 N개."""
+    rows = await session.execute(
+        select(UserWatchCatalog.channel, func.count())
+        .where(UserWatchCatalog.user_id == user_id, *_listable_channel_conditions())
+        .group_by(UserWatchCatalog.channel)
+        .order_by(func.count().desc())
+        .limit(limit)
+    )
+    return [
+        {"channel": str(row[0] or "unknown"), "count": int(row[1])}
+        for row in rows.all()
+    ]
+
+
+async def fetch_graph_summary(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    category_limit: int = 8,
+    channel_limit: int = 10,
+) -> dict:
+    """그래프 UI용 catalog 집계 — 전체 영상 목록 없이 상위 카테고리·채널만."""
+    total = await count_catalog(session, user_id)
+    categories = await fetch_top_categories(session, user_id, limit=category_limit)
+    top_channels = await fetch_top_channels(session, user_id, limit=channel_limit)
+
+    channels: list[dict[str, int | str]] = []
+    for item in top_channels:
+        channel_name = str(item["channel"])
+        row = await session.execute(
+            select(UserWatchCatalog.youtube_category_id, func.count())
+            .where(
+                UserWatchCatalog.user_id == user_id,
+                UserWatchCatalog.channel == channel_name,
+            )
+            .group_by(UserWatchCatalog.youtube_category_id)
+            .order_by(func.count().desc())
+            .limit(1)
+        )
+        primary = row.first()
+        channels.append(
+            {
+                "channel": channel_name,
+                "count": int(item["count"]),
+                "category_id": str(primary[0] or "unknown") if primary else "unknown",
+            }
+        )
+
+    return {"total": total, "categories": categories, "channels": channels}
+
+
+async def fetch_catalog_embedding_rows(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+) -> list[dict]:
+    """임베딩 그래프용 catalog 행 (embedding 있는 것만)."""
+    rows = await session.execute(
+        select(
+            UserWatchCatalog.id,
+            UserWatchCatalog.title,
+            UserWatchCatalog.channel,
+            UserWatchCatalog.youtube_category_id,
+            UserWatchCatalog.is_shorts,
+            UserWatchCatalog.embedding,
+        )
+        .where(
+            UserWatchCatalog.user_id == user_id,
+            UserWatchCatalog.embedding.isnot(None),
+        )
+        .order_by(UserWatchCatalog.watched_at.desc())
+    )
+    result: list[dict] = []
+    for row in rows.all():
+        embedding = row.embedding
+        if embedding is None:
+            continue
+        vector = list(embedding) if not isinstance(embedding, list) else embedding
+        if not vector:
+            continue
+        result.append(
+            {
+                "id": row.id,
+                "title": row.title,
+                "channel": row.channel,
+                "youtube_category_id": row.youtube_category_id,
+                "is_shorts": row.is_shorts,
+                "embedding": vector,
+            }
+        )
+    return result
+
+
 async def compute_catalog_stats(session: AsyncSession, user_id: uuid.UUID) -> dict:
     """UI 집계 — catalog 쿼리만 사용."""
     total = await count_catalog(session, user_id)
@@ -171,7 +299,7 @@ async def compute_catalog_stats(session: AsyncSession, user_id: uuid.UUID) -> di
 
     ch_rows = await session.execute(
         select(UserWatchCatalog.channel, func.count())
-        .where(UserWatchCatalog.user_id == user_id)
+        .where(UserWatchCatalog.user_id == user_id, *_listable_channel_conditions())
         .group_by(UserWatchCatalog.channel)
         .order_by(func.count().desc())
         .limit(5)

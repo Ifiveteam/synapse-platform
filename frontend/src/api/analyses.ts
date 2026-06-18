@@ -1,5 +1,5 @@
 import { apiFetchAuth } from "@/api/client";
-import type { DbProfileResponse } from "@/api/types/profiler";
+import type { AnalysisCompareResponse, DbProfileResponse } from "@/api/types/profiler";
 import {
   formatAnalysisDate,
   type AnalysisResultItem,
@@ -25,6 +25,7 @@ function mapListItem(dto: AnalysisListItemDto): AnalysisResultItem {
     id: dto.id,
     title: dto.title,
     date: formatAnalysisDate(dto.snapshot_date ?? undefined),
+    snapshotAt: dto.snapshot_date,
     status: dto.status,
     kind: dto.kind,
   };
@@ -40,6 +41,16 @@ export async function fetchMyAnalysisSnapshot(
 ): Promise<DbProfileResponse> {
   return apiFetchAuth<DbProfileResponse>(`${PREFIX}/me/analyses/${snapshotId}`);
 }
+
+export async function fetchAnalysisCompare(
+  fromId: string,
+  toId: string,
+): Promise<AnalysisCompareResponse> {
+  const params = new URLSearchParams({ from: fromId, to: toId });
+  return apiFetchAuth(`${PREFIX}/me/analyses/compare?${params.toString()}`);
+}
+
+import { youtubeCategoryLabel } from "@/lib/youtube-categories";
 
 /** 행동 스파이더 8축 상위 5개 라벨 */
 const BEHAVIOR_LABELS: Record<string, string> = {
@@ -63,4 +74,20 @@ export function topBehaviorKeywords(
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)
     .map(([key, value]) => `${BEHAVIOR_LABELS[key]} (${Math.round(value)})`);
+}
+
+export interface TopCategoryItem {
+  label: string;
+  count: number;
+}
+
+/** API top_categories → 표시용 라벨 */
+export function mapTopCategories(
+  items: { category_id: string; count: number }[] | undefined,
+): TopCategoryItem[] {
+  if (!items?.length) return [];
+  return items.map((item) => ({
+    label: youtubeCategoryLabel(item.category_id),
+    count: item.count,
+  }));
 }

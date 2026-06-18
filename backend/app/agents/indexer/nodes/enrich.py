@@ -10,6 +10,7 @@ import urllib.request
 from app.agents.indexer.state import IndexerState
 from app.agents.indexer.tool import (
     _extract_video_id,
+    filter_classified_catalog_items,
     is_shorts,
     parse_duration_iso,
     thumbnail_url_for,
@@ -108,8 +109,11 @@ async def node_enrich(state: IndexerState) -> IndexerState:
                 }
             )
 
+        merged, skipped = filter_classified_catalog_items(merged)
+        if skipped:
+            print(f"[enrich] 미분류 {skipped}건 제외 (임베딩·저장 대상 아님)")
         shorts = sum(1 for row in merged if row.get("is_shorts"))
-        print(f"[enrich] 숏츠 {shorts}건")
+        print(f"[enrich] 숏츠 {shorts}건 · catalog 대상 {len(merged)}건")
 
         return {**state, "cleaned_data": merged, "error": None}
     except Exception as e:

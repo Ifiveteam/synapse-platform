@@ -13,38 +13,7 @@ from app.agents.profiler.graph import run_profiler_async
 from app.models.user_profile_history import UserProfileHistory
 from app.schemas.profiler import JobStatus
 from app.services.notification import NotificationPayload
-
-SCORE_FIELDS = (
-    "self_direction",
-    "stimulation",
-    "achievement",
-    "power",
-    "security",
-    "benevolence",
-    "universalism",
-    "hedonism",
-    "conformity",
-    "tradition",
-    "novelty_seeking",
-    "persistence",
-    "self_transcendence",
-    "exploration",
-    "analytical",
-    "creativity",
-    "execution",
-    "achievement_drive",
-    "autonomy",
-    "sociality",
-    "sensitivity",
-)
-
-
-def history_scores_dict(history) -> dict[str, float]:
-    return {
-        key: float(getattr(history, key) or 0.0)
-        for key in SCORE_FIELDS
-        if getattr(history, key) is not None
-    }
+from app.services.profiler.scores import history_scores_dict
 
 
 def profile_to_dict(row: UserProfileHistory) -> dict[str, Any]:
@@ -62,7 +31,21 @@ def profile_to_dict(row: UserProfileHistory) -> dict[str, Any]:
         "dominant_traits": traits,
         "supporting_evidence": row.supporting_evidence,
         "tone_of_user": row.tone_of_user,
+        "top_categories": [],
+        "top_channels": [],
     }
+
+
+async def profile_dict_with_catalog(session, row: UserProfileHistory) -> dict[str, Any]:
+    from app.repositories.indexer_repository import (
+        fetch_top_categories,
+        fetch_top_channels,
+    )
+
+    data = profile_to_dict(row)
+    data["top_categories"] = await fetch_top_categories(session, row.user_id)
+    data["top_channels"] = await fetch_top_channels(session, row.user_id)
+    return data
 
 
 @dataclass
@@ -70,6 +53,7 @@ class ProfilerJob:
     job_id: str
     user_id: str
     notify_email: str
+    analysis_source_id: str | None = None
     status: JobStatus = JobStatus.PENDING
     current_step: str = "pending"
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -84,11 +68,18 @@ class ProfilerService:
         self._jobs: dict[str, ProfilerJob] = {}
         self._lock = Lock()
 
-    def create_job(self, user_id: str, email: str = "") -> ProfilerJob:
+    def create_job(
+        self,
+        user_id: str,
+        email: str = "",
+        *,
+        analysis_source_id: str | None = None,
+    ) -> ProfilerJob:
         job = ProfilerJob(
             job_id=str(uuid.uuid4()),
             user_id=user_id,
             notify_email=email,
+            analysis_source_id=analysis_source_id,
         )
         with self._lock:
             self._jobs[job.job_id] = job
@@ -105,12 +96,9 @@ class ProfilerService:
         uid = uuid.UUID(user_id)
         async with AsyncSessionLocal() as session:
             row = await fetch_latest_profile(session, uid)
-        if row is None:
-            return None
-        return profile_to_dict(row)
-
-    def get_profile(self, user_id: str) -> dict[str, Any] | None:
-        return asyncio.run(self.fetch_profile_async(user_id))
+            if row is None:
+                return None
+            return await profile_dict_with_catalog(session, row)
 
     def list_jobs_for_user(self, user_id: str) -> list[ProfilerJob]:
         with self._lock:
@@ -162,9 +150,6 @@ class ProfilerService:
             )
         return items
 
-    def list_analyses(self, user_id: str) -> list[dict[str, Any]]:
-        return asyncio.run(self.list_analyses_async(user_id))
-
     async def fetch_snapshot_async(
         self, user_id: str, snapshot_id: str
     ) -> dict[str, Any] | None:
@@ -175,25 +160,31 @@ class ProfilerService:
         sid = uuid.UUID(snapshot_id)
         async with AsyncSessionLocal() as session:
             row = await fetch_profile_snapshot(session, uid, sid)
-        if row is None:
-            return None
-        return profile_to_dict(row)
+            if row is None:
+                return None
+            return await profile_dict_with_catalog(session, row)
 
-    def get_snapshot(self, user_id: str, snapshot_id: str) -> dict[str, Any] | None:
-        return asyncio.run(self.fetch_snapshot_async(user_id, snapshot_id))
-
-    def run_job(self, job_id: str) -> None:
+    async def run_job_async(self, job_id: str) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
                 return
             job.status = JobStatus.RUNNING
             job.updated_at = datetime.now(UTC)
+            user_id = job.user_id
+            notify_email = job.notify_email
+            analysis_source_id = job.analysis_source_id
 
         try:
-            final = asyncio.run(run_profiler_async(job.user_id, job.notify_email))
-            profile = asyncio.run(self.fetch_profile_async(job.user_id))
+            final = await run_profiler_async(user_id, notify_email)
+            profile = await self.fetch_profile_async(user_id)
             notification = final.get("notification")
+            if profile and analysis_source_id:
+                from app.services.analysis_source_service import complete_source_async
+
+                await complete_source_async(
+                    analysis_source_id, profile.get("snapshot_id")
+                )
             with self._lock:
                 job = self._jobs[job_id]
                 job.status = JobStatus.COMPLETED
@@ -202,17 +193,31 @@ class ProfilerService:
                 job.notification = notification
                 job.updated_at = datetime.now(UTC)
         except Exception as exc:  # noqa: BLE001
+            if analysis_source_id:
+                from app.services.analysis_source_service import fail_source_async
+
+                await fail_source_async(analysis_source_id)
             with self._lock:
                 job = self._jobs[job_id]
                 job.status = JobStatus.FAILED
                 job.error = str(exc)
                 job.updated_at = datetime.now(UTC)
 
-    def enqueue_for_user(self, user_id: str, email: str = "") -> ProfilerJob:
-        job = self.create_job(user_id, email)
-        import threading
+    def enqueue_for_user(
+        self,
+        user_id: str,
+        email: str = "",
+        *,
+        analysis_source_id: str | None = None,
+    ) -> ProfilerJob:
+        job = self.create_job(user_id, email, analysis_source_id=analysis_source_id)
 
-        threading.Thread(target=self.run_job, args=(job.job_id,), daemon=True).start()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(self.run_job_async(job.job_id))
+        else:
+            loop.create_task(self.run_job_async(job.job_id))
         return job
 
 

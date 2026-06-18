@@ -1,7 +1,7 @@
 # Synapse DB 스키마
 
 PostgreSQL 17 · `pgvector` · `pgcrypto`  
-마이그레이션: `backend/alembic/versions/001_initial_schema.py` … `003_merge_profile_insight.py`
+마이그레이션: `backend/alembic/versions/001_initial_schema.py` … `004_user_analysis_source.py`
 
 ---
 
@@ -12,6 +12,7 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `users` | 사용자 | `user_token` 1:1 |
 | `user_token` | 로그인·Google 토큰 | → `users` |
 | `user_watch_catalog` | 시청 기록 정본 (인덱서) | → `users`, ← `video_analysis` 0~1 |
+| `user_analysis_source` | 업로드 소스별 분석 이력 (중복 방지) | → `users`, → `user_profile_history` 0~1 |
 | `video_analysis` | 영상 LLM 분석 (프로파일러) | → `users`, → `user_watch_catalog` 1:1 |
 | `user_profile_history` | 성향 점수 + LLM 해석 스냅샷 | → `users` |
 | `user_ideal_persona` | 이상 자아 (네비게이터) | → `users` |
@@ -79,6 +80,30 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 
 **UK:** `(user_id, url)`  
 **인덱스:** `(user_id, watched_at DESC)`, `(user_id, youtube_category_id)`, HNSW on `embedding`
+
+---
+
+## user_analysis_source
+
+업로드 **소스 파일 1건**당 분석 파이프라인(인덱서 → 프로파일러) 실행 이력. 같은 Takeout 재업로드 시 `completed`면 스킵.
+
+| 컬럼 | 타입 | NULL | 설명 |
+|------|------|:----:|------|
+| `id` | UUID | N | PK |
+| `user_id` | UUID | N | FK → `users.id` ON DELETE CASCADE |
+| `source_key` | VARCHAR(512) | N | `drive:{file_id}` 또는 `upload:{sha256}` |
+| `file_name` | TEXT | Y | UI 표시용 파일명 |
+| `status` | VARCHAR(20) | N | `running` · `completed` · `failed` |
+| `profile_history_id` | UUID | Y | FK → `user_profile_history.id` ON DELETE SET NULL |
+| `created_at` | TIMESTAMPTZ | N | |
+| `updated_at` | TIMESTAMPTZ | N | |
+
+**UK:** `(user_id, source_key)`  
+**인덱스:** `(user_id, created_at DESC)`
+
+`source_key` 규칙:
+- Drive: `drive:{google_drive_file_id}`
+- 직접 업로드: `upload:{파일 내용 SHA-256}`
 
 ---
 
@@ -179,4 +204,5 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | 항목 | 처리 방식 |
 |------|-----------|
 | 인덱서 job 상태 | 서버 메모리 (`takeout_status`, `analysis_status`) |
+| 프로파일러 job 상태 | 서버 메모리 (`ProfilerService._jobs`) |
 | `user_video_watch`, `user_feature_snapshot`, `video_vectors`, `indexer_job` | 폐기 (스키마 미포함) |

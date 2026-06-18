@@ -1,5 +1,15 @@
 export type JobStatus = "pending" | "running" | "completed" | "failed";
 
+export interface TopCategoryItem {
+  category_id: string;
+  count: number;
+}
+
+export interface TopChannelItem {
+  channel: string;
+  count: number;
+}
+
 export interface DbProfileResponse {
   user_id: string;
   snapshot_id: string;
@@ -11,6 +21,8 @@ export interface DbProfileResponse {
   dominant_traits: string[] | null;
   supporting_evidence: Record<string, unknown> | null;
   tone_of_user: string | null;
+  top_categories: TopCategoryItem[];
+  top_channels: TopChannelItem[];
 }
 
 export interface Synapse8Axes {
@@ -116,6 +128,48 @@ export interface AnalyzeResponse {
   status: JobStatus;
 }
 
+export interface HabitMetricsDto {
+  channel_concentration: number;
+  category_concentration: number;
+  category_diversity: number;
+  exploration_depth: number;
+}
+
+export interface CompareSnapshotSummary {
+  snapshot_id: string;
+  snapshot_date: string;
+  persona_label: string | null;
+  summary_text: string;
+  scores: Record<string, number>;
+  habits: HabitMetricsDto;
+  shorts_ratio: number;
+  total_videos: number;
+}
+
+export interface CompareNarrative {
+  headline: string;
+  summary_text: string;
+  key_shifts: string[];
+  stable_traits: string[];
+  viewing_pattern_note: string;
+}
+
+export interface AnalysisCompareResponse {
+  from_snapshot: CompareSnapshotSummary;
+  to_snapshot: CompareSnapshotSummary;
+  scores_delta: Record<string, number>;
+  habits_from: HabitMetricsDto;
+  habits_to: HabitMetricsDto;
+  habits_delta: HabitMetricsDto;
+  shorts_ratio_delta: number;
+  traits_added: string[];
+  traits_removed: string[];
+  channels_added: string[];
+  channels_removed: string[];
+  narrative: CompareNarrative | null;
+  narrative_error: string | null;
+}
+
 export interface GraphNode {
   id: string;
   type: string;
@@ -135,50 +189,6 @@ export interface GraphViewData {
   kind: string;
   nodes: GraphNode[];
   edges: GraphEdge[];
-}
-
-export interface AxesDelta {
-  intellectual_curiosity: number;
-  practical_orientation: number;
-  emotional_comfort: number;
-  social_awareness: number;
-  creative_expression: number;
-  entertainment_release: number;
-  self_improvement: number;
-  depth_immersion: number;
-}
-
-export interface LayerBDelta {
-  search_active_ratio: number;
-  viewing_concentration: number;
-  taste_diversity_index: number;
-  exploration_depth: number;
-}
-
-export interface ProfileCompareDelta {
-  user_id: string;
-  from_version: string;
-  to_version: string;
-  axes_delta: AxesDelta;
-  layer_b_delta: LayerBDelta;
-  top5_added: string[];
-  top5_removed: string[];
-}
-
-export interface AnomalyItem {
-  code: string;
-  message: string;
-  severity: string;
-}
-
-export interface CompareResponse {
-  delta: ProfileCompareDelta;
-  anomalies: AnomalyItem[];
-}
-
-export interface SnapshotListResponse {
-  user_id: string;
-  versions: string[];
 }
 
 export const SYNAPSE_AXIS_KEYS = [

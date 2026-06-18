@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import math
 import uuid
 from collections import Counter
 from typing import Any
 
+from app.agents.profiler.habit_metrics import habit_metrics_from_catalog_stats
 from app.agents.profiler.prompt import (
     BEHAVIOR_SPIDER_HUMAN,
     BEHAVIOR_SPIDER_SYSTEM,
@@ -50,8 +52,57 @@ _LABELS_KO = {
 }
 
 
+_SAMPLE_LIMIT = 30
+_EVIDENCE_SATURATION_K = 2.8
+_LLM_VT_BLEND = 0.8
+_LLM_BEHAVIOR_BLEND = 0.8
+_RULE_SCORE_MARGIN_LOW = 5.0
+_RULE_SCORE_MARGIN_HIGH = 28.0
+_BEHAVIOR_RULE_MARGIN_LOW = 8.0
+_BEHAVIOR_RULE_MARGIN_HIGH = 28.0
+
+_VALUES_TEMPERAMENT_KEYS = (
+    "self_direction",
+    "stimulation",
+    "achievement",
+    "power",
+    "security",
+    "benevolence",
+    "universalism",
+    "hedonism",
+    "conformity",
+    "tradition",
+    "novelty_seeking",
+    "persistence",
+    "self_transcendence",
+)
+
+
 def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
     return max(low, min(high, value))
+
+
+def _weighted_blend(*weighted: tuple[float, float]) -> float:
+    """가중 평균 (0=무관심, 100=강한 추구 스케일)."""
+    total_weight = sum(weight for _, weight in weighted)
+    if total_weight <= 0:
+        return 0.0
+    return sum(value * weight for value, weight in weighted) / total_weight
+
+
+def _evidence_to_score(strength: float) -> float:
+    """증거 강도(0~1) → 0~100 포화 곡선 (약한 근거도 12~15+, 상단 완만)."""
+    if strength <= 0.0:
+        return 0.0
+    return _clamp(100.0 * (1.0 - math.exp(-_EVIDENCE_SATURATION_K * strength)))
+
+
+def _rule_scores_from_stats(stats: dict[str, Any]) -> dict[str, float]:
+    evidence = _axis_evidence_strength(stats)
+    return {
+        key: round(_evidence_to_score(evidence[key]), 1)
+        for key in _VALUES_TEMPERAMENT_KEYS
+    }
 
 
 def _build_catalog_stats(rows) -> dict[str, Any]:
@@ -82,21 +133,6 @@ def _build_catalog_stats(rows) -> dict[str, Any]:
     }
 
 
-def _habits_from_stats(stats: dict[str, Any]) -> tuple[float, float, float]:
-    """편중도, 탐색깊이, 다양성(0~1) — catalog_stats에서 직접 산출."""
-    total = stats.get("total") or 0
-    if total == 0:
-        return 0.5, 0.0, 0.0
-    top5 = stats.get("channel_top5") or []
-    top_count = top5[0]["count"] if top5 else 0
-    concentration = min(1.0, top_count / total)
-    unique_channels = stats.get("unique_channels") or 1
-    exploration_depth = min(1.0, unique_channels / max(total, 1) * 3)
-    n_categories = len(stats.get("category_stats") or {})
-    diversity = min(100.0, 20.0 + n_categories * 6.0) / 100.0
-    return concentration, exploration_depth, diversity
-
-
 def _category_weight(stats: dict[str, Any], keys: set[str]) -> float:
     cat_stats = stats.get("category_stats") or {}
     total = sum(cat_stats.values()) or 1
@@ -104,74 +140,193 @@ def _category_weight(stats: dict[str, Any], keys: set[str]) -> float:
     return matched / total
 
 
-def rule_based_values_temperament(stats: dict[str, Any]) -> ValuesTemperamentOutput:
-    """1단계 폴백: catalog 통계 → 가치관·기질."""
-    concentration, exploration_depth, diversity = _habits_from_stats(stats)
+def _axis_evidence_strength(stats: dict[str, Any]) -> dict[str, float]:
+    """축별 양성 증거 강도 (0~1, 높을수록 해당 축 근거 있음)."""
+    habits = habit_metrics_from_catalog_stats(stats)
+    concentration = habits["channel_concentration"]
+    diversity = habits["category_diversity"]
     shorts_ratio = float(stats.get("shorts_ratio") or 0.0)
     long_ratio = float(stats.get("long_ratio") or (1.0 - shorts_ratio))
     edu_w = _category_weight(stats, _EDU_CATEGORIES)
     news_w = _category_weight(stats, _NEWS_CATEGORIES)
     entertain_w = _category_weight(stats, _ENTERTAINMENT_CATEGORIES)
+    spread = 1.0 - concentration
 
-    self_direction = _clamp(38 + diversity * 38 + (1 - concentration) * 22)
-    stimulation = _clamp(32 + shorts_ratio * 48 + entertain_w * 28)
-    achievement = _clamp(38 + edu_w * 42 + long_ratio * 18)
-    power = _clamp(42 + concentration * 32)
-    security = _clamp(48 + concentration * 28 - diversity * 18)
-    benevolence = _clamp(38 + news_w * 32 + entertain_w * 12)
-    universalism = _clamp(34 + news_w * 28 + edu_w * 22 + diversity * 16)
-    hedonism = _clamp(28 + shorts_ratio * 52 + entertain_w * 32)
-    conformity = _clamp(44 + concentration * 38 - self_direction * 0.12)
-    tradition = _clamp(50 - diversity * 22 - stimulation * 0.08)
+    return {
+        "self_direction": min(1.0, diversity * 0.55 + spread * 0.45),
+        "stimulation": min(1.0, shorts_ratio * 0.55 + entertain_w * 0.45),
+        "achievement": min(1.0, edu_w * 0.6 + long_ratio * 0.25),
+        "power": min(1.0, concentration * 0.65),
+        "security": min(1.0, concentration * 0.5),
+        "benevolence": min(1.0, news_w * 0.55 + entertain_w * 0.2),
+        "universalism": min(1.0, news_w * 0.6 + edu_w * 0.25),
+        "hedonism": min(1.0, shorts_ratio * 0.45 + entertain_w * 0.5),
+        "conformity": min(1.0, concentration * 0.55),
+        "tradition": min(1.0, (1.0 - diversity) * 0.45 + news_w * 0.35),
+        "novelty_seeking": min(
+            1.0, diversity * 0.45 + shorts_ratio * 0.25 + spread * 0.2
+        ),
+        "persistence": min(1.0, edu_w * 0.55 + long_ratio * 0.35),
+        "self_transcendence": min(1.0, news_w * 0.5 + entertain_w * 0.15),
+    }
 
-    novelty_seeking = _clamp(
-        34 + diversity * 38 + shorts_ratio * 18 + exploration_depth * 22
-    )
-    persistence = _clamp(36 + edu_w * 38 + long_ratio * 28 + achievement * 0.12)
-    self_transcendence = _clamp(
-        32 + universalism * 0.28 + benevolence * 0.28 + news_w * 22
-    )
 
+def rule_based_values_temperament(stats: dict[str, Any]) -> ValuesTemperamentOutput:
+    """1단계 폴백: catalog 증거 → 포화 곡선 0~100."""
+    return ValuesTemperamentOutput(**_rule_scores_from_stats(stats))
+
+
+_BEHAVIOR_SOURCE_KEYS: dict[str, tuple[str, ...]] = {
+    "exploration": ("novelty_seeking", "self_direction", "stimulation"),
+    "analytical": ("achievement", "universalism", "persistence"),
+    "creativity": ("self_direction", "stimulation", "hedonism"),
+    "execution": ("persistence", "achievement"),
+    "achievement_drive": ("achievement", "persistence", "power"),
+    "autonomy": ("self_direction", "novelty_seeking", "conformity"),
+    "sociality": ("benevolence", "universalism", "hedonism"),
+    "sensitivity": ("self_transcendence", "hedonism", "stimulation"),
+}
+
+
+def _blend_values_temperament(
+    llm: ValuesTemperamentOutput,
+    rule: ValuesTemperamentOutput,
+    *,
+    llm_weight: float = _LLM_VT_BLEND,
+) -> ValuesTemperamentOutput:
+    rule_weight = 1.0 - llm_weight
+    blended = {
+        key: _clamp(
+            llm_weight * float(llm.model_dump()[key])
+            + rule_weight * float(rule.model_dump()[key])
+        )
+        for key in _VALUES_TEMPERAMENT_KEYS
+    }
     return ValuesTemperamentOutput(
-        self_direction=round(self_direction, 1),
-        stimulation=round(stimulation, 1),
-        achievement=round(achievement, 1),
-        power=round(power, 1),
-        security=round(security, 1),
-        benevolence=round(benevolence, 1),
-        universalism=round(universalism, 1),
-        hedonism=round(hedonism, 1),
-        conformity=round(conformity, 1),
-        tradition=round(tradition, 1),
-        novelty_seeking=round(novelty_seeking, 1),
-        persistence=round(persistence, 1),
-        self_transcendence=round(self_transcendence, 1),
+        **{key: round(blended[key], 1) for key in _VALUES_TEMPERAMENT_KEYS}
+    )
+
+
+def _blend_behavior_spider(
+    llm: BehaviorSpiderOutput,
+    rule: BehaviorSpiderOutput,
+    *,
+    llm_weight: float = _LLM_BEHAVIOR_BLEND,
+) -> BehaviorSpiderOutput:
+    rule_weight = 1.0 - llm_weight
+    blended = {
+        key: _clamp(
+            llm_weight * float(llm.model_dump()[key])
+            + rule_weight * float(rule.model_dump()[key])
+        )
+        for key in _BEHAVIOR_KEYS
+    }
+    return BehaviorSpiderOutput(
+        **{key: round(blended[key], 1) for key in _BEHAVIOR_KEYS}
+    )
+
+
+def _ensure_values_spread(
+    data: dict[str, float], rule_scores: dict[str, float]
+) -> dict[str, float]:
+    """LLM 몰림 방지 — rule 대비 과대 축만 rule+margin 안으로."""
+    if max(data.values()) - min(data.values()) >= 24.0:
+        return data
+    ranked = sorted(_VALUES_TEMPERAMENT_KEYS, key=lambda k: data[k], reverse=True)
+    for key in ranked[3:]:
+        ceiling = rule_scores[key] + _RULE_SCORE_MARGIN_HIGH + 4.0
+        if data[key] > ceiling:
+            data[key] = ceiling
+    return data
+
+
+def calibrate_values_temperament(
+    vt: ValuesTemperamentOutput, stats: dict[str, Any]
+) -> ValuesTemperamentOutput:
+    """rule(포화 곡선) ± margin 안으로 clamp — 하드 cap 제거."""
+    rule_scores = _rule_scores_from_stats(stats)
+    data = {key: float(vt.model_dump()[key]) for key in _VALUES_TEMPERAMENT_KEYS}
+
+    for key in _VALUES_TEMPERAMENT_KEYS:
+        rule = rule_scores[key]
+        lo = max(0.0, rule - _RULE_SCORE_MARGIN_LOW)
+        hi = min(100.0, rule + _RULE_SCORE_MARGIN_HIGH)
+        data[key] = _clamp(data[key], lo, hi)
+
+    data = _ensure_values_spread(data, rule_scores)
+    return ValuesTemperamentOutput(
+        **{key: round(_clamp(data[key]), 1) for key in _VALUES_TEMPERAMENT_KEYS}
+    )
+
+
+def calibrate_behavior_spider(
+    behavior: BehaviorSpiderOutput,
+    vt: ValuesTemperamentOutput,
+    rule_behavior: BehaviorSpiderOutput | None = None,
+) -> BehaviorSpiderOutput:
+    """rule behavior ± margin — 1단계와 불일치하는 LLM 행동 점수 완화."""
+    anchor = rule_behavior or rule_based_behavior_spider(vt)
+    anchor_map = anchor.model_dump()
+    data = behavior.model_dump()
+    for key in _BEHAVIOR_KEYS:
+        rule = float(anchor_map[key])
+        lo = max(0.0, rule - _BEHAVIOR_RULE_MARGIN_LOW)
+        hi = min(100.0, rule + _BEHAVIOR_RULE_MARGIN_HIGH)
+        data[key] = _clamp(float(data[key]), lo, hi)
+    return BehaviorSpiderOutput(
+        **{key: round(float(data[key]), 1) for key in _BEHAVIOR_KEYS}
     )
 
 
 def rule_based_behavior_spider(vt: ValuesTemperamentOutput) -> BehaviorSpiderOutput:
-    """2단계 폴백: 가치관·기질 점수 → 행동 스파이더 8."""
+    """2단계 폴백: 1단계 추구 강도 가중합."""
     exploration = _clamp(
-        vt.novelty_seeking * 0.55 + vt.self_direction * 0.28 + vt.stimulation * 0.17
+        _weighted_blend(
+            (vt.novelty_seeking, 0.55),
+            (vt.self_direction, 0.28),
+            (vt.stimulation, 0.17),
+        )
     )
     analytical = _clamp(
-        vt.achievement * 0.32 + vt.universalism * 0.33 + vt.persistence * 0.25
+        _weighted_blend(
+            (vt.achievement, 0.32),
+            (vt.universalism, 0.33),
+            (vt.persistence, 0.25),
+        )
     )
     creativity = _clamp(
-        vt.self_direction * 0.38 + vt.stimulation * 0.34 + vt.hedonism * 0.18
+        _weighted_blend(
+            (vt.self_direction, 0.38),
+            (vt.stimulation, 0.34),
+            (vt.hedonism, 0.18),
+        )
     )
-    execution = _clamp(vt.persistence * 0.52 + vt.achievement * 0.38)
+    execution = _clamp(_weighted_blend((vt.persistence, 0.52), (vt.achievement, 0.38)))
     achievement_drive = _clamp(
-        vt.achievement * 0.52 + vt.persistence * 0.33 + vt.power * 0.15
+        _weighted_blend(
+            (vt.achievement, 0.52),
+            (vt.persistence, 0.33),
+            (vt.power, 0.15),
+        )
     )
     autonomy = _clamp(
-        vt.self_direction * 0.52 + vt.novelty_seeking * 0.28 - vt.conformity * 0.18
+        vt.self_direction * 0.45
+        + vt.novelty_seeking * 0.35
+        + (100.0 - vt.conformity) * 0.2
     )
     sociality = _clamp(
-        vt.benevolence * 0.42 + vt.universalism * 0.28 + vt.hedonism * 0.18
+        _weighted_blend(
+            (vt.benevolence, 0.42),
+            (vt.universalism, 0.28),
+            (vt.hedonism, 0.18),
+        )
     )
     sensitivity = _clamp(
-        vt.self_transcendence * 0.38 + vt.hedonism * 0.28 + vt.stimulation * 0.22
+        _weighted_blend(
+            (vt.self_transcendence, 0.38),
+            (vt.hedonism, 0.28),
+            (vt.stimulation, 0.22),
+        )
     )
 
     return BehaviorSpiderOutput(
@@ -198,6 +353,35 @@ def rule_based_scores(stats: dict[str, Any]) -> ProfileScoresOutput:
     return merge_profile_scores(vt, behavior)
 
 
+_PERSONA_ADJ: dict[str, str] = {
+    "exploration": "호기심 많은",
+    "analytical": "분석적인",
+    "creativity": "창의적인",
+    "execution": "실행적인",
+    "achievement_drive": "성취 지향",
+    "autonomy": "자기주도적인",
+    "sociality": "사교적인",
+    "sensitivity": "감수성 높은",
+}
+
+_PERSONA_NOUN: dict[str, str] = {
+    "exploration": "탐색가",
+    "analytical": "분석가",
+    "creativity": "창작 소비자",
+    "execution": "실천가",
+    "achievement_drive": "성장 추구자",
+    "autonomy": "큐레이터",
+    "sociality": "관람자",
+    "sensitivity": "감성 소비자",
+}
+
+
+def _template_persona_label(top_behavior_key: str) -> str:
+    adj = _PERSONA_ADJ.get(top_behavior_key, "균형적인")
+    noun = _PERSONA_NOUN.get(top_behavior_key, "소비자")
+    return f"{adj} {noun}"
+
+
 def _template_insight(
     scores: ProfileScoresOutput, stats: dict[str, Any]
 ) -> ProfileInsightOutput:
@@ -210,9 +394,9 @@ def _template_insight(
     traits = [_LABELS_KO[key] for key, _ in top]
     total = stats.get("total") or 0
     shorts_ratio = stats.get("shorts_ratio") or 0.0
-    persona = "탐색형 큐레이터" if top[0][0] == "exploration" else "집중형 소비자"
-    if shorts_ratio > 0.5:
-        persona = "숏폼 중심 소비자"
+    persona = _template_persona_label(top[0][0])
+    if shorts_ratio > 0.5 and top[0][0] != "exploration":
+        persona = "숏폼 중심 큐레이터"
 
     summary = (
         f"최근 {total}건의 시청 기록을 바탕으로, "
@@ -232,43 +416,73 @@ def _template_insight(
     )
 
 
+def _catalog_sample_dict(row, analysis) -> dict[str, Any]:
+    sample: dict[str, Any] = {
+        "catalog_id": str(row.id),
+        "title": row.title,
+        "channel": row.channel,
+        "youtube_category_id": row.youtube_category_id,
+        "is_shorts": row.is_shorts,
+    }
+    if analysis:
+        sample.update(
+            {
+                "summary_kr": analysis.summary_kr,
+                "tones": analysis.tones,
+                "intents": analysis.intents,
+                "value_signals": analysis.value_signals,
+            }
+        )
+    return sample
+
+
+def _select_analysis_samples(
+    rows: list,
+    analyses: list,
+    *,
+    limit: int = _SAMPLE_LIMIT,
+) -> list[dict[str, Any]]:
+    """video_analysis 있는 catalog 우선, 부족 시 최근 catalog로 채움."""
+    rows_by_id = {row.id: row for row in rows}
+    by_catalog = {a.catalog_id: a for a in analyses}
+    picked: list = []
+    seen: set[uuid.UUID] = set()
+
+    for analysis in analyses:
+        if len(picked) >= limit:
+            break
+        row = rows_by_id.get(analysis.catalog_id)
+        if row is None or row.id in seen:
+            continue
+        seen.add(row.id)
+        picked.append(row)
+
+    for row in rows:
+        if len(picked) >= limit:
+            break
+        if row.id in seen:
+            continue
+        seen.add(row.id)
+        picked.append(row)
+
+    return [_catalog_sample_dict(row, by_catalog.get(row.id)) for row in picked]
+
+
 async def _load_context(
     user_id: uuid.UUID,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     from app.core.database.session import AsyncSessionLocal
     from app.repositories.profiler_repository import (
-        fetch_analysis_for_catalog_ids,
         fetch_catalog_rows,
+        fetch_video_analyses_for_user,
     )
 
     async with AsyncSessionLocal() as session:
         rows = await fetch_catalog_rows(session, user_id)
         stats = _build_catalog_stats(rows)
-        analyses = await fetch_analysis_for_catalog_ids(
-            session, [row.id for row in rows[:50]]
-        )
+        analyses = await fetch_video_analyses_for_user(session, user_id, limit=50)
 
-    by_catalog = {a.catalog_id: a for a in analyses}
-    samples = []
-    for row in rows[:30]:
-        analysis = by_catalog.get(row.id)
-        sample: dict[str, Any] = {
-            "catalog_id": str(row.id),
-            "title": row.title,
-            "channel": row.channel,
-            "youtube_category_id": row.youtube_category_id,
-            "is_shorts": row.is_shorts,
-        }
-        if analysis:
-            sample.update(
-                {
-                    "summary_kr": analysis.summary_kr,
-                    "tones": analysis.tones,
-                    "intents": analysis.intents,
-                    "value_signals": analysis.value_signals,
-                }
-            )
-        samples.append(sample)
+    samples = _select_analysis_samples(rows, analyses)
     return stats, samples
 
 
@@ -330,15 +544,25 @@ async def _llm_profile_scores(
     analysis_samples: list[dict[str, Any]],
 ) -> tuple[ProfileScoresOutput | None, bool, bool]:
     """2단계 LLM 점수 산출. (scores, stage1_llm, stage2_llm)."""
-    vt = await _llm_values_temperament(user_id, stats, analysis_samples)
-    stage1_llm = vt is not None
-    if vt is None:
-        vt = rule_based_values_temperament(stats)
+    rule_vt = rule_based_values_temperament(stats)
+    vt_llm = await _llm_values_temperament(user_id, stats, analysis_samples)
+    stage1_llm = vt_llm is not None
+    if vt_llm is None:
+        vt = rule_vt
+    else:
+        vt = _blend_values_temperament(vt_llm, rule_vt)
+    if stats.get("total", 0) > 0:
+        vt = calibrate_values_temperament(vt, stats)
 
-    behavior = await _llm_behavior_spider(user_id, vt, stats)
-    stage2_llm = behavior is not None
-    if behavior is None:
-        behavior = rule_based_behavior_spider(vt)
+    rule_behavior = rule_based_behavior_spider(vt)
+    behavior_llm = await _llm_behavior_spider(user_id, vt, stats)
+    stage2_llm = behavior_llm is not None
+    if behavior_llm is None:
+        behavior = rule_behavior
+    else:
+        behavior = _blend_behavior_spider(behavior_llm, rule_behavior)
+    if stats.get("total", 0) > 0:
+        behavior = calibrate_behavior_spider(behavior, vt, rule_behavior)
 
     if not stage1_llm and not stage2_llm:
         return None, False, False
@@ -377,9 +601,11 @@ async def build_profile_node(state: ProfilerState) -> dict[str, Any]:
 
     try:
         stats, samples = await _load_context(user_id)
+        analyzed_in_samples = sum(1 for s in samples if s.get("summary_kr"))
         log.append(
             f"build_profile: catalog={stats['total']} "
-            f"samples={len(samples)} shorts_ratio={stats.get('shorts_ratio', 0)}"
+            f"samples={len(samples)} analyzed_in_samples={analyzed_in_samples} "
+            f"shorts_ratio={stats.get('shorts_ratio', 0)}"
         )
     except Exception as exc:
         log.append(f"build_profile load error: {exc}")

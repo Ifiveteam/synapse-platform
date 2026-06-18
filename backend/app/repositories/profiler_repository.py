@@ -140,6 +140,22 @@ async def fetch_analysis_for_catalog_ids(
     return list(result.scalars().all())
 
 
+async def fetch_video_analyses_for_user(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    limit: int = 50,
+) -> list[VideoAnalysis]:
+    """유저 video_analysis 전체 (build_profile 샘플 우선순위용)."""
+    result = await session.execute(
+        select(VideoAnalysis)
+        .where(VideoAnalysis.user_id == user_id)
+        .order_by(desc(VideoAnalysis.updated_at))
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
 def profile_snapshot_from_outputs(
     user_id: uuid.UUID,
     snapshot_date: datetime,

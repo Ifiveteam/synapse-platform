@@ -4,6 +4,7 @@ export interface AnalysisResultItem {
   id: string;
   title: string;
   date: string;
+  snapshotAt: string | null;
   status: AnalysisStatus;
   kind: "snapshot" | "job";
 }

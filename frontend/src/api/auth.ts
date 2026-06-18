@@ -28,6 +28,7 @@ export async function refreshSession(): Promise<SessionResponse | null> {
     const res = await fetch(`${AUTH_API}/refresh`, {
       method: "POST",
       credentials: "include",
+      signal: AbortSignal.timeout(8_000),
     });
     if (!res.ok) return null;
     return res.json();

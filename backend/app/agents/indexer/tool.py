@@ -52,6 +52,21 @@ def youtube_category_label(category_id: str | None) -> str | None:
     return _YOUTUBE_CATEGORY_LABELS.get(str(category_id))
 
 
+def has_classified_category(item: dict) -> bool:
+    """YouTube categoryId가 있는 행만 catalog·임베딩 대상."""
+    cat = item.get("youtube_category_id")
+    if cat is None:
+        return False
+    text = str(cat).strip()
+    return bool(text) and text.lower() != "unknown"
+
+
+def filter_classified_catalog_items(items: list[dict]) -> tuple[list[dict], int]:
+    """카테고리 없는 행 제거. (유지 목록, 제외 건수)"""
+    kept = [item for item in items if has_classified_category(item)]
+    return kept, len(items) - len(kept)
+
+
 # ---------------------------------------------------------------------------
 # Takeout 파싱 · 전처리
 # ---------------------------------------------------------------------------

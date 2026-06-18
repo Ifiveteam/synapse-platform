@@ -8,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 
 from app.api.v1.auth import get_current_user_dep
 from app.schemas.profiler import (
+    AnalysisCompareResponse,
     AnalysisListResponse,
     AnalyzeResponse,
     DbProfileResponse,
@@ -22,8 +23,8 @@ def _to_db_profile_response(data: dict) -> DbProfileResponse:
     return DbProfileResponse.model_validate(data)
 
 
-def _get_db_profile_or_404(user_id: str) -> DbProfileResponse:
-    profile = profiler_service.get_profile(user_id)
+async def _get_db_profile_or_404(user_id: str) -> DbProfileResponse:
+    profile = await profiler_service.fetch_profile_async(user_id)
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -43,7 +44,7 @@ def run_profiler_pipeline(
 ) -> AnalyzeResponse:
     """인증 유저 catalog → video_summary → profile DB 저장."""
     job = profiler_service.create_job(str(user.id), user.email)
-    background_tasks.add_task(profiler_service.run_job, job.job_id)
+    background_tasks.add_task(profiler_service.run_job_async, job.job_id)
     return AnalyzeResponse(job_id=job.job_id, status=job.status)
 
 
@@ -74,22 +75,50 @@ def get_job(job_id: str) -> JobResponse:
 
 
 @router.get("/me/profile", response_model=DbProfileResponse)
-def get_my_profile(user=Depends(get_current_user_dep)) -> DbProfileResponse:
-    return _get_db_profile_or_404(str(user.id))
+async def get_my_profile(user=Depends(get_current_user_dep)) -> DbProfileResponse:
+    return await _get_db_profile_or_404(str(user.id))
 
 
 @router.get("/me/analyses", response_model=AnalysisListResponse)
-def list_my_analyses(user=Depends(get_current_user_dep)) -> AnalysisListResponse:
+async def list_my_analyses(user=Depends(get_current_user_dep)) -> AnalysisListResponse:
     """개인성향 분석 목록 — 완료 스냅샷 + 진행 중 job."""
-    items = profiler_service.list_analyses(str(user.id))
+    items = await profiler_service.list_analyses_async(str(user.id))
     return AnalysisListResponse.model_validate({"items": items})
 
 
+@router.get("/me/analyses/compare", response_model=AnalysisCompareResponse)
+async def compare_my_analyses(
+    from_snapshot: str = Query(..., alias="from"),
+    to_snapshot: str = Query(..., alias="to"),
+    user=Depends(get_current_user_dep),
+) -> AnalysisCompareResponse:
+    """두 완료 스냅샷 비교 (이전 → 이후) — compare 서브 에이전트."""
+    if from_snapshot == to_snapshot:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="from and to must be different snapshots",
+        )
+
+    from app.agents.profiler.sub_agent.compare import (
+        compare_state_to_api_payload,
+        run_compare,
+    )
+
+    agent_result = await run_compare(str(user.id), from_snapshot, to_snapshot)
+    result = compare_state_to_api_payload(agent_result)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="One or both analysis snapshots not found",
+        )
+    return AnalysisCompareResponse.model_validate(result)
+
+
 @router.get("/me/analyses/{snapshot_id}", response_model=DbProfileResponse)
-def get_my_analysis_snapshot(
+async def get_my_analysis_snapshot(
     snapshot_id: str, user=Depends(get_current_user_dep)
 ) -> DbProfileResponse:
-    profile = profiler_service.get_snapshot(str(user.id), snapshot_id)
+    profile = await profiler_service.fetch_snapshot_async(str(user.id), snapshot_id)
     if profile is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -99,8 +128,8 @@ def get_my_analysis_snapshot(
 
 
 @router.get("/profile/{user_id}", response_model=DbProfileResponse)
-def get_profile(user_id: str) -> DbProfileResponse:
-    return _get_db_profile_or_404(user_id)
+async def get_profile(user_id: str) -> DbProfileResponse:
+    return await _get_db_profile_or_404(user_id)
 
 
 _video_summary_status: dict[str, dict] = {}

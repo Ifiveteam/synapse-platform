@@ -27,6 +27,7 @@ export function ShellLayout() {
   const navigate = useNavigate();
   const { token, authReady, setToken, setUser, setAuthReady } = useAuthStore();
   const openLoginModal = useShellStore((s) => s.openLoginModal);
+  const closeLoginModal = useShellStore((s) => s.closeLoginModal);
   const isHomePage = location.pathname === ROUTES.home;
 
   useEffect(() => {
@@ -39,6 +40,7 @@ export function ShellLayout() {
           return;
         }
         if (currentToken) {
+          closeLoginModal();
           return;
         }
 
@@ -47,6 +49,7 @@ export function ShellLayout() {
         if (session) {
           setToken(session.access_token);
           setUser(session.user);
+          closeLoginModal();
         }
       } finally {
         if (!cancelled) setAuthReady(true);
@@ -57,7 +60,11 @@ export function ShellLayout() {
     return () => {
       cancelled = true;
     };
-  }, [setToken, setUser, setAuthReady]);
+  }, [setToken, setUser, setAuthReady, closeLoginModal]);
+
+  useEffect(() => {
+    if (token) closeLoginModal();
+  }, [token, closeLoginModal]);
 
   useEffect(() => {
     if (!authReady) return;

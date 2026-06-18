@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.indexer.graph import graph
 from app.api.v1.auth import get_current_user_dep
 from app.core.database.session import get_db
+from app.repositories.analysis_source_repository import begin_source
+from app.services.analysis_source_service import fail_source_async, upload_source_key
 
 router = APIRouter(prefix="/indexer", tags=["indexer"])
 
@@ -25,12 +27,26 @@ def _temp_upload_path(file: UploadFile) -> str:
         return tmp.name
 
 
+async def _enqueue_profiler(
+    user_id: UUID, user_email: str, analysis_source_id: str
+) -> None:
+    from app.services.profiler.service import profiler_service
+
+    profiler_service.enqueue_for_user(
+        str(user_id),
+        user_email,
+        analysis_source_id=analysis_source_id,
+    )
+
+
 async def run_analysis(
     task_id: str,
     tmp_path: str,
     user_id: UUID,
+    user_email: str,
+    analysis_source_id: str,
 ):
-    """백그라운드 분석 실행"""
+    """백그라운드 분석 실행 — 인덱서 후 프로파일러 자동 큐."""
     try:
         analysis_status[task_id] = {"status": "running"}
 
@@ -49,6 +65,7 @@ async def run_analysis(
 
         if result["error"]:
             analysis_status[task_id] = {"status": "error", "message": result["error"]}
+            await fail_source_async(analysis_source_id)
             return
 
         cleaned = result.get("cleaned_data") or []
@@ -70,12 +87,51 @@ async def run_analysis(
             "category_stats": category_stats,
         }
 
-        if result.get("saved_count"):
-            from app.services.profiler.service import profiler_service
-
-            profiler_service.enqueue_for_user(str(user_id))
+        await _enqueue_profiler(user_id, user_email, analysis_source_id)
     except Exception as e:
         analysis_status[task_id] = {"status": "error", "message": str(e)}
+        await fail_source_async(analysis_source_id)
+
+
+async def _start_upload_analysis(
+    *,
+    session: AsyncSession,
+    background_tasks: BackgroundTasks,
+    user,
+    content: bytes,
+    filename: str | None,
+    tmp_path: str,
+    mode: str | None = None,
+) -> dict:
+    source_key = upload_source_key(content)
+    row, action = await begin_source(session, user.id, source_key, filename)
+    await session.commit()
+
+    if action == "skip_completed":
+        os.unlink(tmp_path)
+        return {
+            "status": "already_completed",
+            "profile_history_id": (
+                str(row.profile_history_id) if row.profile_history_id else None
+            ),
+        }
+    if action == "skip_running":
+        os.unlink(tmp_path)
+        return {"status": "already_running"}
+
+    task_id = str(uuid_mod.uuid4())
+    background_tasks.add_task(
+        run_analysis,
+        task_id,
+        tmp_path,
+        user.id,
+        user.email,
+        str(row.id),
+    )
+    payload = {"status": "started", "task_id": task_id}
+    if mode:
+        payload["mode"] = mode
+    return payload
 
 
 @router.post("/analyze")
@@ -83,6 +139,7 @@ async def analyze(  # noqa: B008
     file: UploadFile = File(...),  # noqa: B008
     background_tasks: BackgroundTasks = BackgroundTasks(),  # noqa: B008
     user=Depends(get_current_user_dep),
+    session: AsyncSession = Depends(get_db),
 ):
     """테이크아웃 JSON 파일 업로드 → 백그라운드 분석 시작"""
     tmp_path = _temp_upload_path(file)
@@ -90,10 +147,14 @@ async def analyze(  # noqa: B008
     with open(tmp_path, "wb") as tmp:
         tmp.write(content)
 
-    task_id = str(uuid_mod.uuid4())
-    background_tasks.add_task(run_analysis, task_id, tmp_path, user.id)
-
-    return {"status": "started", "task_id": task_id}
+    return await _start_upload_analysis(
+        session=session,
+        background_tasks=background_tasks,
+        user=user,
+        content=content,
+        filename=file.filename,
+        tmp_path=tmp_path,
+    )
 
 
 @router.post("/analyze/sample")
@@ -101,6 +162,7 @@ async def analyze_sample(  # noqa: B008
     file: UploadFile = File(...),  # noqa: B008
     background_tasks: BackgroundTasks = BackgroundTasks(),  # noqa: B008
     user=Depends(get_current_user_dep),
+    session: AsyncSession = Depends(get_db),
 ):
     """샘플 모드 - 20개만 처리 (시연용)"""
     tmp_path = _temp_upload_path(file)
@@ -108,10 +170,15 @@ async def analyze_sample(  # noqa: B008
     with open(tmp_path, "wb") as tmp:
         tmp.write(content)
 
-    task_id = str(uuid_mod.uuid4())
-    background_tasks.add_task(run_analysis, task_id, tmp_path, user.id)
-
-    return {"status": "started", "task_id": task_id, "mode": "sample"}
+    return await _start_upload_analysis(
+        session=session,
+        background_tasks=background_tasks,
+        user=user,
+        content=content,
+        filename=file.filename,
+        tmp_path=tmp_path,
+        mode="sample",
+    )
 
 
 @router.get("/analyze/{task_id}")
@@ -147,14 +214,38 @@ async def get_videos(
     ]
 
 
+@router.get("/graph-summary")
+async def get_graph_summary(
+    session: AsyncSession = Depends(get_db), user=Depends(get_current_user_dep)
+):
+    """시청 그래프 UI용 catalog 집계 (상위 카테고리·채널, 경량)."""
+    from app.repositories.indexer_repository import fetch_graph_summary
+
+    return await fetch_graph_summary(session, user.id)
+
+
+@router.get("/embedding-graph")
+async def get_embedding_graph(
+    session: AsyncSession = Depends(get_db), user=Depends(get_current_user_dep)
+):
+    """영상별 임베딩 PCA 2D 투영 그래프."""
+    from app.repositories.indexer_repository import fetch_catalog_embedding_rows
+    from app.services.catalog_embedding_graph import build_embedding_graph_payload
+
+    rows = await fetch_catalog_embedding_rows(session, user.id)
+    return build_embedding_graph_payload(rows)
+
+
 @router.delete("/videos")
 async def delete_all_videos(
     session: AsyncSession = Depends(get_db), user=Depends(get_current_user_dep)
 ):
-    """본인 catalog + 분석 결과 전체 삭제"""
+    """본인 catalog + 분석 결과 + 소스 이력 전체 삭제"""
+    from app.repositories.analysis_source_repository import delete_sources_for_user
     from app.repositories.indexer_repository import delete_user_catalog
 
     await delete_user_catalog(session, user.id)
+    await delete_sources_for_user(session, user.id)
     await session.commit()
     return {"message": "전체 삭제 완료"}
 

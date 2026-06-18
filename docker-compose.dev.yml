@@ -68,6 +68,7 @@ services:
       # 그 외 secret(OPENAI/GOOGLE/YOUTUBE/RESEND/NAVER 등)은 env_file(backend/.env)에서 공급.
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/synapse
       NAVIGATOR_MODEL: ${NAVIGATOR_MODEL:-gpt-4o}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:5173}
       # Windows/Docker Desktop에서 bind-mount 파일변경 감지 안정화
       WATCHFILES_FORCE_POLLING: "true"
     volumes:

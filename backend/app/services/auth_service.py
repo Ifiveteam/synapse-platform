@@ -18,7 +18,7 @@ DEV_GOOGLE_SUB_ID = "dev-local-user"
 
 
 def frontend_url() -> str:
-    return os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
+    return os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")
 
 
 async def handle_oauth_callback(code: str, session: AsyncSession) -> RedirectResponse:
