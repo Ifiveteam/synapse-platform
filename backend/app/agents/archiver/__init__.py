@@ -1,11 +1,15 @@
-"""Archiver Agent 패키지."""
+"""Archiver Agent 패키지 — engine 단일 진입점."""
 
-from .agent import ArchiverAgent, get_archiver_agent
-from .graph import ArchiverGraph, get_archiver_graph
+from app.agents.archiver.engine import (
+    ArchiverEngine,
+    ArchiverGraph,
+    get_archiver_engine,
+    get_archiver_graph,
+)
 
 __all__ = [
-    "ArchiverAgent",
+    "ArchiverEngine",
     "ArchiverGraph",
-    "get_archiver_agent",
+    "get_archiver_engine",
     "get_archiver_graph",
 ]

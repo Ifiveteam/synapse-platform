@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -18,3 +20,21 @@ class ChatStreamRequest(BaseModel):
         default=None,
         description="활성 탭 맥락 (URL, 제목)",
     )
+
+
+class ArchiverSessionSummary(BaseModel):
+    """GET /archiver/sessions 응답 항목."""
+
+    session_id: str
+    context_title: str
+    context_url: str
+    last_activity: datetime
+
+
+class ArchiverChatMessage(BaseModel):
+    """GET /archiver/history/{session_id} 응답 항목."""
+
+    id: int
+    role: str
+    content: str
+    created_at: datetime
