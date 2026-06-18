@@ -15,4 +15,4 @@
 | `profile/` | Profiler — [README](./profile/README.md), [PIPELINE](./profile/PIPELINE.md) |
 | `navigator/` | Navigator |
 | `aggregator/` | Aggregator |
-| `achiver/` | Archiver |
+| `archiver/` | Archiver — [README](./archiver/README.md), [ARCHITECTURE](./archiver/ARCHITECTURE.md) |

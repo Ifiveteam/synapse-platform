@@ -39,7 +39,10 @@ async def get_archiver_sessions(
 ):
     """현재 로그인한 유저의 아카이버 대화 세션(웹페이지) 역사 목록을 반환한다."""
     sessions = await archiver_service.get_active_sessions(user_id=DEFAULT_USER_ID)
-    return {"status": "success", "data": sessions}
+    return {
+        "status": "success",
+        "data": [session.model_dump(mode="json") for session in sessions],
+    }
 
 
 @router.get("/history/{session_id}")
@@ -49,4 +52,7 @@ async def get_session_chat_history(
 ):
     """특정 세션 ID의 유저-AI 대화 타임라인을 복원한다."""
     history = await archiver_service.get_session_history(session_id=session_id)
-    return {"status": "success", "data": history}
+    return {
+        "status": "success",
+        "data": [message.model_dump(mode="json") for message in history],
+    }

@@ -20,6 +20,8 @@ logging.basicConfig(
     force=True,
 )
 logging.getLogger("app.agents.aggregator.workflow").setLevel(logging.INFO)
+logging.getLogger("app.agents.archiver.workflow").setLevel(logging.INFO)
+logging.getLogger("app.agents.archiver.observability").setLevel(logging.INFO)
 # httpx INFO 로그에 URL 쿼리(key= 등)가 그대로 노출되므로 WARNING 이상만 출력
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
