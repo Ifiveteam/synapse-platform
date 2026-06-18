@@ -13,7 +13,6 @@ init → analyze_profile (Layer A + Layer B 파생)
 
 import json
 import os
-from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_openai import ChatOpenAI
@@ -24,15 +23,11 @@ from .prompt import (
     GUIDE_PROMPT,
     IDEAL_DESIGN_PROMPT,
     PLAYLIST_PROMPT,
-    QUEST_PROMPT,
     SYSTEM_PROMPT,
 )
 from .schemas import (
-    Guide,
     IdealDesignResponse,
-    IdealRadarChart,
     IdealType,
-    Quest,
 )
 from .state import NavigatorState, NavigatorStep
 from .tool import (
@@ -44,7 +39,6 @@ from .tool import (
     generate_quests,
 )
 from .youtube import build_playlist_from_ideal
-
 
 # ──────────────────────────────────────────
 # LLM 초기화
@@ -83,7 +77,9 @@ def node_analyze_profile(state: NavigatorState) -> dict:
     Layer B는 Profiler가 산출 — Navigator는 읽기만 함
     """
     if not state.current_radar:
-        return {"error": "current_radar 데이터가 없습니다. Profiler 에이전트 확인 필요."}
+        return {
+            "error": "current_radar 데이터가 없습니다. Profiler 에이전트 확인 필요."
+        }
 
     radar = state.current_radar
     dominant, weak = compute_dominant_weak(radar)
@@ -130,18 +126,17 @@ def node_generate_ideals(state: NavigatorState) -> dict:
 
     # 이상향 3종 생성 (반대방향형=LLM, 확장/균형=수식)
     proposals = generate_all_ideals(
-        state.current_radar, dominant, weak,
-        layer_b        = state.layer_b,
-        top5_interests = state.top5_interests,
+        state.current_radar,
+        dominant,
+        weak,
+        layer_b=state.layer_b,
+        top5_interests=state.top5_interests,
     )
 
     # LLM으로 소개 메시지
     llm = _get_llm(temperature=0.7)
 
-    indices_json = (
-        state.layer_b.model_dump_json()
-        if state.layer_b else "{}"
-    )
+    indices_json = state.layer_b.model_dump_json() if state.layer_b else "{}"
 
     prompt = IDEAL_DESIGN_PROMPT.format(
         current_radar=json.dumps(
@@ -154,10 +149,12 @@ def node_generate_ideals(state: NavigatorState) -> dict:
         top5_interests=", ".join(state.top5_interests),
     )
 
-    response = llm.invoke([
-        HumanMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=prompt),
-    ])
+    response = llm.invoke(
+        [
+            HumanMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=prompt),
+        ]
+    )
     agent_message = response.content
 
     ideal_response = IdealDesignResponse(
@@ -182,18 +179,20 @@ def node_chat_design(state: NavigatorState) -> dict:
     proposals_json = ""
     if state.ideal_proposals:
         proposals_json = json.dumps(
-            [{k.value: v for k, v in p.to_dict().items()} for p in state.ideal_proposals.proposals],
+            [
+                {k.value: v for k, v in p.to_dict().items()}
+                for p in state.ideal_proposals.proposals
+            ],
             ensure_ascii=False,
         )
 
-    indices_json = (
-        state.layer_b.model_dump_json()
-        if state.layer_b else "{}"
-    )
+    indices_json = state.layer_b.model_dump_json() if state.layer_b else "{}"
 
     system = CHAT_DESIGN_PROMPT.format(
         current_radar=json.dumps(
-            {k.value: v for k, v in state.current_radar.to_dict().items()} if state.current_radar else {},
+            {k.value: v for k, v in state.current_radar.to_dict().items()}
+            if state.current_radar
+            else {},
             ensure_ascii=False,
         ),
         navigator_indices=indices_json,
@@ -247,25 +246,27 @@ def node_generate_guide(state: NavigatorState) -> dict:
 
     guide = generate_guide(state.comparison, state.top5_interests)
 
-    indices_json = (
-        state.layer_b.model_dump_json()
-        if state.layer_b else "{}"
-    )
+    indices_json = state.layer_b.model_dump_json() if state.layer_b else "{}"
 
     llm = _get_llm(temperature=0.6)
     prompt = GUIDE_PROMPT.format(
-        comparison=json.dumps({
-            "gap": {k.value: v for k, v in state.comparison.gap.items()},
-            "total_gap": state.comparison.total_gap,
-        }, ensure_ascii=False),
+        comparison=json.dumps(
+            {
+                "gap": {k.value: v for k, v in state.comparison.gap.items()},
+                "total_gap": state.comparison.total_gap,
+            },
+            ensure_ascii=False,
+        ),
         navigator_indices=indices_json,
         top5_interests=", ".join(state.top5_interests),
     )
 
-    llm.invoke([
-        HumanMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=prompt),
-    ])
+    llm.invoke(
+        [
+            HumanMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=prompt),
+        ]
+    )
 
     guide_message = f"📋 **{guide.title}**\n\n"
     for step in guide.steps:
@@ -328,19 +329,23 @@ async def node_build_playlist(state: NavigatorState) -> dict:
         top5_interests=", ".join(state.top5_interests),
     )
 
-    response = llm.invoke([
-        HumanMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=prompt),
-    ])
+    response = llm.invoke(
+        [
+            HumanMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=prompt),
+        ]
+    )
 
     try:
         parsed = _safe_parse_json(response.content)
-        playlist_title       = parsed.get("playlist_title", "나의 이상향 플레이리스트")
+        playlist_title = parsed.get("playlist_title", "나의 이상향 플레이리스트")
         playlist_description = parsed.get("playlist_description", "")
-        search_queries       = parsed.get("search_queries", [])
+        search_queries = parsed.get("search_queries", [])
     except (json.JSONDecodeError, ValueError):
-        search_queries       = [{"query": i, "reason": "관심사 기반"} for i in state.top5_interests]
-        playlist_title       = "나의 이상향 플레이리스트"
+        search_queries = [
+            {"query": i, "reason": "관심사 기반"} for i in state.top5_interests
+        ]
+        playlist_title = "나의 이상향 플레이리스트"
         playlist_description = "Synapse Navigator가 설계한 버블 탈출 재생목록"
 
     playlist = await build_playlist_from_ideal(
@@ -369,7 +374,9 @@ def node_complete(state: NavigatorState) -> dict:
     """워크플로우 완료"""
     return {
         "current_step": NavigatorStep.COMPLETE,
-        "messages": [AIMessage(content="✅ 이상향 설계가 완료되었습니다. 오늘부터 시작해볼까요?")],
+        "messages": [
+            AIMessage(content="✅ 이상향 설계가 완료되었습니다. 오늘부터 시작해볼까요?")
+        ],
     }
 
 
@@ -394,12 +401,12 @@ def build_navigator_graph() -> StateGraph:
 
     graph.add_node("analyze_profile", node_analyze_profile)
     graph.add_node("generate_ideals", node_generate_ideals)
-    graph.add_node("chat_design",     node_chat_design)
-    graph.add_node("confirm_ideal",   node_confirm_ideal)
-    graph.add_node("generate_guide",  node_generate_guide)
-    graph.add_node("generate_quest",  node_generate_quest)
-    graph.add_node("build_playlist",  node_build_playlist)
-    graph.add_node("complete",        node_complete)
+    graph.add_node("chat_design", node_chat_design)
+    graph.add_node("confirm_ideal", node_confirm_ideal)
+    graph.add_node("generate_guide", node_generate_guide)
+    graph.add_node("generate_quest", node_generate_quest)
+    graph.add_node("build_playlist", node_build_playlist)
+    graph.add_node("complete", node_complete)
 
     graph.add_edge(START, "analyze_profile")
     graph.add_edge("analyze_profile", "generate_ideals")
@@ -411,11 +418,11 @@ def build_navigator_graph() -> StateGraph:
         {"confirm_ideal": "confirm_ideal", "chat_design": "chat_design"},
     )
 
-    graph.add_edge("confirm_ideal",  "generate_guide")
+    graph.add_edge("confirm_ideal", "generate_guide")
     graph.add_edge("generate_guide", "generate_quest")
     graph.add_edge("generate_quest", "build_playlist")
     graph.add_edge("build_playlist", "complete")
-    graph.add_edge("complete",       END)
+    graph.add_edge("complete", END)
 
     return graph
 

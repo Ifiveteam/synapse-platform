@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/auth";
-import { fetchMe } from "@/api/auth";
 import { API_BASE_URL } from "@/lib/env";
 
 const API = `${API_BASE_URL}/api/v1`;
@@ -67,7 +66,7 @@ function StepChoice({ onChoose }: { onChoose: (p: Path) => void }) {
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-xl">☁</div>
           <div>
             <p className="text-sm font-semibold text-gray-800">처음이에요</p>
-            <p className="mt-0.5 text-xs text-gray-500">가이드를 따라 테이크아웃을 진행하면 자동으로 분석됩니다.</p>
+            <p className="mt-0.5 text-xs text-gray-500">가이드를 따라 테이크아웃을 진행한 뒤 Drive에서 파일을 확인하고 분석을 시작하세요.</p>
           </div>
         </button>
       </div>
@@ -202,36 +201,34 @@ function StepGuide({ onNext }: { onNext: () => void }) {
 
 function StepWait({ onDone }: { onDone: () => void }) {
   const token = useAuthStore((s) => s.token);
-  const [latestFile, setLatestFile] = useState<{ id: string; name: string } | null>(null);
+  const [files, setFiles] = useState<{ id: string; name: string; modifiedTime?: string }[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [taskStatus, setTaskStatus] = useState<string | null>(null);
-  const triggered = useRef(false);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const triggerFile = useCallback(async (file: { id: string; name: string }) => {
-    if (!token || triggered.current) return;
-    triggered.current = true;
+  const startAnalysis = useCallback(async (file: { id: string; name: string }) => {
+    if (!token) return;
     setTaskStatus("downloading");
-
-    if (typeof window !== "undefined" && "Notification" in window) {
-      if (Notification.permission === "granted") {
-        new Notification("Synapse — Takeout 파일 감지!", { body: `${file.name} 분석을 시작합니다.` });
-      } else if (Notification.permission !== "denied") {
-        Notification.requestPermission().then((p) => {
-          if (p === "granted") new Notification("Synapse — Takeout 파일 감지!", { body: `${file.name} 분석을 시작합니다.` });
-        });
-      }
-    }
 
     const res = await fetch(`${API}/takeout/drive/trigger/${file.id}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });
     const { task_id } = await res.json();
-    const interval = setInterval(async () => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingRef.current = setInterval(async () => {
       const d = await (await fetch(`${API}/takeout/status/${task_id}`)).json();
       setTaskStatus(d.status);
-      if (d.status === "success") { clearInterval(interval); setTimeout(onDone, 1500); }
-      if (d.status === "error") clearInterval(interval);
+      if (d.status === "success") {
+        clearInterval(pollingRef.current!);
+        pollingRef.current = null;
+        setTimeout(onDone, 1500);
+      }
+      if (d.status === "error") {
+        clearInterval(pollingRef.current!);
+        pollingRef.current = null;
+      }
     }, 3000);
   }, [token, onDone]);
 
@@ -242,48 +239,77 @@ function StepWait({ onDone }: { onDone: () => void }) {
       const data = await (await fetch(`${API}/takeout/drive/files`, {
         headers: { Authorization: `Bearer ${token}` },
       })).json();
-      const files: { id: string; name: string }[] = data.files || [];
-      if (files.length > 0) {
-        setLatestFile(files[0]);
-        triggerFile(files[0]);
+      const list: { id: string; name: string; modifiedTime?: string }[] = data.files || [];
+      const sorted = [...list].sort((a, b) =>
+        (b.modifiedTime || "").localeCompare(a.modifiedTime || ""),
+      );
+      setFiles(sorted);
+      if (sorted.length > 0 && !selectedId) {
+        setSelectedId(sorted[0].id);
       }
     } finally {
       setChecking(false);
     }
-  }, [token, triggerFile]);
+  }, [token, selectedId]);
 
   useEffect(() => {
-    checkDrive();
-    const id = setInterval(checkDrive, 30000);
-    return () => clearInterval(id);
+    void checkDrive();
+    const id = setInterval(() => void checkDrive(), 30000);
+    return () => {
+      clearInterval(id);
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
   }, [checkDrive]);
+
+  const selectedFile = files.find((f) => f.id === selectedId) ?? files[0] ?? null;
+  const analyzing = taskStatus === "downloading" || taskStatus === "processing";
 
   return (
     <div className="flex flex-col gap-6 text-center">
       <div>
         <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-100 text-3xl mx-auto">☁</div>
-        <h2 className="text-xl font-bold text-gray-900">Drive 파일 감지 대기 중</h2>
+        <h2 className="text-xl font-bold text-gray-900">Drive 파일 확인</h2>
         <p className="mt-2 text-sm text-gray-500">
-          Google Drive에 Takeout ZIP이 생성되면 자동으로 분석을 시작합니다.
+          Google Drive에 Takeout ZIP이 보이면 선택 후 분석을 시작하세요.
           <br /><span className="text-xs text-gray-400">30초마다 자동 확인 중</span>
         </p>
       </div>
 
-      {latestFile ? (
-        <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-4 text-left space-y-2">
-          <div className="flex items-center gap-2 text-sm text-gray-700">
-            <span>🗜</span><span className="font-medium truncate">{latestFile.name}</span>
-          </div>
-          <div className="flex items-center gap-2">
+      {files.length > 0 ? (
+        <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-4 text-left space-y-3">
+          {files.map((file) => (
+            <label key={file.id} className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+              <input
+                type="radio"
+                name="setup-takeout"
+                checked={selectedId === file.id}
+                onChange={() => setSelectedId(file.id)}
+              />
+              <span>🗜</span>
+              <span className="font-medium truncate">{file.name}</span>
+            </label>
+          ))}
+          <div className="flex items-center gap-2 pt-1">
             {taskStatus === "success" ? (
               <span className="text-sm font-semibold text-emerald-600">분석 완료 ✅</span>
             ) : taskStatus === "error" ? (
               <span className="text-sm text-red-500">오류 발생 ❌</span>
-            ) : (
+            ) : analyzing ? (
               <>
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-violet-200 border-t-violet-600" />
-                <span className="text-sm text-violet-600">{taskStatus === "downloading" ? "다운로드 중..." : "분석 중..."}</span>
+                <span className="text-sm text-violet-600">
+                  {taskStatus === "downloading" ? "다운로드 중..." : "분석 중..."}
+                </span>
               </>
+            ) : (
+              <button
+                type="button"
+                disabled={!selectedFile}
+                onClick={() => selectedFile && void startAnalysis(selectedFile)}
+                className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+              >
+                분석 시작
+              </button>
             )}
           </div>
         </div>
@@ -293,7 +319,7 @@ function StepWait({ onDone }: { onDone: () => void }) {
             ? <div className="h-6 w-6 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
             : <p className="text-sm text-gray-400">아직 Drive에 파일이 없습니다</p>
           }
-          <button onClick={checkDrive} className="text-xs text-violet-600 underline">지금 확인하기</button>
+          <button onClick={() => void checkDrive()} className="text-xs text-violet-600 underline">지금 확인하기</button>
         </div>
       )}
 
@@ -306,20 +332,11 @@ function StepWait({ onDone }: { onDone: () => void }) {
 
 export function SetupPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const { token, user, setToken, setUser, logout } = useAuthStore();
+  const { token, user, logout } = useAuthStore();
   const [step, setStep] = useState(0);
   const [path, setPath] = useState<Path>("none");
 
-  useEffect(() => {
-    const urlToken = searchParams.get("token");
-    if (urlToken) {
-      setToken(urlToken);
-      fetchMe(urlToken).then((u) => { if (u) setUser(u); });
-      navigate("/setup");
-    }
-  }, [searchParams, setToken, setUser, navigate]);
-
+  // OAuth 콜백 후 ShellLayout이 refresh 쿠키로 access 발급
   useEffect(() => {
     if (token && step === 0) setStep(1);
   }, [token, step]);

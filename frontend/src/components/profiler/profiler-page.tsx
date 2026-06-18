@@ -1,8 +1,7 @@
 import { Link } from "react-router-dom";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import { ComparePanel } from "@/components/profiler/compare-panel";
 import { GraphPanel } from "@/components/profiler/graph-panel";
 import { NotificationBanner } from "@/components/profiler/notification-banner";
 import { ProfileResults } from "@/components/profiler/profile-results";
@@ -139,7 +138,7 @@ export function ProfilerPage() {
   const tabs: { id: TabId; label: string; disabled?: boolean }[] = [
     { id: "profile", label: "프로필", disabled: !result },
     { id: "graph", label: "그래프", disabled: !selectedUserId },
-    { id: "compare", label: "전후 비교", disabled: !selectedUserId },
+    { id: "compare", label: "전후 비교" },
   ];
 
   return (
@@ -292,8 +291,24 @@ export function ProfilerPage() {
         />
       )}
 
-      {activeTab === "compare" && selectedUserId && (
-        <ComparePanel userId={selectedUserId} />
+      {activeTab === "compare" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ArrowLeftRight size={18} />
+              분석 전후 비교
+            </CardTitle>
+            <CardDescription>
+              완료된 개인성향 분석 2개를 선택해 AI 비교 요약과 수치 변화를 확인할 수
+              있습니다.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link to={ROUTES.myAnalyses}>분석 목록에서 비교하기</Link>
+            </Button>
+          </CardContent>
+        </Card>
       )}
     </main>
   );

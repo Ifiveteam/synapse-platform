@@ -1,8 +1,9 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+
+import { logoutSession } from "@/api/auth";
 
 export interface AuthUser {
-  id: number;
+  id: string;
   email: string;
   name: string;
   picture: string | null;
@@ -11,7 +12,7 @@ export interface AuthUser {
 export const MOCK_AUTH_TOKEN = "mock-dev-token";
 
 const MOCK_USER: AuthUser = {
-  id: 1,
+  id: "mock-guest",
   email: "dev@synapse.local",
   name: "Synapse Dev",
   picture: null,
@@ -20,8 +21,10 @@ const MOCK_USER: AuthUser = {
 interface AuthStore {
   token: string | null;
   user: AuthUser | null;
+  authReady: boolean;
   setToken: (token: string) => void;
   setUser: (user: AuthUser) => void;
+  setAuthReady: (ready: boolean) => void;
   loginMock: () => void;
   logout: () => void;
 }
@@ -30,16 +33,16 @@ export function isMockAuthToken(token: string | null) {
   return token === MOCK_AUTH_TOKEN;
 }
 
-export const useAuthStore = create<AuthStore>()(
-  persist(
-    (set) => ({
-      token: null,
-      user: null,
-      setToken: (token) => set({ token }),
-      setUser: (user) => set({ user }),
-      loginMock: () => set({ token: MOCK_AUTH_TOKEN, user: MOCK_USER }),
-      logout: () => set({ token: null, user: null }),
-    }),
-    { name: "synapse-auth" },
-  ),
-);
+export const useAuthStore = create<AuthStore>()((set) => ({
+  token: null,
+  user: null,
+  authReady: false,
+  setToken: (token) => set({ token }),
+  setUser: (user) => set({ user }),
+  setAuthReady: (authReady) => set({ authReady }),
+  loginMock: () => set({ token: MOCK_AUTH_TOKEN, user: MOCK_USER, authReady: true }),
+  logout: () => {
+    void logoutSession();
+    set({ token: null, user: null, authReady: true });
+  },
+}));

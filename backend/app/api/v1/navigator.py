@@ -27,11 +27,9 @@ from app.agents.navigator import (
     Guide,
     IdealDesignResponse,
     IdealRadarChart,
-    IdealType,
     NavigatorAgent,
     Playlist,
     ProfilerData,
-    ProfilerLayerB,
     Quest,
     get_navigator_agent,
 )
@@ -47,39 +45,39 @@ router = APIRouter(prefix="/navigator", tags=["navigator"])
 
 
 class DesignIdealRequest(BaseModel):
-    user_id:        str
-    profiler_data:  ProfilerData
+    user_id: str
+    profiler_data: ProfilerData
     top5_interests: list[str] = Field(default_factory=list)
 
 
 class ConfirmIdealRequest(BaseModel):
-    user_id:        str
-    profiler_data:  ProfilerData
+    user_id: str
+    profiler_data: ProfilerData
     selected_ideal: IdealRadarChart
     top5_interests: list[str] = Field(default_factory=list)
 
 
 class ConfirmIdealResponse(BaseModel):
-    guide:   Guide
-    quests:  list[Quest]
+    guide: Guide
+    quests: list[Quest]
     message: str
 
 
 class PlaylistRequest(BaseModel):
-    user_id:        str
-    profiler_data:  ProfilerData
+    user_id: str
+    profiler_data: ProfilerData
     selected_ideal: IdealRadarChart
     top5_interests: list[str] = Field(default_factory=list)
-    access_token:   Optional[str] = None
+    access_token: Optional[str] = None
 
 
 class ChatRequest(BaseModel):
-    user_id:            str
-    profiler_data:      ProfilerData
-    top5_interests:     list[str]      = Field(default_factory=list)
-    user_message:       str
-    ideal_proposals:    Optional[IdealDesignResponse] = None
-    selected_ideal:     Optional[IdealRadarChart]     = None
+    user_id: str
+    profiler_data: ProfilerData
+    top5_interests: list[str] = Field(default_factory=list)
+    user_message: str
+    ideal_proposals: Optional[IdealDesignResponse] = None
+    selected_ideal: Optional[IdealRadarChart] = None
     is_ideal_confirmed: bool = False
 
 
@@ -90,42 +88,45 @@ class ChatRequest(BaseModel):
 
 class DirectModifyRequest(BaseModel):
     """Mode 1: 직접 수정"""
-    user_id:   str
-    ideal:     IdealRadarChart
-    axis:      str   = Field(description="수정할 축 key (예: creative_expression)")
+
+    user_id: str
+    ideal: IdealRadarChart
+    axis: str = Field(description="수정할 축 key (예: creative_expression)")
     new_value: float = Field(ge=0, le=100, description="새 값 (0~100)")
 
 
 class DirectModifyResponse(BaseModel):
     updated_ideal: IdealRadarChart
-    suggestions:   list[str] = Field(description="연관 축 조정 제안 메시지")
+    suggestions: list[str] = Field(description="연관 축 조정 제안 메시지")
 
 
 class ChatModifyRequest(BaseModel):
     """Mode 2: 대화 수정"""
-    user_id:       str
-    ideal:         IdealRadarChart
-    user_message:  str
-    profiler_data: Optional[ProfilerData] = None   # 컨텍스트용 (선택)
+
+    user_id: str
+    ideal: IdealRadarChart
+    user_message: str
+    profiler_data: Optional[ProfilerData] = None  # 컨텍스트용 (선택)
 
 
 class ChatModifyResponse(BaseModel):
     updated_ideal: IdealRadarChart
-    adjustments:   list[dict]   = Field(description="적용된 변경 목록")
-    reasoning:     str
-    reply:         str          = Field(description="유저에게 보낼 응답")
+    adjustments: list[dict] = Field(description="적용된 변경 목록")
+    reasoning: str
+    reply: str = Field(description="유저에게 보낼 응답")
 
 
 class AutoOptimalRequest(BaseModel):
     """Mode 3: AI 최적 설계"""
-    user_id:        str
-    profiler_data:  ProfilerData
-    top5_interests: list[str]      = Field(default_factory=list)
-    user_goal:      Optional[str]  = Field(None, description="유저 목표 텍스트 (선택)")
+
+    user_id: str
+    profiler_data: ProfilerData
+    top5_interests: list[str] = Field(default_factory=list)
+    user_goal: Optional[str] = Field(None, description="유저 목표 텍스트 (선택)")
 
 
 class AutoOptimalResponse(BaseModel):
-    ideal:     IdealRadarChart
+    ideal: IdealRadarChart
     reasoning: str = Field(description="AI 설계 근거")
 
 
@@ -142,9 +143,9 @@ class AutoOptimalResponse(BaseModel):
 async def design_ideal(req: DesignIdealRequest) -> IdealDesignResponse:
     agent: NavigatorAgent = get_navigator_agent()
     return agent.design_ideal_auto(
-        user_id        = req.user_id,
-        profiler_data  = req.profiler_data,
-        top5_interests = req.top5_interests,
+        user_id=req.user_id,
+        profiler_data=req.profiler_data,
+        top5_interests=req.top5_interests,
     )
 
 
@@ -166,11 +167,11 @@ async def modify_ideal_direct(req: DirectModifyRequest) -> DirectModifyResponse:
     try:
         updated, suggestions = modify_direct(req.ideal, req.axis, req.new_value)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     return DirectModifyResponse(
-        updated_ideal = updated,
-        suggestions   = suggestions,
+        updated_ideal=updated,
+        suggestions=suggestions,
     )
 
 
@@ -192,27 +193,31 @@ async def modify_ideal_chat(req: ChatModifyRequest) -> ChatModifyResponse:
     gpt-4o-mini가 의도를 파악해 delta 추출 → 적용 후 반환.
     """
     import os
+
     if not os.getenv("OPENAI_API_KEY"):
-        raise HTTPException(status_code=503, detail="OPENAI_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.")
+        raise HTTPException(
+            status_code=503,
+            detail="OPENAI_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.",
+        )
 
     current_radar = req.profiler_data.layer_a if req.profiler_data else None
-    layer_b       = req.profiler_data.layer_b  if req.profiler_data else None
+    layer_b = req.profiler_data.layer_b if req.profiler_data else None
 
     try:
         updated, result = modify_by_chat(
-            ideal         = req.ideal,
-            user_message  = req.user_message,
-            current_radar = current_radar,
-            layer_b       = layer_b,
+            ideal=req.ideal,
+            user_message=req.user_message,
+            current_radar=current_radar,
+            layer_b=layer_b,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"LLM 호출 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"LLM 호출 실패: {str(e)}") from e
 
     return ChatModifyResponse(
-        updated_ideal = updated,
-        adjustments   = [a.model_dump() for a in result.adjustments],
-        reasoning     = result.reasoning,
-        reply         = result.reply,
+        updated_ideal=updated,
+        adjustments=[a.model_dump() for a in result.adjustments],
+        reasoning=result.reasoning,
+        reply=result.reply,
     )
 
 
@@ -234,22 +239,26 @@ async def optimize_ideal_auto(req: AutoOptimalRequest) -> AutoOptimalResponse:
     수식 기반 3종과 나란히 제시 → 유저 선택.
     """
     import os
+
     if not os.getenv("OPENAI_API_KEY"):
-        raise HTTPException(status_code=503, detail="OPENAI_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.")
+        raise HTTPException(
+            status_code=503,
+            detail="OPENAI_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.",
+        )
 
     try:
         ideal = optimize_auto(
-            current_radar  = req.profiler_data.layer_a,
-            layer_b        = req.profiler_data.layer_b,
-            top5_interests = req.top5_interests,
-            user_goal      = req.user_goal,
+            current_radar=req.profiler_data.layer_a,
+            layer_b=req.profiler_data.layer_b,
+            top5_interests=req.top5_interests,
+            user_goal=req.user_goal,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"LLM 호출 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"LLM 호출 실패: {str(e)}") from e
 
     return AutoOptimalResponse(
-        ideal     = ideal,
-        reasoning = ideal.reasoning,
+        ideal=ideal,
+        reasoning=ideal.reasoning,
     )
 
 
@@ -266,17 +275,17 @@ async def optimize_ideal_auto(req: AutoOptimalRequest) -> AutoOptimalResponse:
 async def confirm_ideal(req: ConfirmIdealRequest) -> ConfirmIdealResponse:
     agent: NavigatorAgent = get_navigator_agent()
     guide, quests = agent.generate_guide_and_quests(
-        profiler_data  = req.profiler_data,
-        selected_ideal = req.selected_ideal,
-        top5_interests = req.top5_interests,
+        profiler_data=req.profiler_data,
+        selected_ideal=req.selected_ideal,
+        top5_interests=req.top5_interests,
     )
-    comparison  = compare_radar(req.profiler_data.layer_a, req.selected_ideal)
+    comparison = compare_radar(req.profiler_data.layer_a, req.selected_ideal)
     gap_summary = f"총 gap: {comparison.total_gap:.1f}점"
 
     return ConfirmIdealResponse(
-        guide   = guide,
-        quests  = quests,
-        message = f"이상향이 확정되었습니다! {gap_summary} — 오늘부터 시작해볼까요?",
+        guide=guide,
+        quests=quests,
+        message=f"이상향이 확정되었습니다! {gap_summary} — 오늘부터 시작해볼까요?",
     )
 
 
@@ -294,13 +303,13 @@ async def chat_design(req: ChatRequest) -> StreamingResponse:
     from app.agents.navigator.state import NavigatorState
 
     state = NavigatorState(
-        user_id            = req.user_id,
-        current_radar      = req.profiler_data.layer_a,
-        layer_b            = req.profiler_data.layer_b,
-        top5_interests     = req.top5_interests,
-        ideal_proposals    = req.ideal_proposals,
-        selected_ideal     = req.selected_ideal,
-        is_ideal_confirmed = req.is_ideal_confirmed,
+        user_id=req.user_id,
+        current_radar=req.profiler_data.layer_a,
+        layer_b=req.profiler_data.layer_b,
+        top5_interests=req.top5_interests,
+        ideal_proposals=req.ideal_proposals,
+        selected_ideal=req.selected_ideal,
+        is_ideal_confirmed=req.is_ideal_confirmed,
     )
 
     agent: NavigatorAgent = get_navigator_agent()
@@ -326,18 +335,20 @@ async def chat_design(req: ChatRequest) -> StreamingResponse:
 # ──────────────────────────────────────────
 
 
-@router.post("/playlist", response_model=Playlist, summary="이상향 기반 YouTube 재생목록 생성")
+@router.post(
+    "/playlist", response_model=Playlist, summary="이상향 기반 YouTube 재생목록 생성"
+)
 async def build_playlist(req: PlaylistRequest) -> Playlist:
     from app.agents.navigator.graph import node_build_playlist
     from app.agents.navigator.state import NavigatorState
 
     state = NavigatorState(
-        user_id        = req.user_id,
-        current_radar  = req.profiler_data.layer_a,
-        layer_b        = req.profiler_data.layer_b,
-        top5_interests = req.top5_interests,
-        selected_ideal = req.selected_ideal,
-        ideal_type     = req.selected_ideal.ideal_type,
+        user_id=req.user_id,
+        current_radar=req.profiler_data.layer_a,
+        layer_b=req.profiler_data.layer_b,
+        top5_interests=req.top5_interests,
+        selected_ideal=req.selected_ideal,
+        ideal_type=req.selected_ideal.ideal_type,
     )
 
     result = await node_build_playlist(state)
@@ -356,7 +367,9 @@ async def build_playlist(req: PlaylistRequest) -> Playlist:
 # ──────────────────────────────────────────
 
 
-@router.get("/quests/{user_id}", response_model=list[Quest], summary="오늘의 퀘스트 조회")
+@router.get(
+    "/quests/{user_id}", response_model=list[Quest], summary="오늘의 퀘스트 조회"
+)
 async def get_quests(user_id: str) -> list[Quest]:
     raise HTTPException(
         status_code=501,

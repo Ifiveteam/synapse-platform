@@ -2,29 +2,23 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
-from app.agents.profiler.state import ProfilerState
 from app.agents.profiler.nodes import (
-    interpretation_node,
-    layer_b_node,
-    load_records_node,
+    build_profile_node,
     notify_node,
-    profile_llm_node,
+    video_summary_node,
 )
+from app.agents.profiler.state import ProfilerState
 
 
 def build_profiler_graph():
     graph = StateGraph(ProfilerState)
-    graph.add_node("load_records", load_records_node)
-    graph.add_node("layer_b", layer_b_node)
-    graph.add_node("profile_llm", profile_llm_node)
-    graph.add_node("interpretation", interpretation_node)
+    graph.add_node("video_summary", video_summary_node)
+    graph.add_node("build_profile", build_profile_node)
     graph.add_node("notify", notify_node)
 
-    graph.add_edge(START, "load_records")
-    graph.add_edge("load_records", "layer_b")
-    graph.add_edge("layer_b", "profile_llm")
-    graph.add_edge("profile_llm", "interpretation")
-    graph.add_edge("interpretation", "notify")
+    graph.add_edge(START, "video_summary")
+    graph.add_edge("video_summary", "build_profile")
+    graph.add_edge("build_profile", "notify")
     graph.add_edge("notify", END)
 
     return graph.compile()
@@ -33,7 +27,19 @@ def build_profiler_graph():
 profiler_graph = build_profiler_graph()
 
 
-def run_profiler(user_id: str, email: str) -> dict:
+def run_profiler(
+    user_id: str, email: str, *, analysis_limit: int | None = None
+) -> dict:
+    import asyncio
+
+    return asyncio.run(
+        run_profiler_async(user_id, email, analysis_limit=analysis_limit)
+    )
+
+
+async def run_profiler_async(
+    user_id: str, email: str, *, analysis_limit: int | None = None
+) -> dict:
     from app.core.env import load_backend_env
 
     load_backend_env()
@@ -41,8 +47,7 @@ def run_profiler(user_id: str, email: str) -> dict:
         "user_id": user_id,
         "notify_email": email,
         "current_step": "pending",
-        "records": [],
         "investigation_log": [],
+        "analysis_limit": analysis_limit,
     }
-    final = profiler_graph.invoke(initial)
-    return final
+    return await profiler_graph.ainvoke(initial)

@@ -14,12 +14,10 @@ from .schemas import (
     IdealRadarChart,
     IdealType,
     ProfilerLayerB,
-    ProfilerData,
     Quest,
     RadarChart,
     RadarComparison,
 )
-
 
 # ──────────────────────────────────────────
 # 공통 유틸
@@ -45,59 +43,77 @@ def _clamp(value: float, lo: float = 0.0, hi: float = 100.0) -> float:
 AXIS_VECTORS: dict[AxisKey, dict[str, dict[AxisKey, float]]] = {
     AxisKey.INTELLECTUAL_CURIOSITY: {
         # 반대: 넓은 탐색 → 한 주제 깊은 몰입
-        "opposite":  {AxisKey.INTELLECTUAL_CURIOSITY: -40, AxisKey.DEPTH_IMMERSION: +20},
+        "opposite": {AxisKey.INTELLECTUAL_CURIOSITY: -40, AxisKey.DEPTH_IMMERSION: +20},
         # 확장: 지적 탐색 → 타문화·이종학문으로 더 넓게
-        "expansion": {AxisKey.INTELLECTUAL_CURIOSITY: +28, AxisKey.SOCIAL_AWARENESS: +15},
+        "expansion": {
+            AxisKey.INTELLECTUAL_CURIOSITY: +28,
+            AxisKey.SOCIAL_AWARENESS: +15,
+        },
     },
     AxisKey.SELF_IMPROVEMENT: {
         # 반대: 목표 지향 → 무목적 여유·놀이 소비
-        "opposite":  {AxisKey.SELF_IMPROVEMENT: -35, AxisKey.ENTERTAINMENT_RELEASE: +25},
+        "opposite": {AxisKey.SELF_IMPROVEMENT: -35, AxisKey.ENTERTAINMENT_RELEASE: +25},
         # 확장: 자기계발 → 철학적 성찰·삶의 의미
         "expansion": {AxisKey.SELF_IMPROVEMENT: +28, AxisKey.DEPTH_IMMERSION: +15},
     },
     AxisKey.SOCIAL_AWARENESS: {
         # 반대: 사회·세상 → 내면·솔로·명상
-        "opposite":  {AxisKey.SOCIAL_AWARENESS: -35, AxisKey.EMOTIONAL_COMFORT: +20},
+        "opposite": {AxisKey.SOCIAL_AWARENESS: -35, AxisKey.EMOTIONAL_COMFORT: +20},
         # 확장: 사회 관심 → 글로벌 시각·다문화
-        "expansion": {AxisKey.SOCIAL_AWARENESS: +28, AxisKey.INTELLECTUAL_CURIOSITY: +15},
+        "expansion": {
+            AxisKey.SOCIAL_AWARENESS: +28,
+            AxisKey.INTELLECTUAL_CURIOSITY: +15,
+        },
     },
     AxisKey.DEPTH_IMMERSION: {
         # 반대: 깊은 몰입 → 가볍고 다양한 탐색
-        "opposite":  {AxisKey.DEPTH_IMMERSION: -35, AxisKey.ENTERTAINMENT_RELEASE: +20},
+        "opposite": {AxisKey.DEPTH_IMMERSION: -35, AxisKey.ENTERTAINMENT_RELEASE: +20},
         # 확장: 몰입 → 전문가·학문적 깊이
         "expansion": {AxisKey.DEPTH_IMMERSION: +28, AxisKey.SELF_IMPROVEMENT: +15},
     },
     AxisKey.PRACTICAL_ORIENTATION: {
         # 반대: 실용 지향 → 순수 성찰·인문학
-        "opposite":  {AxisKey.PRACTICAL_ORIENTATION: -35, AxisKey.INTELLECTUAL_CURIOSITY: +20},
+        "opposite": {
+            AxisKey.PRACTICAL_ORIENTATION: -35,
+            AxisKey.INTELLECTUAL_CURIOSITY: +20,
+        },
         # 확장: 실용 스킬 → 고급 스킬·전문 마스터리
-        "expansion": {AxisKey.PRACTICAL_ORIENTATION: +28, AxisKey.SELF_IMPROVEMENT: +15},
+        "expansion": {
+            AxisKey.PRACTICAL_ORIENTATION: +28,
+            AxisKey.SELF_IMPROVEMENT: +15,
+        },
     },
     AxisKey.EMOTIONAL_COMFORT: {
         # 반대: 힐링·위로 → 도전·비판·불편한 진실
-        "opposite":  {AxisKey.EMOTIONAL_COMFORT: -35, AxisKey.SELF_IMPROVEMENT: +20},
+        "opposite": {AxisKey.EMOTIONAL_COMFORT: -35, AxisKey.SELF_IMPROVEMENT: +20},
         # 확장: 정서 위로 → 다양한 감정 스펙트럼·예술
         "expansion": {AxisKey.EMOTIONAL_COMFORT: +28, AxisKey.CREATIVE_EXPRESSION: +15},
     },
     AxisKey.CREATIVE_EXPRESSION: {
         # 반대: 창작·표현 → 수용·감상·분석 위주
-        "opposite":  {AxisKey.CREATIVE_EXPRESSION: -30, AxisKey.INTELLECTUAL_CURIOSITY: +20},
+        "opposite": {
+            AxisKey.CREATIVE_EXPRESSION: -30,
+            AxisKey.INTELLECTUAL_CURIOSITY: +20,
+        },
         # 확장: 창의 표현 → 다른 매체·협업 창작
         "expansion": {AxisKey.CREATIVE_EXPRESSION: +30, AxisKey.SOCIAL_AWARENESS: +15},
     },
     AxisKey.ENTERTAINMENT_RELEASE: {
         # 반대: 오락·해방 → 깊이·집중·진지한 콘텐츠
-        "opposite":  {AxisKey.ENTERTAINMENT_RELEASE: -35, AxisKey.DEPTH_IMMERSION: +20},
+        "opposite": {AxisKey.ENTERTAINMENT_RELEASE: -35, AxisKey.DEPTH_IMMERSION: +20},
         # 확장: 오락 → 다양한 장르·문화 오락
-        "expansion": {AxisKey.ENTERTAINMENT_RELEASE: +28, AxisKey.SOCIAL_AWARENESS: +15},
+        "expansion": {
+            AxisKey.ENTERTAINMENT_RELEASE: +28,
+            AxisKey.SOCIAL_AWARENESS: +15,
+        },
     },
 }
 
 # 3단계 강도
 ALPHA_LEVELS = {
-    1: 0.25,   # Level 1 — 거부감 없는 변화 / 조금 더 넓게
-    2: 0.55,   # Level 2 — 약간의 불편함 / 인접 분야까지
-    3: 1.00,   # Level 3 — 완전히 다른 형태 / 새 영역 개척
+    1: 0.25,  # Level 1 — 거부감 없는 변화 / 조금 더 넓게
+    2: 0.55,  # Level 2 — 약간의 불편함 / 인접 분야까지
+    3: 1.00,  # Level 3 — 완전히 다른 형태 / 새 영역 개척
 }
 
 
@@ -120,18 +136,12 @@ def compute_dominant_weak(
     mean = sum(scores.values()) / len(scores)
 
     sorted_desc = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    sorted_asc  = sorted(scores.items(), key=lambda x: x[1])
+    sorted_asc = sorted(scores.items(), key=lambda x: x[1])
 
     # 평균보다 threshold/2 이상 높은 상위 2개
-    dominant = [
-        k for k, v in sorted_desc[:2]
-        if v >= mean + threshold / 2
-    ]
+    dominant = [k for k, v in sorted_desc[:2] if v >= mean + threshold / 2]
     # 평균보다 threshold/2 이상 낮은 하위 2개
-    weak = [
-        k for k, v in sorted_asc[:2]
-        if v <= mean - threshold / 2
-    ]
+    weak = [k for k, v in sorted_asc[:2] if v <= mean - threshold / 2]
 
     # 폴백: threshold 조건 미충족 시 상위/하위 1개씩 무조건 선택
     if not dominant:
@@ -149,7 +159,7 @@ def compute_dominant_weak(
 
 def _apply_vectors(
     scores: dict[AxisKey, float],
-    axes:   list[str],
+    axes: list[str],
     direction: str,
     alpha: float,
 ) -> dict[AxisKey, float]:
@@ -169,27 +179,27 @@ def _apply_vectors(
 
 
 def _build_ideal(
-    user_id:    str,
+    user_id: str,
     ideal_type: IdealType,
-    scores:     dict[AxisKey, float],
-    summary:    str,
-    direction:  str = "",
-    alpha:      float = 0.55,
+    scores: dict[AxisKey, float],
+    summary: str,
+    direction: str = "",
+    alpha: float = 0.55,
 ) -> IdealRadarChart:
     return IdealRadarChart(
-        user_id    = user_id,
-        ideal_type = ideal_type,
-        summary    = summary,
-        direction  = direction,
-        alpha      = alpha,
-        intellectual_curiosity = round(scores[AxisKey.INTELLECTUAL_CURIOSITY], 1),
-        self_improvement       = round(scores[AxisKey.SELF_IMPROVEMENT], 1),
-        social_awareness       = round(scores[AxisKey.SOCIAL_AWARENESS], 1),
-        depth_immersion        = round(scores[AxisKey.DEPTH_IMMERSION], 1),
-        practical_orientation  = round(scores[AxisKey.PRACTICAL_ORIENTATION], 1),
-        emotional_comfort      = round(scores[AxisKey.EMOTIONAL_COMFORT], 1),
-        creative_expression    = round(scores[AxisKey.CREATIVE_EXPRESSION], 1),
-        entertainment_release  = round(scores[AxisKey.ENTERTAINMENT_RELEASE], 1),
+        user_id=user_id,
+        ideal_type=ideal_type,
+        summary=summary,
+        direction=direction,
+        alpha=alpha,
+        intellectual_curiosity=round(scores[AxisKey.INTELLECTUAL_CURIOSITY], 1),
+        self_improvement=round(scores[AxisKey.SELF_IMPROVEMENT], 1),
+        social_awareness=round(scores[AxisKey.SOCIAL_AWARENESS], 1),
+        depth_immersion=round(scores[AxisKey.DEPTH_IMMERSION], 1),
+        practical_orientation=round(scores[AxisKey.PRACTICAL_ORIENTATION], 1),
+        emotional_comfort=round(scores[AxisKey.EMOTIONAL_COMFORT], 1),
+        creative_expression=round(scores[AxisKey.CREATIVE_EXPRESSION], 1),
+        entertainment_release=round(scores[AxisKey.ENTERTAINMENT_RELEASE], 1),
     )
 
 
@@ -199,9 +209,9 @@ def _build_ideal(
 
 
 def generate_opposite_ideal(
-    current:       RadarChart,
+    current: RadarChart,
     dominant_axes: list[str] | None = None,
-    weak_axes:     list[str] | None = None,
+    weak_axes: list[str] | None = None,
     layer_b=None,
     top5_interests: list[str] | None = None,
 ) -> tuple[IdealRadarChart, Guide]:
@@ -216,18 +226,18 @@ def generate_opposite_ideal(
         dominant_axes, _ = compute_dominant_weak(current)
 
     return generate_opposite_by_llm(
-        current_radar  = current,
-        layer_b        = layer_b,
-        top5_interests = top5_interests or [],
-        dominant_axes  = dominant_axes,
+        current_radar=current,
+        layer_b=layer_b,
+        top5_interests=top5_interests or [],
+        dominant_axes=dominant_axes,
     )
 
 
 def generate_expansion_ideal(
-    current:       RadarChart,
+    current: RadarChart,
     dominant_axes: list[str] | None = None,
-    weak_axes:     list[str] | None = None,
-    alpha:         float = ALPHA_LEVELS[2],   # Level 2 — 뚜렷한 확장
+    weak_axes: list[str] | None = None,
+    alpha: float = ALPHA_LEVELS[2],  # Level 2 — 뚜렷한 확장
 ) -> IdealRadarChart:
     """
     확장 방향형 이상향 — 자연스러운 성장 (기본 추천)
@@ -236,17 +246,15 @@ def generate_expansion_ideal(
     if weak_axes is None:
         _, weak_axes = compute_dominant_weak(current)
 
-    scores = _apply_vectors(
-        current.to_dict(), weak_axes, "expansion", alpha
-    )
-    dir_str = ", ".join(
-        f"{a}→EXPANSION"
-        for a in weak_axes
-    )
+    scores = _apply_vectors(current.to_dict(), weak_axes, "expansion", alpha)
+    dir_str = ", ".join(f"{a}→EXPANSION" for a in weak_axes)
     return _build_ideal(
-        current.user_id, IdealType.EXPANSION, scores,
+        current.user_id,
+        IdealType.EXPANSION,
+        scores,
         "공백 분야 확장 — 자연스러운 성장, 부담 없는 변화",
-        direction=dir_str, alpha=alpha,
+        direction=dir_str,
+        alpha=alpha,
     )
 
 
@@ -258,26 +266,31 @@ def generate_balanced_ideal(
     """
     s = current.to_dict()
     scores = {
-        AxisKey.INTELLECTUAL_CURIOSITY: _clamp(max(s[AxisKey.INTELLECTUAL_CURIOSITY], 65)),
-        AxisKey.SELF_IMPROVEMENT:       _clamp(max(s[AxisKey.SELF_IMPROVEMENT],       65)),
-        AxisKey.SOCIAL_AWARENESS:       _clamp(max(s[AxisKey.SOCIAL_AWARENESS],       65)),
-        AxisKey.DEPTH_IMMERSION:        _clamp(max(s[AxisKey.DEPTH_IMMERSION],        60)),
-        AxisKey.CREATIVE_EXPRESSION:    _clamp(max(s[AxisKey.CREATIVE_EXPRESSION],    60)),
-        AxisKey.PRACTICAL_ORIENTATION:  50.0,
-        AxisKey.EMOTIONAL_COMFORT:      50.0,
-        AxisKey.ENTERTAINMENT_RELEASE:  50.0,
+        AxisKey.INTELLECTUAL_CURIOSITY: _clamp(
+            max(s[AxisKey.INTELLECTUAL_CURIOSITY], 65)
+        ),
+        AxisKey.SELF_IMPROVEMENT: _clamp(max(s[AxisKey.SELF_IMPROVEMENT], 65)),
+        AxisKey.SOCIAL_AWARENESS: _clamp(max(s[AxisKey.SOCIAL_AWARENESS], 65)),
+        AxisKey.DEPTH_IMMERSION: _clamp(max(s[AxisKey.DEPTH_IMMERSION], 60)),
+        AxisKey.CREATIVE_EXPRESSION: _clamp(max(s[AxisKey.CREATIVE_EXPRESSION], 60)),
+        AxisKey.PRACTICAL_ORIENTATION: 50.0,
+        AxisKey.EMOTIONAL_COMFORT: 50.0,
+        AxisKey.ENTERTAINMENT_RELEASE: 50.0,
     }
     return _build_ideal(
-        current.user_id, IdealType.BALANCED, scores,
+        current.user_id,
+        IdealType.BALANCED,
+        scores,
         "모든 축이 균형 잡힌 이상향 — 완전한 인지주권",
-        direction="all→BALANCED", alpha=0.5,
+        direction="all→BALANCED",
+        alpha=0.5,
     )
 
 
 def generate_all_ideals(
-    current:        RadarChart,
-    dominant_axes:  list[str] | None = None,
-    weak_axes:      list[str] | None = None,
+    current: RadarChart,
+    dominant_axes: list[str] | None = None,
+    weak_axes: list[str] | None = None,
     layer_b=None,
     top5_interests: list[str] | None = None,
 ) -> tuple[list[IdealRadarChart], Guide]:
@@ -289,7 +302,7 @@ def generate_all_ideals(
     if dominant_axes is None or weak_axes is None:
         _dom, _weak = compute_dominant_weak(current)
         dominant_axes = dominant_axes or _dom
-        weak_axes     = weak_axes     or _weak
+        weak_axes = weak_axes or _weak
 
     opposite_ideal, opposite_guide = generate_opposite_ideal(
         current, dominant_axes, weak_axes, layer_b, top5_interests
@@ -310,9 +323,9 @@ def generate_all_ideals(
 
 def compare_radar(current: RadarChart, ideal: IdealRadarChart) -> RadarComparison:
     return RadarComparison(
-        user_id = current.user_id,
-        current = current,
-        ideal   = ideal,
+        user_id=current.user_id,
+        current=current,
+        ideal=ideal,
     ).calculate_gap()
 
 
@@ -333,18 +346,18 @@ def get_priority_axes(comparison: RadarComparison, top_n: int = 3) -> list[AxisK
 
 _GUIDE_ACTIONS: dict[AxisKey, str] = {
     AxisKey.INTELLECTUAL_CURIOSITY: "{interest}와 연결된 새로운 분야 채널 주 2개씩 구독",
-    AxisKey.SELF_IMPROVEMENT:       "{interest} 관련 루틴·습관 강의 하루 1편 완주",
-    AxisKey.SOCIAL_AWARENESS:       "{interest}가 사회에 미치는 영향 뉴스·다큐 하루 1편",
-    AxisKey.DEPTH_IMMERSION:        "{interest} 관련 20분↑ 장편 강의·다큐 하루 1편 완주",
-    AxisKey.PRACTICAL_ORIENTATION:  "How-to 외 '{interest}의 왜' 철학·인문 콘텐츠 소비",
-    AxisKey.EMOTIONAL_COMFORT:      "힐링 콘텐츠와 도전적 콘텐츠 교대 소비 (1:1 비율)",
-    AxisKey.CREATIVE_EXPRESSION:    "{interest} 관련 창작·DIY 채널 탐색 및 따라 만들기",
-    AxisKey.ENTERTAINMENT_RELEASE:  "오락 시간 제한 (하루 30분) + 남은 시간 깊이 콘텐츠",
+    AxisKey.SELF_IMPROVEMENT: "{interest} 관련 루틴·습관 강의 하루 1편 완주",
+    AxisKey.SOCIAL_AWARENESS: "{interest}가 사회에 미치는 영향 뉴스·다큐 하루 1편",
+    AxisKey.DEPTH_IMMERSION: "{interest} 관련 20분↑ 장편 강의·다큐 하루 1편 완주",
+    AxisKey.PRACTICAL_ORIENTATION: "How-to 외 '{interest}의 왜' 철학·인문 콘텐츠 소비",
+    AxisKey.EMOTIONAL_COMFORT: "힐링 콘텐츠와 도전적 콘텐츠 교대 소비 (1:1 비율)",
+    AxisKey.CREATIVE_EXPRESSION: "{interest} 관련 창작·DIY 채널 탐색 및 따라 만들기",
+    AxisKey.ENTERTAINMENT_RELEASE: "오락 시간 제한 (하루 30분) + 남은 시간 깊이 콘텐츠",
 }
 
 
 def generate_guide(
-    comparison:     RadarComparison,
+    comparison: RadarComparison,
     top5_interests: list[str],
 ) -> Guide:
     priority_axes = get_priority_axes(comparison, top_n=3)
@@ -430,9 +443,9 @@ _QUEST_TEMPLATES: dict[AxisKey, dict] = {
 
 
 def generate_quests(
-    comparison:     RadarComparison,
+    comparison: RadarComparison,
     top5_interests: list[str],
-    count:          int = 3,
+    count: int = 3,
 ) -> list[Quest]:
     priority_axes = get_priority_axes(comparison, top_n=count)
     interest = top5_interests[0] if top5_interests else "관심 분야"
@@ -442,14 +455,16 @@ def generate_quests(
         tmpl = _QUEST_TEMPLATES.get(axis_key)
         if not tmpl:
             continue
-        quests.append(Quest(
-            user_id      = comparison.user_id,
-            title        = tmpl["title"],
-            description  = tmpl["description"].format(interest=interest),
-            target_axis  = axis_key,
-            action       = tmpl["action"].format(interest=interest),
-            reward_point = tmpl["reward_point"],
-        ))
+        quests.append(
+            Quest(
+                user_id=comparison.user_id,
+                title=tmpl["title"],
+                description=tmpl["description"].format(interest=interest),
+                target_axis=axis_key,
+                action=tmpl["action"].format(interest=interest),
+                reward_point=tmpl["reward_point"],
+            )
+        )
 
     return quests
 
@@ -460,7 +475,7 @@ def generate_quests(
 
 
 def enrich_quests_with_layer_b(
-    quests:  list[Quest],
+    quests: list[Quest],
     layer_b: ProfilerLayerB,
 ) -> list[Quest]:
     """
@@ -468,10 +483,10 @@ def enrich_quests_with_layer_b(
 
     ⚠️ viewing_concentration: 높을수록 나쁨 → 0.6 초과 시 경보
     """
-    low_autonomy        = layer_b.search_active_ratio < 0.4
-    high_concentration  = layer_b.viewing_concentration > 0.6   # 높을수록 나쁨
-    low_diversity       = layer_b.taste_diversity_index < 50
-    low_depth           = layer_b.exploration_depth < 0.4
+    low_autonomy = layer_b.search_active_ratio < 0.4
+    high_concentration = layer_b.viewing_concentration > 0.6  # 높을수록 나쁨
+    low_diversity = layer_b.taste_diversity_index < 50
+    low_depth = layer_b.exploration_depth < 0.4
 
     for q in quests:
         if low_autonomy and q.target_axis == AxisKey.ENTERTAINMENT_RELEASE:

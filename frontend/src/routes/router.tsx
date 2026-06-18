@@ -9,6 +9,7 @@ import { TrendPostDetailPage } from "@/pages/agents/aggregator/TrendPostDetailPa
 import { TrendPostsPage } from "@/pages/agents/aggregator/TrendPostsPage";
 import { HomePage } from "@/pages/HomePage";
 import { LoginPage } from "@/pages/LoginPage";
+import { AnalysisComparePage } from "@/pages/AnalysisComparePage";
 import { AnalysisDetailPage } from "@/pages/AnalysisDetailPage";
 import { DownloadPage } from "@/pages/DownloadPage";
 import { IdealManagementPage } from "@/pages/IdealManagementPage";
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
     children: [
       { path: ROUTES.home, element: <HomePage /> },
       { path: ROUTES.myAnalyses, element: <MyAnalysesPage /> },
+      { path: "/me/analyses/compare", element: <AnalysisComparePage /> },
       { path: "/me/analyses/:id", element: <AnalysisDetailPage /> },
       { path: ROUTES.idealManagement, element: <IdealManagementPage /> },
       { path: ROUTES.trends, element: <TrendDetailPage /> },

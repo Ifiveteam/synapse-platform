@@ -1,7 +1,7 @@
 import { useEffect } from "react";
-import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
-import { fetchMe } from "@/api/auth";
+import { refreshSession } from "@/api/auth";
 import { LoginModal } from "@/components/auth/login-modal";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { ROUTES } from "@/routes";
@@ -14,44 +14,83 @@ function isPublicPath(pathname: string) {
   return pathname.startsWith("/agents");
 }
 
+function AuthLoading() {
+  return (
+    <div className="flex h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+      세션 확인 중…
+    </div>
+  );
+}
+
 export function ShellLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const { token, user, setToken, setUser } = useAuthStore();
+  const { token, authReady, setToken, setUser, setAuthReady } = useAuthStore();
   const openLoginModal = useShellStore((s) => s.openLoginModal);
+  const closeLoginModal = useShellStore((s) => s.closeLoginModal);
   const isHomePage = location.pathname === ROUTES.home;
-  const urlToken = searchParams.get("token");
 
   useEffect(() => {
-    if (urlToken) setToken(urlToken);
-  }, [urlToken, setToken]);
+    let cancelled = false;
 
-  useEffect(() => {
-    const activeToken = token ?? urlToken;
-    if (!activeToken || user || isMockAuthToken(activeToken)) return;
-    fetchMe(activeToken).then((u) => {
-      if (u) setUser(u);
-    });
-  }, [token, urlToken, user, setUser]);
+    async function bootstrap() {
+      try {
+        const currentToken = useAuthStore.getState().token;
+        if (currentToken && isMockAuthToken(currentToken)) {
+          return;
+        }
+        if (currentToken) {
+          closeLoginModal();
+          return;
+        }
 
-  useEffect(() => {
-    if (!token && !urlToken && !isPublicPath(location.pathname)) {
-      navigate(ROUTES.login, { replace: true });
+        const session = await refreshSession();
+        if (cancelled) return;
+        if (session) {
+          setToken(session.access_token);
+          setUser(session.user);
+          closeLoginModal();
+        }
+      } finally {
+        if (!cancelled) setAuthReady(true);
+      }
     }
-  }, [token, urlToken, location.pathname, navigate]);
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, [setToken, setUser, setAuthReady, closeLoginModal]);
 
   useEffect(() => {
-    if (location.pathname === ROUTES.login && !token && !urlToken) {
+    if (token) closeLoginModal();
+  }, [token, closeLoginModal]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (!token && !isMockAuthToken(token) && !isPublicPath(location.pathname)) {
+      navigate(ROUTES.home, { replace: true });
+      openLoginModal();
+    }
+  }, [authReady, token, location.pathname, navigate, openLoginModal]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (location.pathname === ROUTES.login && !token) {
       openLoginModal();
       navigate(ROUTES.home, { replace: true });
     }
-  }, [location.pathname, token, urlToken, openLoginModal, navigate]);
+  }, [authReady, location.pathname, token, openLoginModal, navigate]);
 
-  const showShell =
-    token || urlToken || isPublicPath(location.pathname);
-  if (!showShell) {
-    return null;
+  if (!authReady) {
+    return <AuthLoading />;
+  }
+
+  const canShowShell =
+    Boolean(token) || isMockAuthToken(token) || isPublicPath(location.pathname);
+
+  if (!canShowShell) {
+    return <AuthLoading />;
   }
 
   return (

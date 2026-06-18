@@ -8,6 +8,8 @@ export const ROUTES = {
   profiler: "/agents/profiler",
   myAnalyses: "/me/analyses",
   analysisDetail: (id: string) => `/me/analyses/${id}`,
+  analysisCompare: (fromId: string, toId: string) =>
+    `/me/analyses/compare?from=${encodeURIComponent(fromId)}&to=${encodeURIComponent(toId)}`,
   idealManagement: "/me/ideals",
   trends: "/trends",
   scraps: "/me/scraps",

@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "@/lib/env";
+import { useAuthStore } from "@/stores/auth";
 
 export class ApiError extends Error {
   constructor(
@@ -46,4 +47,20 @@ export async function apiFetch<T>(
   }
 
   return response.json() as Promise<T>;
+}
+
+/** 인증 토큰 + refresh 쿠키를 포함한 API 호출 */
+export async function apiFetchAuth<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const token = useAuthStore.getState().token;
+  return apiFetch<T>(path, {
+    ...init,
+    credentials: "include",
+    headers: {
+      ...init?.headers,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
 }
