@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAuthStore } from "@/stores/auth";
+import { uploadLocalStorage } from "@/lib/upload-local-storage";
 import { API_BASE_URL } from "@/lib/env";
+import { youtubeCategoryLabel } from "@/lib/youtube-categories";
 
 const API = `${API_BASE_URL}/api/v1`;
 
@@ -17,27 +19,53 @@ interface AnalysisStats {
 type Tab = "upload" | "drive" | "guide";
 type UploadStatus = "idle" | "uploading" | "polling" | "success" | "error";
 
-const UPLOAD_TASK_KEY = "synapse-upload-task";
-
-export const DRIVE_STORAGE_KEY = "synapse-drive-tasks";
-export const DRIVE_STATS_KEY = "synapse-drive-stats";
-export const DRIVE_ANALYZED_KEY = "synapse-analyzed-files";
-
 function loadPersistedTasks(): Record<string, { taskId: string; status: string }> {
   try {
-    return JSON.parse(localStorage.getItem(DRIVE_STORAGE_KEY) || "{}");
+    return JSON.parse(localStorage.getItem(uploadLocalStorage.driveTasks) || "{}");
   } catch {
     return {};
   }
 }
 
 function savePersistedTasks(tasks: Record<string, { taskId: string; status: string }>) {
-  localStorage.setItem(DRIVE_STORAGE_KEY, JSON.stringify(tasks));
+  localStorage.setItem(uploadLocalStorage.driveTasks, JSON.stringify(tasks));
+}
+
+async function buildStatsFromIndexer(token: string): Promise<AnalysisStats | null> {
+  try {
+    const res = await fetch(`${API}/indexer/videos`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const videos = (await res.json()) as Array<{
+      is_shorts?: boolean;
+      youtube_category_id?: string;
+    }>;
+    if (videos.length === 0) return null;
+    const category_stats: Record<string, number> = {};
+    let shorts_count = 0;
+    for (const v of videos) {
+      if (v.is_shorts) shorts_count += 1;
+      const cat = v.youtube_category_id || "unknown";
+      category_stats[cat] = (category_stats[cat] || 0) + 1;
+    }
+    const saved = videos.length;
+    return {
+      saved,
+      raw_count: saved,
+      filtered_count: saved,
+      cleaned_count: saved,
+      shorts_count,
+      category_stats,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function loadAnalyzedFiles(): Record<string, AnalysisStats> {
   try {
-    return JSON.parse(localStorage.getItem(DRIVE_ANALYZED_KEY) || "{}");
+    return JSON.parse(localStorage.getItem(uploadLocalStorage.driveAnalyzed) || "{}");
   } catch {
     return {};
   }
@@ -45,8 +73,11 @@ function loadAnalyzedFiles(): Record<string, AnalysisStats> {
 
 function AnalysisSummary({ stats }: { stats: AnalysisStats }) {
   const noiseRemoved = stats.raw_count - (stats.filtered_count ?? stats.cleaned_count);
-  const normalCount = stats.cleaned_count - stats.shorts_count;
-  const topCategories = Object.entries(stats.category_stats).slice(0, 3);
+  const longCount = stats.cleaned_count - stats.shorts_count;
+  const categoryTotal = Object.values(stats.category_stats).reduce((sum, n) => sum + n, 0);
+  const topCategories = Object.entries(stats.category_stats)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
 
   return (
     <div className="space-y-4 rounded-2xl border border-violet-100 bg-violet-50 p-5">
@@ -55,8 +86,8 @@ function AnalysisSummary({ stats }: { stats: AnalysisStats }) {
         {[
           { label: "파싱", value: stats.raw_count, sub: "원본 항목", color: "text-gray-700" },
           { label: "노이즈 제거", value: noiseRemoved, sub: "광고·삭제됨", color: "text-orange-600" },
-          { label: "일반 영상", value: normalCount, sub: "처리 완료", color: "text-violet-700" },
-          { label: "숏츠", value: stats.shorts_count, sub: "Shorts 분류", color: "text-red-500" },
+          { label: "분류 완료", value: stats.cleaned_count, sub: "2개월 시청 기록", color: "text-violet-700" },
+          { label: "숏츠", value: stats.shorts_count, sub: `롱폼 ${longCount.toLocaleString()}건`, color: "text-red-500" },
         ].map((item) => (
           <div key={item.label} className="rounded-xl border border-gray-100 bg-white px-3 py-3 text-center">
             <p className={`text-xl font-bold ${item.color}`}>{item.value.toLocaleString()}</p>
@@ -67,24 +98,34 @@ function AnalysisSummary({ stats }: { stats: AnalysisStats }) {
       </div>
       {topCategories.length > 0 && (
         <div>
-          <p className="mb-2 text-xs font-medium text-gray-500">카테고리 분류</p>
+          <p className="mb-2 text-xs font-medium text-gray-500">
+            카테고리 분류 (상위 5 · 합계 {categoryTotal.toLocaleString()}건)
+          </p>
           <div className="flex flex-wrap gap-2">
             {topCategories.map(([cat, count]) => (
               <span
                 key={cat}
                 className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs text-violet-700"
               >
-                {cat} <span className="font-semibold">{count}</span>
+                {youtubeCategoryLabel(cat)} <span className="font-semibold">{count}</span>
               </span>
             ))}
           </div>
         </div>
       )}
       <p className="text-xs text-gray-400">
-        총 <span className="font-semibold text-gray-600">{stats.saved}</span>개 저장됨
+        catalog 저장 <span className="font-semibold text-gray-600">{stats.saved}</span>건
+        {categoryTotal !== stats.cleaned_count && stats.cleaned_count > 0 ? (
+          <span className="text-orange-600"> · 분류 합계 불일치</span>
+        ) : null}
       </p>
     </div>
   );
+}
+
+function authHeaders(): HeadersInit {
+  const token = useAuthStore.getState().token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 function DirectUploadTab({
@@ -101,7 +142,7 @@ function DirectUploadTab({
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem(UPLOAD_TASK_KEY);
+    const saved = localStorage.getItem(uploadLocalStorage.directUploadTask);
     if (!saved) return;
     const { taskId } = JSON.parse(saved);
     setStatus("polling");
@@ -113,13 +154,13 @@ function DirectUploadTab({
         const d = await r.json();
         if (d.status === "success") {
           clearInterval(pollingRef.current!);
-          localStorage.removeItem(UPLOAD_TASK_KEY);
+          localStorage.removeItem(uploadLocalStorage.directUploadTask);
           setStatus("success");
           setMessage(`완료! ${d.processed}개 영상 저장됨`);
           onSuccess();
         } else if (d.status === "error") {
           clearInterval(pollingRef.current!);
-          localStorage.removeItem(UPLOAD_TASK_KEY);
+          localStorage.removeItem(uploadLocalStorage.directUploadTask);
           setStatus("error");
           setMessage(d.message || "분석 중 오류 발생");
         }
@@ -148,11 +189,24 @@ function DirectUploadTab({
       form.append("file", file);
 
       try {
-        const res = await fetch(`${API}/indexer/analyze`, { method: "POST", body: form });
+        const res = await fetch(`${API}/indexer/analyze`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: form,
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(
+            typeof body.detail === "string" ? body.detail : "업로드에 실패했습니다.",
+          );
+        }
         const data = await res.json();
         const taskId = data.task_id;
 
-        localStorage.setItem(UPLOAD_TASK_KEY, JSON.stringify({ taskId }));
+        localStorage.setItem(
+          uploadLocalStorage.directUploadTask,
+          JSON.stringify({ taskId }),
+        );
         setStatus("polling");
         setMessage("분석 중... (수분 소요)");
 
@@ -163,13 +217,13 @@ function DirectUploadTab({
             const d = await r.json();
             if (d.status === "success") {
               clearInterval(pollingRef.current!);
-              localStorage.removeItem(UPLOAD_TASK_KEY);
+              localStorage.removeItem(uploadLocalStorage.directUploadTask);
               setStatus("success");
               setMessage(`완료! ${d.processed}개 영상 저장됨`);
               onSuccess();
             } else if (d.status === "error") {
               clearInterval(pollingRef.current!);
-              localStorage.removeItem(UPLOAD_TASK_KEY);
+              localStorage.removeItem(uploadLocalStorage.directUploadTask);
               setStatus("error");
               setMessage(d.message || "분석 중 오류 발생");
             }
@@ -177,9 +231,9 @@ function DirectUploadTab({
             /* 일시적 오류 무시 */
           }
         }, 3000);
-      } catch {
+      } catch (err) {
         setStatus("error");
-        setMessage("업로드 실패. 서버가 실행 중인지 확인하세요.");
+        setMessage(err instanceof Error ? err.message : "업로드 실패. 서버가 실행 중인지 확인하세요.");
       }
     },
     [onSuccess],
@@ -296,7 +350,7 @@ function GuideTab() {
           {
             num: 4,
             title: "보내기 요청",
-            desc: "요청 완료 후 구글이 처리하는 데 수 분~수 시간이 걸립니다. Drive에 파일이 생기면 자동으로 감지합니다.",
+            desc: "요청 완료 후 구글이 처리하는 데 수 분~수 시간이 걸립니다. Drive에 파일이 생기면 감지되며, 직접 분석 시작을 눌러 주세요.",
           },
         ].map((s) => (
           <div key={s.num} className="flex gap-4 rounded-xl border border-gray-100 bg-gray-50 p-4">
@@ -321,11 +375,27 @@ function GuideTab() {
         ))}
       </div>
       <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-700">
-       보내기 완료까지 최대 수 시간 걸릴 수 있어요. Drive 탭에서 30초마다 자동으로 파일을
-        확인합니다.
+       보내기 완료까지 최대 수 시간 걸릴 수 있어요. Drive 탭에서 30초마다 파일을
+        확인하고, 감지되면 분석 시작을 눌러 주세요.
       </div>
     </div>
   );
+}
+
+type DriveStatus =
+  | "idle"
+  | "searching"
+  | "detected"
+  | "downloading"
+  | "processing"
+  | "success"
+  | "error"
+  | "waiting";
+
+interface DriveFile {
+  id: string;
+  name: string;
+  modifiedTime?: string;
 }
 
 function DriveTab({
@@ -337,9 +407,7 @@ function DriveTab({
   resetKey: number;
   showGuideHint: boolean;
 }) {
-  const [status, setStatus] = useState<
-    "idle" | "searching" | "downloading" | "processing" | "success" | "error" | "waiting"
-  >("idle");
+  const [status, setStatus] = useState<DriveStatus>("idle");
   const [stats, setStats] = useState<AnalysisStats | null>(() => {
     const analyzed = loadAnalyzedFiles();
     const keys = Object.keys(analyzed);
@@ -347,12 +415,20 @@ function DriveTab({
   });
   const [errorMsg, setErrorMsg] = useState("");
   const [fileName, setFileName] = useState("");
+  const [detectedFiles, setDetectedFiles] = useState<DriveFile[]>([]);
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(30);
   const token = useAuthStore((s) => s.token);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startPolling = useCallback(
     (taskId: string, fileId: string) => {
+      if (!taskId) {
+        setStatus("error");
+        setErrorMsg("분석 작업 정보가 없습니다. 다시 시도해 주세요.");
+        savePersistedTasks({});
+        return;
+      }
       if (pollingRef.current) clearInterval(pollingRef.current);
       pollingRef.current = setInterval(async () => {
         try {
@@ -380,7 +456,10 @@ function DriveTab({
               };
               const analyzed = loadAnalyzedFiles();
               analyzed[fileId] = newStats;
-              localStorage.setItem(DRIVE_ANALYZED_KEY, JSON.stringify(analyzed));
+              localStorage.setItem(
+                uploadLocalStorage.driveAnalyzed,
+                JSON.stringify(analyzed),
+              );
               setStats(newStats);
               setStatus("success");
               onSuccess();
@@ -397,73 +476,202 @@ function DriveTab({
     [onSuccess],
   );
 
-  const runAuto = useCallback(
-    async (force = false) => {
-      if (!token) return;
+  const scanDrive = useCallback(async () => {
+    if (!token) return;
 
-      const analyzed = loadAnalyzedFiles();
-      if (!force && Object.keys(analyzed).length > 0) {
-        const lastStats = Object.values(analyzed).at(-1)!;
-        setStats(lastStats);
-        setStatus("success");
+    setStatus("searching");
+    try {
+      const res = await fetch(`${API}/takeout/drive/files`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Drive 목록 조회 실패");
+      const data = await res.json();
+      const files: DriveFile[] = data.files || [];
+
+      if (files.length === 0) {
+        setDetectedFiles([]);
+        setSelectedFileId(null);
+        setStatus("waiting");
         return;
       }
 
-      setStatus("searching");
+      const sorted = [...files].sort((a, b) =>
+        (b.modifiedTime || "").localeCompare(a.modifiedTime || ""),
+      );
+      setDetectedFiles(sorted);
+      setSelectedFileId(sorted[0].id);
+      setFileName(sorted[0].name);
+      setStatus("detected");
+    } catch {
+      setStatus("error");
+      setErrorMsg("Drive에서 Takeout 파일을 확인하지 못했습니다");
+    }
+  }, [token]);
+
+  const startAnalysis = useCallback(
+    async (file: DriveFile) => {
+      if (!token) return;
+
+      setFileName(file.name);
+      setSelectedFileId(file.id);
+      setStatus("downloading");
+      setErrorMsg("");
+
       try {
-        const res = await fetch(`${API}/takeout/drive/auto`, {
+        const res = await fetch(`${API}/takeout/drive/trigger/${file.id}`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
         });
+        if (!res.ok) throw new Error("분석 시작 실패");
         const data = await res.json();
 
-        if (data.status === "no_files") {
-          setStatus("waiting");
+        if (data.status === "already_completed") {
+          savePersistedTasks({});
+          const fromIndexer = await buildStatsFromIndexer(token);
+          if (fromIndexer) {
+            const analyzed = loadAnalyzedFiles();
+            analyzed[file.id] = fromIndexer;
+            localStorage.setItem(
+              uploadLocalStorage.driveAnalyzed,
+              JSON.stringify(analyzed),
+            );
+            setStats(fromIndexer);
+            setStatus("success");
+            onSuccess();
+          } else {
+            setStatus("error");
+            setErrorMsg(
+              "이미 분석된 파일입니다. 좌측 메뉴에서 분석 결과를 확인해 주세요.",
+            );
+          }
           return;
         }
 
-        setFileName(data.file_name || "");
-        setStatus("downloading");
+        if (data.status === "already_running") {
+          setStatus("error");
+          setErrorMsg("이미 분석이 진행 중입니다. 잠시 후 다시 확인해 주세요.");
+          return;
+        }
+
+        if (data.status !== "started" || !data.task_id) {
+          throw new Error("분석을 시작하지 못했습니다");
+        }
 
         const persisted = loadPersistedTasks();
-        persisted[data.file_id] = { taskId: data.task_id, status: "downloading" };
+        persisted[file.id] = { taskId: data.task_id, status: "downloading" };
         savePersistedTasks(persisted);
 
-        startPolling(data.task_id, data.file_id);
+        startPolling(data.task_id, file.id);
       } catch {
         setStatus("error");
-        setErrorMsg("Drive 연결에 실패했습니다");
+        setErrorMsg("분석을 시작하지 못했습니다. 다시 시도해 주세요.");
       }
     },
     [token, startPolling],
   );
 
   useEffect(() => {
-    const persisted = loadPersistedTasks();
-    const inProgress = Object.entries(persisted).find(
-      ([, v]) => v.status !== "success" && v.status !== "error",
-    );
-    if (inProgress) {
-      const [fileId, { taskId, status: s }] = inProgress;
-      setStatus(s as "downloading" | "processing");
-      startPolling(taskId, fileId);
-    } else {
-      runAuto();
-    }
+    let cancelled = false;
+
+    const syncWithServer = async (): Promise<"restored" | "empty" | "ok"> => {
+      if (!token) return "ok";
+      try {
+        const res = await fetch(`${API}/indexer/videos`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return "ok";
+        const videos = (await res.json()) as unknown[];
+        if (videos.length === 0) {
+          localStorage.removeItem(uploadLocalStorage.driveAnalyzed);
+          localStorage.removeItem(uploadLocalStorage.driveTasks);
+          if (!cancelled) {
+            setStats(null);
+          }
+          return "empty";
+        }
+        if (!cancelled && Object.keys(loadAnalyzedFiles()).length === 0) {
+          const fromIndexer = await buildStatsFromIndexer(token);
+          if (fromIndexer) {
+            localStorage.setItem(
+              uploadLocalStorage.driveAnalyzed,
+              JSON.stringify({ catalog: fromIndexer }),
+            );
+            setStats(fromIndexer);
+            setStatus("success");
+            return "restored";
+          }
+        }
+      } catch {
+        return "ok";
+      }
+      return "ok";
+    };
+
+    void (async () => {
+      const syncResult = await syncWithServer();
+      if (cancelled) return;
+      if (syncResult === "restored") return;
+
+      const analyzed = loadAnalyzedFiles();
+      const persisted = loadPersistedTasks();
+      const inProgress = Object.entries(persisted).find(
+        ([, v]) =>
+          v.status !== "success" &&
+          v.status !== "error" &&
+          typeof v.taskId === "string" &&
+          v.taskId.length > 0,
+      );
+
+      if (inProgress) {
+        const [fileId, { taskId, status: s }] = inProgress;
+        setStatus(s as "downloading" | "processing");
+        startPolling(taskId, fileId);
+        return;
+      }
+
+      if (Object.keys(persisted).length > 0) {
+        savePersistedTasks({});
+      }
+
+      if (Object.keys(analyzed).length > 0) {
+        const lastStats = Object.values(analyzed).at(-1)!;
+        setStats(lastStats);
+        setStatus("success");
+        return;
+      }
+
+      void scanDrive();
+    })();
+
     return () => {
+      cancelled = true;
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
-  }, [resetKey, runAuto, startPolling]);
+  }, [resetKey, scanDrive, startPolling, token]);
 
   useEffect(() => {
     if (status !== "waiting") return;
-    const poll = setInterval(() => runAuto(), 30000);
+    const poll = setInterval(() => void scanDrive(), 30000);
     const tick = setInterval(() => setCountdown((c) => (c <= 1 ? 30 : c - 1)), 1000);
     return () => {
       clearInterval(poll);
       clearInterval(tick);
     };
-  }, [status, runAuto]);
+  }, [status, scanDrive]);
+
+  const handleReanalyze = useCallback(() => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingRef.current = null;
+    localStorage.removeItem(uploadLocalStorage.driveAnalyzed);
+    localStorage.removeItem(uploadLocalStorage.driveTasks);
+    setStats(null);
+    setErrorMsg("");
+    setStatus("searching");
+    void scanDrive();
+  }, [scanDrive]);
+
+  const selectedFile =
+    detectedFiles.find((f) => f.id === selectedFileId) ?? detectedFiles[0] ?? null;
 
   if (!token) {
     return (
@@ -493,10 +701,11 @@ function DriveTab({
       <div className="flex flex-col items-center gap-3 py-14 text-center">
         <div className="h-7 w-7 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
         <p className="text-sm text-gray-500">Drive에서 Takeout 파일을 기다리는 중...</p>
+        <p className="text-xs text-gray-400">아직 ZIP이 보이지 않으면 Takeout보내기가 끝날 때까지 기다려 주세요.</p>
         <div className="flex items-center gap-2 text-xs text-gray-400">
           <span>{countdown}초 후 자동 재확인</span>
           <span>·</span>
-          <button type="button" onClick={() => runAuto()} className="text-violet-600 underline">
+          <button type="button" onClick={() => void scanDrive()} className="text-violet-600 underline">
             지금 확인
           </button>
         </div>
@@ -505,6 +714,72 @@ function DriveTab({
             가이드는 <span className="font-medium text-gray-500">? 가이드</span> 탭을 확인하세요
           </p>
         )}
+      </div>
+    );
+  }
+
+  if (status === "detected" && detectedFiles.length > 0) {
+    return (
+      <div className="space-y-4 p-6">
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-4">
+          <p className="text-sm font-semibold text-emerald-800">Takeout 파일 감지됨</p>
+          <p className="mt-1 text-xs text-emerald-700">
+            분석을 시작하면 Drive에서 다운로드한 뒤 시청 기록을 catalog에 저장합니다.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          {detectedFiles.map((file) => (
+            <label
+              key={file.id}
+              className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
+                selectedFileId === file.id
+                  ? "border-violet-300 bg-violet-50 ring-1 ring-violet-200"
+                  : "border-gray-100 bg-gray-50 hover:bg-gray-100"
+              }`}
+            >
+              <input
+                type="radio"
+                name="takeout-file"
+                checked={selectedFileId === file.id}
+                onChange={() => {
+                  setSelectedFileId(file.id);
+                  setFileName(file.name);
+                }}
+                className="text-violet-600"
+              />
+              <span className="text-lg">🗜</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-gray-800">
+                  {file.name}
+                </span>
+                {file.modifiedTime && (
+                  <span className="text-xs text-gray-400">
+                    수정: {new Date(file.modifiedTime).toLocaleString("ko-KR")}
+                  </span>
+                )}
+              </span>
+            </label>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={!selectedFile}
+            onClick={() => selectedFile && void startAnalysis(selectedFile)}
+            className="rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-50"
+          >
+            분석 시작
+          </button>
+          <button
+            type="button"
+            onClick={() => void scanDrive()}
+            className="text-xs text-gray-400 underline hover:text-gray-600"
+          >
+            다시 확인
+          </button>
+        </div>
       </div>
     );
   }
@@ -526,7 +801,7 @@ function DriveTab({
     return (
       <div className="flex flex-col items-center gap-3 py-14 text-center">
         <p className="text-sm text-red-500">{errorMsg}</p>
-        <button type="button" onClick={() => runAuto(true)} className="text-xs text-violet-600 underline">
+        <button type="button" onClick={handleReanalyze} className="text-xs text-violet-600 underline">
           다시 시도
         </button>
       </div>
@@ -540,7 +815,7 @@ function DriveTab({
         <div className="flex justify-end">
           <button
             type="button"
-            onClick={() => runAuto(true)}
+            onClick={handleReanalyze}
             className="text-xs text-gray-400 underline hover:text-gray-600"
           >
             재분석
@@ -633,7 +908,7 @@ export function UploadPanel({
 }
 
 export function resetDriveUploadState() {
-  localStorage.removeItem(DRIVE_STATS_KEY);
-  localStorage.removeItem(DRIVE_STORAGE_KEY);
-  localStorage.removeItem(DRIVE_ANALYZED_KEY);
+  localStorage.removeItem(uploadLocalStorage.driveStatsLegacy);
+  localStorage.removeItem(uploadLocalStorage.driveTasks);
+  localStorage.removeItem(uploadLocalStorage.driveAnalyzed);
 }

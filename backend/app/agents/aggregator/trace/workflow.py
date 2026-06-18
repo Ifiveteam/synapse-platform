@@ -29,7 +29,9 @@ def log_workflow_end(state: dict[str, Any]) -> None:
     score = state.get("verification_score")
     review_count = state.get("review_count", 0)
     report_json = state.get("report_json") or {}
-    headline = report_json.get("headline_summary", "") if isinstance(report_json, dict) else ""
+    headline = (
+        report_json.get("headline_summary", "") if isinstance(report_json, dict) else ""
+    )
     banner(
         f"✅ 워크플로우 종료 | 검수 점수={score}점 | 검수 횟수={review_count}회 "
         f"| headline={headline[:60] or '(없음)'}"

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import uuid
 
 import httpx
 
@@ -18,39 +19,13 @@ async def _get(
 
 
 async def refresh_user_token(user) -> str | None:
-    """유저의 refresh_token으로 access_token 갱신 후 DB 저장"""
-    from app.core.database.session import AsyncSessionLocal
+    """user_token의 구글 refresh_token으로 access_token 갱신 후 DB 저장.
 
-    if not user.refresh_token:
-        return None
+    OAuth 로직은 services/google_oauth로 일원화. 이 함수는 호환용 위임.
+    """
+    from app.services.google_oauth import refresh_access_token
 
-    async with httpx.AsyncClient() as client:
-        res = await client.post(
-            "https://oauth2.googleapis.com/token",
-            data={
-                "client_id": os.getenv("GOOGLE_CLIENT_ID"),
-                "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
-                "refresh_token": user.refresh_token,
-                "grant_type": "refresh_token",
-            },
-        )
-    data = res.json()
-    new_token = data.get("access_token")
-    if not new_token:
-        return None
-
-    async with AsyncSessionLocal() as session:
-        from sqlalchemy import select
-
-        from app.models.user import User
-
-        result = await session.execute(select(User).where(User.id == user.id))
-        db_user = result.scalar_one_or_none()
-        if db_user:
-            db_user.access_token = new_token
-            await session.commit()
-
-    return new_token
+    return await refresh_access_token(user)
 
 
 async def find_takeout_in_drive(user) -> list[dict]:
@@ -138,7 +113,9 @@ async def download_drive_file(file_id: str, user) -> str | None:
     return tmp.name
 
 
-async def run_takeout_pipeline(file_path: str, user_id: int | None = None) -> dict:
+async def run_takeout_pipeline(
+    file_path: str, user_id: uuid.UUID | None = None
+) -> dict:
     """ZIP 또는 JSON 파일 → Indexer pipeline 실행"""
     from collections import Counter
 
@@ -151,8 +128,6 @@ async def run_takeout_pipeline(file_path: str, user_id: int | None = None) -> di
             "cleaned_data": [],
             "error": None,
             "saved_count": None,
-            "limit": 2000,
-            "reindex": True,
             "user_id": user_id,
         }
     )
@@ -164,8 +139,11 @@ async def run_takeout_pipeline(file_path: str, user_id: int | None = None) -> di
 
     cleaned = result.get("cleaned_data", [])
     shorts_count = sum(1 for item in cleaned if item.get("is_shorts"))
-    categories = [item.get("category", "") for item in cleaned if item.get("category")]
-    category_stats = dict(Counter(categories).most_common(5))
+    category_stats = dict(
+        Counter(
+            str(item.get("youtube_category_id") or "unknown") for item in cleaned
+        ).most_common()
+    )
 
     return {
         **result,

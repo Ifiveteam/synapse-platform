@@ -1,12 +1,10 @@
 import { apiFetch } from "@/api/client";
 import type {
   AnalyzeResponse,
-  CompareResponse,
   GraphViewData,
   JobResponse,
   PersonasResponse,
   ProfilerResult,
-  SnapshotListResponse,
 } from "@/api/types/profiler";
 
 const PROFILER_PREFIX = "/api/v1/profiler";
@@ -31,23 +29,6 @@ export function getJob(jobId: string): Promise<JobResponse> {
 
 export function getProfile(userId: string): Promise<ProfilerResult> {
   return apiFetch<ProfilerResult>(`${PROFILER_PREFIX}/profile/${userId}`);
-}
-
-export function getSnapshots(userId: string): Promise<SnapshotListResponse> {
-  return apiFetch<SnapshotListResponse>(
-    `${PROFILER_PREFIX}/profile/${userId}/snapshots`,
-  );
-}
-
-export function compareSnapshots(
-  userId: string,
-  fromVersion: string,
-  toVersion: string,
-): Promise<CompareResponse> {
-  const params = new URLSearchParams({ from: fromVersion, to: toVersion });
-  return apiFetch<CompareResponse>(
-    `${PROFILER_PREFIX}/profile/${userId}/compare?${params}`,
-  );
 }
 
 export function getGraph(

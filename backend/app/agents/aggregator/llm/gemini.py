@@ -33,8 +33,7 @@ def _resolve_gemini_api_key() -> str:
             return api_key
     joined = ", ".join(GEMINI_API_KEY_ENV_VARS)
     msg = (
-        "Gemini API 키가 설정되지 않았습니다. "
-        f"환경 변수 중 하나를 설정하세요: {joined}"
+        f"Gemini API 키가 설정되지 않았습니다. 환경 변수 중 하나를 설정하세요: {joined}"
     )
     raise ValueError(msg)
 
@@ -150,9 +149,8 @@ async def invoke_gemini_structured(
             temperature=temperature,
         )
     except Exception as exc:
-        if (
-            resolved_model == FALLBACK_GEMINI_MODEL
-            or _is_non_retryable_gemini_error(exc)
+        if resolved_model == FALLBACK_GEMINI_MODEL or _is_non_retryable_gemini_error(
+            exc
         ):
             raise
         logger.warning(
@@ -184,9 +182,8 @@ async def invoke_gemini(
             messages, model=resolved_model, temperature=temperature
         )
     except Exception as exc:
-        if (
-            resolved_model == FALLBACK_GEMINI_MODEL
-            or _is_non_retryable_gemini_error(exc)
+        if resolved_model == FALLBACK_GEMINI_MODEL or _is_non_retryable_gemini_error(
+            exc
         ):
             raise
         logger.warning(

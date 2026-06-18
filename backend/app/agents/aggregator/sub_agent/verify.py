@@ -9,7 +9,10 @@ from app.agents.aggregator.prompts import (
     VERIFY_REPORT_SYSTEM_PROMPT,
     build_verify_report_user_prompt,
 )
-from app.agents.aggregator.report import coerce_dashboard_report, invoke_gemini_structured
+from app.agents.aggregator.report import (
+    coerce_dashboard_report,
+    invoke_gemini_structured,
+)
 from app.agents.aggregator.sub_agent.schemas import VerificationResult
 from app.schemas.report import DashboardReportSchema
 

@@ -6,10 +6,17 @@ from pydantic import BaseModel, Field
 
 
 class CognitiveAxisScore(BaseModel):
-    subject: str = Field(..., description="8각 성향 축의 한국어 라벨 (예: 지적 호기심, 자기계발)")
-    key: str = Field(..., description="8각 성향 축의 영문 키 (예: intellectual_curiosity, self_improvement)")
+    subject: str = Field(
+        ..., description="8각 성향 축의 한국어 라벨 (예: 지적 호기심, 자기계발)"
+    )
+    key: str = Field(
+        ...,
+        description="8각 성향 축의 영문 키 (예: intellectual_curiosity, self_improvement)",
+    )
     score: float = Field(..., description="0~100 사이의 코호트 평균 점수")
-    interpretation: str = Field(..., description="해당 축 점수에 대한 짧은 분석 및 해석 (1문장)")
+    interpretation: str = Field(
+        ..., description="해당 축 점수에 대한 짧은 분석 및 해석 (1문장)"
+    )
 
 
 class KeywordItem(BaseModel):
@@ -21,7 +28,8 @@ class KeywordItem(BaseModel):
 
 class GapAnalysis(BaseModel):
     intersection_keywords: list[str] = Field(
-        ..., description="내부와 외부가 공통으로 관심을 갖는 교집합 키워드 리스트 (최대 3개)"
+        ...,
+        description="내부와 외부가 공통으로 관심을 갖는 교집합 키워드 리스트 (최대 3개)",
     )
     intersection_interpretation: str = Field(
         ..., description="교집합 영역에 대한 B2B 관점의 해석"
@@ -39,7 +47,8 @@ class GapAnalysis(BaseModel):
         ..., description="외부 우세 현상과 내부 관심사 간의 단절/격차 해석"
     )
     filter_bubble_scenario: str = Field(
-        ..., description="격차로 인해 발생하는 맥락적 필터 버블 시나리오 심층 종합 해석 (2~3문장)"
+        ...,
+        description="격차로 인해 발생하는 맥락적 필터 버블 시나리오 심층 종합 해석 (2~3문장)",
     )
 
 
@@ -59,7 +68,9 @@ class DashboardReportSchema(BaseModel):
     headline_summary: str = Field(
         ..., description="포털 메인 헤드라인 스타일의 굵고 직관적인 한 줄 요약 카피"
     )
-    neutrality_score: int = Field(..., description="0~100 사이의 미디어 중립성 종합 점수")
+    neutrality_score: int = Field(
+        ..., description="0~100 사이의 미디어 중립성 종합 점수"
+    )
     neutrality_status: str = Field(
         ..., description="점수에 따른 상태 분류 (안정, 주의, 위험 중 택1)"
     )
@@ -67,7 +78,8 @@ class DashboardReportSchema(BaseModel):
         ..., description="중립성 점수 및 상태에 대한 핵심 요약 배경 (1문장)"
     )
     radar_chart_data: list[CognitiveAxisScore] = Field(
-        ..., description="Recharts RadarChart에 바로 바인딩할 수 있는 8개 성향 축 데이터"
+        ...,
+        description="Recharts RadarChart에 바로 바인딩할 수 있는 8개 성향 축 데이터",
     )
     dominant_axes: list[str] = Field(
         ..., description="70점 내외 혹은 상대적으로 가장 높은 우세 성향 축 명칭 리스트"

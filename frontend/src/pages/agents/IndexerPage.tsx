@@ -5,20 +5,21 @@ import {
   UploadPanel,
   resetDriveUploadState,
 } from "@/components/upload/upload-panel";
-import { fetchMe } from "@/api/auth";
 import { API_BASE_URL } from "@/lib/env";
+import { youtubeCategoryLabel } from "@/lib/youtube-categories";
+import { ROUTES } from "@/routes";
 import { useAuthStore } from "@/stores/auth";
 
 const API = `${API_BASE_URL}/api/v1`;
 
 interface Video {
-  id: number;
+  id: string;
   title: string;
   channel: string;
   url: string;
   watched_at: string;
-  category: string;
-  keywords: string[];
+  youtube_category_id: string;
+  tags: string[];
   duration: number;
   is_shorts: boolean;
 }
@@ -120,11 +121,11 @@ function VideoList({ refreshKey, onReset }: { refreshKey: number; onReset: () =>
                 <td className="p-3 text-gray-600">{v.channel}</td>
                 <td className="p-3">
                   <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-700">
-                    {v.category || "-"}
+                    {youtubeCategoryLabel(v.youtube_category_id)}
                   </span>
                 </td>
                 <td className="p-3 text-xs text-gray-500">
-                  {v.keywords?.slice(0, 3).join(", ") || "-"}
+                  {v.tags?.slice(0, 3).join(", ") || "-"}
                 </td>
                 <td className="p-3 text-gray-500">{formatDuration(v.duration)}</td>
               </tr>
@@ -139,19 +140,15 @@ function VideoList({ refreshKey, onReset }: { refreshKey: number; onReset: () =>
 export function IndexerPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { setToken, setUser } = useAuthStore();
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // 구 OAuth URL(/agents/indexer?token=) → 업로드 화면으로
   useEffect(() => {
     const urlToken = searchParams.get("token");
     if (urlToken) {
-      setToken(urlToken);
-      fetchMe(urlToken).then((u) => {
-        if (u) setUser(u);
-      });
-      navigate("/agents/indexer");
+      navigate(ROUTES.upload, { replace: true });
     }
-  }, [searchParams, setToken, setUser, navigate]);
+  }, [searchParams, navigate]);
 
   const onSuccess = () => setRefreshKey((k) => k + 1);
   const onReset = () => {

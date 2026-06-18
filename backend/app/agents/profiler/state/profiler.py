@@ -1,30 +1,40 @@
 from __future__ import annotations
 
-from typing import NotRequired, TypedDict
+from typing import Any, NotRequired, TypedDict
 
-from app.agents.profiler.base import (
-    BehaviorPatterns,
-    IndexedRecord,
-    LayerB,
-    NotificationPayload,
-    ProfileInterpretation,
-    Synapse8Axes,
-    Top5Interest,
-)
+from app.schemas.profiler import ProfileInsightOutput, ProfileScoresOutput
+from app.services.notification import NotificationPayload
+
+
+class AnalysisSample(TypedDict, total=False):
+    catalog_id: str
+    title: str | None
+    channel: str
+    summary_kr: str | None
+    youtube_category_id: str | None
+    is_shorts: bool | None
 
 
 class ProfilerState(TypedDict):
     user_id: str
     notify_email: str
     current_step: str
-    records: list[IndexedRecord]
-    layer_b: NotRequired[LayerB]
-    behavior_patterns: NotRequired[BehaviorPatterns]
-    axes: NotRequired[Synapse8Axes]
-    top5_interests: NotRequired[list[Top5Interest]]
-    summary: NotRequired[str]
-    interpretation: NotRequired[ProfileInterpretation]
-    axis_notes: NotRequired[dict[str, str]]
-    investigation_log: NotRequired[list[str]]
+    analysis_limit: NotRequired[int | None]
+
+    video_summary_saved_count: NotRequired[int | None]
+    video_summary_skipped_count: NotRequired[int | None]
+    video_summary_error: NotRequired[str | None]
+
+    catalog_stats: NotRequired[dict[str, Any]]
+    analysis_samples: NotRequired[list[AnalysisSample]]
+
+    profile_scores: NotRequired[ProfileScoresOutput]
+    profile_insight: NotRequired[ProfileInsightOutput]
+    supporting_evidence: NotRequired[dict[str, Any]]
+
+    snapshot_id: NotRequired[str | None]
     llm_used: NotRequired[bool]
+
+    investigation_log: NotRequired[list[str]]
+    error: NotRequired[str | None]
     notification: NotRequired[NotificationPayload]

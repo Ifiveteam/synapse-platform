@@ -1,28 +1,35 @@
 # Profiler
 
-YouTube 시청·검색 기록으로 **Synapse 8 Layer A + Layer B** 프로필을 산출하는 에이전트.
+YouTube 시청 catalog를 바탕으로 **영상 의미 분석 → 21축 성향 프로필 → 완료 알림**까지 수행하는 에이전트.
 
 ## 문서
 
 | 문서 | 내용 |
 |------|------|
-| [IMPLEMENTATION.md](./IMPLEMENTATION.md) | 레이어 구조, 디렉터리, Import 규칙, API·데이터 흐름 |
-| [SYNAPSE_8.md](./SYNAPSE_8.md) | 8축·Layer B 도메인 스펙 (측정 정의) |
+| [PIPELINE.md](./PIPELINE.md) | 전체 파이프라인, LangGraph, DB, API, 비동기 실행 |
 
 ## 빠른 참조
 
 | 구분 | 경로 |
 |------|------|
-| LangGraph 파이프라인 | `backend/app/agents/profiler/` |
+| 메인 LangGraph | `backend/app/agents/profiler/graph.py` |
+| 영상 분석 서브그래프 | `backend/app/agents/profiler/sub_agent/video_summary/` |
 | HTTP API | `backend/app/api/v1/profiler.py` |
-| Profiler 서비스 | `backend/app/services/profiler/` |
-| API 스키마 | `backend/app/schemas/profiler.py` |
-| Mock·CLI | `backend/app/agents/profiler/scripts/` |
+| Job 오케스트레이션 | `backend/app/services/profiler/service.py` |
+| DB 접근 | `backend/app/repositories/profiler_repository.py` |
+| 영상 선별 로직 | `backend/app/services/profiler/sampling.py` |
+| 공통 임베딩 | `backend/app/agents/shared/embedding.py` |
+| API·LLM 스키마 | `backend/app/schemas/profiler/` |
+| ERD | [docs/erd.md](../erd.md) — `video_analysis`, `user_profile_history` |
 
-## 시연 본선
+## API (프로덕션)
 
 ```text
-GET /personas → POST /analyze → GET /jobs/{id} → GET /profile/{user_id}
+POST /api/v1/profiler/run              → job 시작 (202)
+GET  /api/v1/profiler/jobs/{job_id}     → job 상태·결과
+GET  /api/v1/profiler/me/profile       → 최신 스냅샷 조회
+POST /api/v1/profiler/video-summary/run → 영상 분석만 단독 실행 (202)
 ```
 
-로컬 테스트: `backend/`에서 `uv run python -m app.agents.profiler.scripts.run_test mock_jiyeon`
+인덱서 성공 시 `profiler_service.enqueue_for_user()`로 메인 파이프라인이 자동 큐잉된다.  
+상세 흐름은 [PIPELINE.md](./PIPELINE.md) 참고.

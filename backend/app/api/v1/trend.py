@@ -29,7 +29,9 @@ from app.services.trend import (
 router = APIRouter()
 
 
-@router.post("/analyze", response_model=AnalyzeResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/analyze", response_model=AnalyzeResponse, status_code=status.HTTP_201_CREATED
+)
 async def analyze_trend(body: AnalyzeRequest | None = None) -> AnalyzeResponse:
     """트렌드 분석을 실행하고 결과를 인메모리 게시판에 저장한다."""
     request = body or AnalyzeRequest()
