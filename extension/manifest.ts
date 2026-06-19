@@ -9,6 +9,7 @@ export default defineManifest({
 
   // 기획 기능 구현을 위한 브라우저 핵심 권한 정의
   permissions: [
+    'identity', // 사이드패널 Google OAuth (chrome.identity.launchWebAuthFlow)
     'sidePanel', // 메인 FAB 클릭 시 브라우저 우측 사이드패널 창 토글용
     'activeTab', // 유저가 현재 보고 있는 탭의 본문 텍스트 파싱용
     'storage', // FAB와 사이드패널 헤더 간 트래킹 토글 스위치 상태 실시간 동기화용
@@ -17,7 +18,7 @@ export default defineManifest({
   ],
 
   // 실시간 행동 데이터 수집 및 본문 스크랩 + Vite dev 서버(HMR) 접근
-  host_permissions: ['<all_urls>', 'http://localhost:5173/*'],
+  host_permissions: ['<all_urls>', 'http://localhost:5174/*'],
 
   // 유저 제어형 실시간 행동 데이터 수집 환경 (Service Worker)
   background: {

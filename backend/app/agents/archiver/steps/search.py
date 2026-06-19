@@ -10,14 +10,13 @@ from langgraph.config import get_stream_writer
 
 from app.agents.archiver.constants import SEARCH_TEMPERATURE
 from app.agents.archiver.gemini import GEMINI_MODEL, get_client
-from app.agents.archiver.prompts import build_search_route_instruction
+from app.agents.archiver.tools import GOOGLE_SEARCH_TOOL
+from app.agents.archiver.prompts import build_search_collect_instruction
 from app.agents.archiver.steps._common import latest_user_message
 from app.agents.archiver.trace import log_node_enter, log_search_payload
 from app.agents.archiver.types import ArchiverState, Evaluation
 
 logger = logging.getLogger(__name__)
-
-_GOOGLE_SEARCH_TOOL = types.Tool(google_search=types.GoogleSearch())
 
 
 async def search(state: ArchiverState) -> dict[str, Any]:
@@ -40,7 +39,7 @@ async def search(state: ArchiverState) -> dict[str, Any]:
         }
     )
 
-    system_instruction = build_search_route_instruction(
+    system_instruction = build_search_collect_instruction(
         context_title=state.get("context_title"),
         context_url=state.get("context_url"),
     )
@@ -51,7 +50,7 @@ async def search(state: ArchiverState) -> dict[str, Any]:
             contents=user_message,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
-                tools=[_GOOGLE_SEARCH_TOOL],
+                tools=[GOOGLE_SEARCH_TOOL],
                 temperature=SEARCH_TEMPERATURE,
             ),
         )

@@ -1,5 +1,5 @@
 import { sendTrackingData } from '@/shared/api/client'
-import { isBlacklisted } from '../utils/blacklist'
+import { isBlacklisted } from '@/shared/utils/urlBlacklist'
 
 interface ActiveSession {
   url: string

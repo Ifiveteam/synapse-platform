@@ -5,6 +5,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { FloatingWidget } from '@/features/tracking/components/FloatingWidget'
+import { initAuthBridge } from '@/shared/auth/authBridge'
 
 import widgetStyles from '@/styles/content-widget.css?inline'
 
@@ -63,6 +64,7 @@ function mountWhenReady() {
 
 function bootContentScript() {
   try {
+    initAuthBridge()
     mountWhenReady()
   } catch (error) {
     console.error('[Synapse] FAB 마운트 실패:', error)

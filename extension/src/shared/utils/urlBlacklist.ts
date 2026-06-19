@@ -1,6 +1,6 @@
 /**
- * 트래킹 수집 대상에서 제외할 URL·도메인 필터.
- * 정부·금융·브라우저 내부 페이지 등 민감 컨텍스트가 DB로 유출되지 않도록 원천 차단한다.
+ * URL·도메인 수집 차단 필터.
+ * 트래킹·채팅 맥락 등 민감 페이지가 DB로 유출되지 않도록 원천 차단한다.
  */
 
 /** 브라우저 시스템 스킴 — 호스트명 파싱 전 1차 차단 */
@@ -22,11 +22,10 @@ const HOSTNAME_BLACKLIST_PATTERNS: RegExp[] = [
 ]
 
 /**
- * URL이 수집 차단 대상인지 판별한다.
- * @returns true — 수집 차단, false — 수집 허용
+ * URL이 수집·맥락 전송 차단 대상인지 판별한다.
+ * @returns true — 차단, false — 허용
  */
 export function isBlacklisted(url: string | undefined): boolean {
-  // URL 미확정 탭·빈 값은 수집하지 않음 (안전 측 차단)
   if (!url) return true
 
   if (SCHEME_BLACKLIST_PATTERNS.some((pattern) => pattern.test(url))) {
@@ -34,11 +33,9 @@ export function isBlacklisted(url: string | undefined): boolean {
   }
 
   try {
-    // 경로·쿼리 오탐을 피하기 위해 hostname만 검사
     const { hostname } = new URL(url)
     return HOSTNAME_BLACKLIST_PATTERNS.some((pattern) => pattern.test(hostname))
   } catch {
-    // 파싱 불가 URL은 신뢰할 수 없으므로 수집 차단
     return true
   }
 }

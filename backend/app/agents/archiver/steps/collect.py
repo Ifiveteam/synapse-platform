@@ -56,7 +56,14 @@ async def collect(
         writer(
             {
                 "event": "status",
-                "content": "🧠 [Internal RAG] 과거 보관함 기억을 검색합니다...\n\n",
+                "content": (
+                    "🧠 [Internal RAG] 과거 보관함 기억을 검색합니다"
+                    + (
+                        f" (시도 {retrieval_attempts} — 의미 기반 재검색)...\n\n"
+                        if retrieval_attempts > 1
+                        else "...\n\n"
+                    )
+                ),
             }
         )
 
@@ -69,6 +76,7 @@ async def collect(
                 user_id=state["user_id"],
                 query_text=user_message,
                 exclude_query_text=user_message,
+                retrieval_attempt=retrieval_attempts,
             )
             rag_payload = format_past_knowledge_for_rag(hits)
 

@@ -15,78 +15,25 @@ from app.agents.archiver.constants import (
     STREAM_ERROR_MESSAGE,
 )
 from app.agents.archiver.gemini import GEMINI_MODEL, get_client
-from app.agents.archiver.prompts import (
-    build_basic_route_instruction,
-    build_general_route_instruction,
-    build_rag_route_instruction,
-    build_search_route_instruction,
+from app.agents.archiver.steps.respond_context import (
+    build_gemini_contents,
+    resolve_system_instruction,
 )
-from app.agents.archiver.steps._common import latest_user_message
 from app.agents.archiver.trace import log_node_enter, log_respond_result
-from app.agents.archiver.types import (
-    ArchiverRoute,
-    ArchiverState,
-    Evaluation,
-    resolve_route,
-)
+from app.agents.archiver.types import ArchiverState, resolve_route
 
 logger = logging.getLogger(__name__)
-_GOOGLE_SEARCH_TOOL = types.Tool(google_search=types.GoogleSearch())
-
-
-def resolve_system_instruction(state: ArchiverState) -> tuple[str, list[types.Tool] | None]:
-    """수집된 근거와 route에 따라 respond용 system_instruction을 조립한다."""
-    route = resolve_route(state)
-    rag_data = (state.get("rag_data") or "").strip()
-    search_data = (state.get("search_data") or "").strip()
-    evaluation = Evaluation.from_state(state)
-
-    if route == ArchiverRoute.RAG and rag_data:
-        return build_rag_route_instruction(past_rag_knowledge=rag_data), None
-
-    if route == ArchiverRoute.BASIC:
-        instruction = build_basic_route_instruction(
-            context_title=state.get("context_title"),
-            context_url=state.get("context_url"),
-            context_body=state.get("context_body"),
-        )
-        if search_data:
-            instruction += f"\n\n[웹 검색 보완 결과]\n{search_data}"
-        return instruction, None
-
-    if route == ArchiverRoute.SEARCH or search_data:
-        instruction = build_search_route_instruction(
-            context_title=state.get("context_title"),
-            context_url=state.get("context_url"),
-        )
-        if search_data:
-            instruction += f"\n\n[검색 수집 결과]\n{search_data}"
-        tools = [_GOOGLE_SEARCH_TOOL] if route == ArchiverRoute.SEARCH else None
-        return instruction, tools
-
-    if route == ArchiverRoute.RAG and not rag_data:
-        if search_data:
-            instruction = build_search_route_instruction(
-                context_title=state.get("context_title"),
-                context_url=state.get("context_url"),
-            )
-            instruction += f"\n\n[RAG 미매칭 — 검색 대체 결과]\n{search_data}"
-            return instruction, None
-        if evaluation is not None and not evaluation.is_sufficient:
-            return build_general_route_instruction(), None
-
-    return build_general_route_instruction(), None
 
 
 async def respond(state: ArchiverState) -> dict[str, Any]:
     """최종 답변을 Gemini 스트리밍으로 생성하고 custom stream 이벤트를 방출한다."""
     log_node_enter("respond", state=state)
-    user_message = latest_user_message(state)
     route = resolve_route(state)
     route_value = route.value
     system_instruction, tools = resolve_system_instruction(state)
     temperature = RESPOND_TEMPERATURES.get(route.value, RESPOND_DEFAULT_TEMPERATURE)
     writer = get_stream_writer()
+    gemini_contents = build_gemini_contents(state.get("messages", []))
 
     writer(
         {
@@ -100,7 +47,7 @@ async def respond(state: ArchiverState) -> dict[str, Any]:
     try:
         stream = await get_client().aio.models.generate_content_stream(
             model=GEMINI_MODEL,
-            contents=user_message,
+            contents=gemini_contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 tools=tools,

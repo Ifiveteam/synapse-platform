@@ -60,6 +60,7 @@ export default defineConfig({
     // Shadcn UI 및 각 기능(features/) 도메인 간 교차 임포트 시 가독성과 유지보수성을 극대화하기 위한 절대경로 설정
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@synapse/shared': path.resolve(__dirname, '../shared'),
     },
   },
 
@@ -80,14 +81,14 @@ export default defineConfig({
   // 개발 환경(pnpm dev) 런타임에서 윈도우 환경 파일 유실이나
   // Background 서비스 워커 리로드 시 HMR(실시간 반영)이 씹히는 고질적인 버그 방지
   server: {
-    port: 5173,
+    port: 5174,
     strictPort: true,
     cors: true,
     headers: {
       'Access-Control-Allow-Origin': '*',
     },
     hmr: {
-      port: 5173,
+      port: 5174,
     },
   },
 })

@@ -20,7 +20,9 @@ from app.models.user_token import UserToken
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
-REDIRECT_URI = "http://localhost:8000/api/v1/auth/callback"
+REDIRECT_URI = os.getenv(
+    "GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/auth/callback"
+)
 
 SCOPES = [
     "openid",
@@ -41,7 +43,7 @@ def _client_secret() -> str:
 # ── 1. 동의 URL 생성 ──────────────────────────
 
 
-def build_authorize_url() -> str:
+def build_authorize_url(*, state: str | None = None) -> str:
     """구글 OAuth 동의 화면 URL."""
     params = {
         "client_id": _client_id(),
@@ -51,6 +53,8 @@ def build_authorize_url() -> str:
         "access_type": "offline",
         "prompt": "consent",
     }
+    if state:
+        params["state"] = state
     return f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
 
 

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import { logoutSession } from "@/api/auth";
+import { clearAuthFromExtension } from "@/lib/extension-auth-sync";
 
 export interface AuthUser {
   id: string;
@@ -40,9 +41,13 @@ export const useAuthStore = create<AuthStore>()((set) => ({
   setToken: (token) => set({ token }),
   setUser: (user) => set({ user }),
   setAuthReady: (authReady) => set({ authReady }),
-  loginMock: () => set({ token: MOCK_AUTH_TOKEN, user: MOCK_USER, authReady: true }),
+  loginMock: () => {
+    clearAuthFromExtension();
+    set({ token: MOCK_AUTH_TOKEN, user: MOCK_USER, authReady: true });
+  },
   logout: () => {
     void logoutSession();
+    clearAuthFromExtension();
     set({ token: null, user: null, authReady: true });
   },
 }));

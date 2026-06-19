@@ -3,6 +3,7 @@
  * 전송 로직은 useChat 훅에 두어 하단 ChatInput과 브릿지 연결한다.
  */
 import { Card, CardContent } from '@/components/ui/card'
+import { ChatMarkdown } from '@/features/chat/components/ChatMarkdown'
 import { useChatContext } from '@/features/chat/context/ChatProvider'
 
 function resolveHostname(url: string) {
@@ -60,11 +61,15 @@ export function ChatView() {
               <div
                 className={`rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${
                   msg.role === 'user'
-                    ? 'rounded-tr-sm bg-slate-900 text-white'
-                    : 'rounded-tl-sm border border-slate-100 bg-white text-slate-800 shadow-sm whitespace-pre-wrap'
+                    ? 'rounded-tr-sm bg-slate-900 text-white whitespace-pre-wrap'
+                    : 'rounded-tl-sm border border-slate-100 bg-white text-slate-800 shadow-sm'
                 }`}
               >
-                {msg.content}
+                {msg.role === 'assistant' ? (
+                  <ChatMarkdown content={msg.content} />
+                ) : (
+                  msg.content
+                )}
               </div>
               <span className="px-1 text-[10px] text-slate-400">{msg.timestamp}</span>
             </div>

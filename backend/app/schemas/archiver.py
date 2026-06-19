@@ -1,4 +1,4 @@
-"""Chat / Archiver API Pydantic 스키마."""
+"""Archiver API Pydantic 스키마."""
 
 from __future__ import annotations
 

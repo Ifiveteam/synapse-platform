@@ -14,6 +14,11 @@ export interface SessionResponse {
   user: AuthUser;
 }
 
+export interface ExtensionCodeResponse {
+  code: string;
+  expires_in: number;
+}
+
 export async function fetchMe(token: string): Promise<AuthUser | null> {
   const res = await fetch(`${AUTH_API}/me`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -37,21 +42,24 @@ export async function refreshSession(): Promise<SessionResponse | null> {
   }
 }
 
-/** 로컬 개발용 — Google OAuth 없이 즉시 로그인 */
-export async function devLogin(): Promise<SessionResponse> {
-  const res = await fetch(`${AUTH_API}/dev-login`, {
-    method: "POST",
-    credentials: "include",
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(
-      typeof body.detail === "string"
-        ? body.detail
-        : "로그인에 실패했습니다. 백엔드가 실행 중인지 확인하세요.",
-    );
+/** 웹 로그인 세션으로 익스텐션 1회용 연동 code 발급 */
+export async function issueExtensionAuthCode(
+  accessToken?: string | null,
+): Promise<ExtensionCodeResponse | null> {
+  try {
+    const res = await fetch(`${AUTH_API}/extension-code`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
   }
-  return res.json();
 }
 
 export async function logoutSession(): Promise<void> {

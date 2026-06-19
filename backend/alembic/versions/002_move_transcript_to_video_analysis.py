@@ -19,17 +19,27 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column("video_analysis", sa.Column("transcript", sa.Text(), nullable=True))
-    op.execute(
-        """
-        UPDATE video_analysis va
-        SET transcript = uwc.transcript
-        FROM user_watch_catalog uwc
-        WHERE va.catalog_id = uwc.id
-          AND uwc.transcript IS NOT NULL
-        """
-    )
-    op.drop_column("user_watch_catalog", "transcript")
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    va_columns = {col["name"] for col in inspector.get_columns("video_analysis")}
+    uwc_columns = {col["name"] for col in inspector.get_columns("user_watch_catalog")}
+
+    # 001_initial_schema may already place transcript on video_analysis.
+    if "transcript" not in va_columns:
+        op.add_column("video_analysis", sa.Column("transcript", sa.Text(), nullable=True))
+
+    if "transcript" in uwc_columns:
+        op.execute(
+            """
+            UPDATE video_analysis va
+            SET transcript = uwc.transcript
+            FROM user_watch_catalog uwc
+            WHERE va.catalog_id = uwc.id
+              AND uwc.transcript IS NOT NULL
+              AND va.transcript IS NULL
+            """
+        )
+        op.drop_column("user_watch_catalog", "transcript")
 
 
 def downgrade() -> None:
