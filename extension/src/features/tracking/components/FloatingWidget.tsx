@@ -10,7 +10,7 @@ export function FloatingWidget() {
   const [isHovered, setIsHovered] = useState(false)
   const { isTracking, toggleTracking } = useTracking()
 
-  /** 메인 버튼 클릭 → Background가 chrome.sidePanel.open() 실행 */
+  /** 메인 버튼 클릭 → Background가 chrome.sidePanel.open() 동기 실행 (닫기는 Chrome API 미지원) */
   const handleMainButtonClick = () => {
     if (!isExtensionContextValid()) return
 

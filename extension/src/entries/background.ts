@@ -59,7 +59,8 @@ initializeTrackingEngine()
 
 /**
  * Content Script FAB → 사이드패널 열기.
- * open() 전에 반드시 setOptions(path, enabled)가 해당 tabId에 적용되어야 함.
+ * setOptions는 onInstalled/onStartup/tabs.onUpdated에서 선행 적용.
+ * open()은 user gesture가 유효한 동안 동기 호출해야 함 — 앞에 await 금지.
  */
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (message.action !== 'TOGGLE_SIDEPANEL') return
@@ -71,12 +72,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     return
   }
 
-  void (async () => {
-    try {
-      await enableSidePanelForTab(tabId)
-      await chrome.sidePanel.open({ tabId, windowId })
-    } catch (error) {
-      console.error('[background] sidePanel.open 실패:', error)
-    }
-  })()
+  void chrome.sidePanel.open({ tabId, windowId }).catch((error) => {
+    console.error('[background] sidePanel.open 실패:', error)
+  })
 })

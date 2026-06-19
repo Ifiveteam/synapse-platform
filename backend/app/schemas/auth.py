@@ -26,6 +26,29 @@ class RefreshResponse(BaseModel):
     user: UserResponse
 
 
+class ExtensionCodeResponse(BaseModel):
+    code: str
+    expires_in: int
+
+
+class ExtensionExchangeRequest(BaseModel):
+    code: str
+
+
+class ExtensionRefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class ExtensionRevokeRequest(BaseModel):
+    refresh_token: str
+
+
+class ExtensionSessionResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    user: UserResponse
+
+
 class AuthStatusResponse(BaseModel):
     connected: bool
     message: str

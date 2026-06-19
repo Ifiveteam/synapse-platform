@@ -5,6 +5,7 @@
 #
 #   docker compose -f docker-compose.dev.yml up --build
 #   cd frontend && pnpm dev   → http://localhost:5173
+#   cd extension && pnpm dev  → http://localhost:5174 (CRXJS HMR)
 #   API                       → http://localhost:8000
 #
 # frontend/.env:

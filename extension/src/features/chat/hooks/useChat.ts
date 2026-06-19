@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { isBlacklisted } from '@/features/tracking/utils/blacklist'
-import { API_BASE } from '@/shared/api/client'
+import {
+  fetchHistoryForContext,
+  streamArchiverMessage,
+} from '@/shared/api/archiver'
+import {
+  queryActiveTabContext,
+  type TabContext,
+} from '@/features/archiver/utils/tabContext'
 import { isExtensionContextValid } from '@/shared/utils/extensionContext'
 
 export interface ChatMessage {
@@ -10,46 +16,24 @@ export interface ChatMessage {
   timestamp: string
 }
 
-export interface TabContext {
-  url: string
-  title: string
+export type { TabContext }
+
+function formatTimestamp(date?: Date | string) {
+  const value = date ? new Date(date) : new Date()
+  return value.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function formatTimestamp() {
-  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
-/** 활성 탭 URL·제목을 패시브 힌트로 조회 — 전송 직전에도 재사용 */
-function queryActiveTabContext(): Promise<TabContext | null> {
-  return new Promise((resolve) => {
-    if (!isExtensionContextValid() || !chrome.tabs) {
-      resolve(null)
-      return
-    }
-
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (chrome.runtime.lastError || !tabs[0]?.url) {
-        resolve(null)
-        return
-      }
-
-      const { url, title } = tabs[0]
-      if (isBlacklisted(url)) {
-        resolve(null)
-        return
-      }
-
-      resolve({
-        url,
-        title: title || '제목 없는 페이지',
-      })
-    })
-  })
+function historyToChatMessages(history: Awaited<ReturnType<typeof fetchHistoryForContext>>): ChatMessage[] {
+  return history.map((item) => ({
+    id: String(item.id),
+    role: item.role === 'assistant' ? 'assistant' : 'user',
+    content: item.content,
+    timestamp: formatTimestamp(item.created_at),
+  }))
 }
 
 /**
  * 사이드패널 AI 채팅 세션 — 활성 탭 컨텍스트 바인딩과 SSE 스트리밍 응답을 관리한다.
- * ChatInput은 sendMessage만 연결하면 된다.
  */
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -67,7 +51,10 @@ export function useChat() {
     syncContext()
 
     const handleTabActivated = () => syncContext()
-    const handleTabUpdated = (tabId: number, changeInfo: { url?: string; title?: string; status?: string }) => {
+    const handleTabUpdated = (
+      tabId: number,
+      changeInfo: { url?: string; title?: string; status?: string },
+    ) => {
       if (!changeInfo.url && !changeInfo.title && changeInfo.status !== 'complete') return
 
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -83,6 +70,32 @@ export function useChat() {
       chrome.tabs.onUpdated.removeListener(handleTabUpdated)
     }
   }, [])
+
+  useEffect(() => {
+    if (isGenerating) return
+
+    if (!currentContext) {
+      setMessages([])
+      return
+    }
+
+    let cancelled = false
+
+    void fetchHistoryForContext(currentContext)
+      .then((history) => {
+        if (cancelled) return
+        setMessages(historyToChatMessages(history))
+      })
+      .catch((error) => {
+        if (cancelled) return
+        console.error('[Synapse Chat] 히스토리 로드 실패:', error)
+        setMessages([])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentContext, isGenerating])
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -103,24 +116,8 @@ export function useChat() {
     setIsGenerating(true)
 
     try {
-      // 질문 전송 시점의 활성 탭을 다시 조회해 stale 컨텍스트 전송을 방지
       const contextAtSend = await queryActiveTabContext()
       setCurrentContext(contextAtSend)
-
-      const response = await fetch(`${API_BASE}/api/v1/archiver/stream`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: userText,
-          context: contextAtSend,
-        }),
-      })
-
-      if (!response.ok || !response.body) throw new Error('스트리밍 연결 실패')
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let assistantContent = ''
 
       setMessages((prev) => [
         ...prev,
@@ -132,18 +129,23 @@ export function useChat() {
         },
       ])
 
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
+      const { finalContent } = await streamArchiverMessage({
+        message: userText,
+        context: contextAtSend,
+        onChunk: (displayContent) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId ? { ...msg, content: displayContent } : msg,
+            ),
+          )
+        },
+      })
 
-        assistantContent += decoder.decode(value, { stream: true })
-
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMessageId ? { ...msg, content: assistantContent } : msg,
-          ),
-        )
-      }
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId ? { ...msg, content: finalContent } : msg,
+        ),
+      )
     } catch (error) {
       console.error('[Synapse Chat] 스트리밍 통신 에러:', error)
 

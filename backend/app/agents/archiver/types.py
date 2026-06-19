@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Annotated, Any, Literal, NotRequired, TypedDict
@@ -28,6 +29,7 @@ __all__ = [
     "EvaluationResult",
     "EvaluatorAction",
     "LlmEvaluationOutput",
+    "RouterDecision",
     "StreamEventType",
     "parse_archiver_route",
     "resolve_route",
@@ -53,13 +55,28 @@ class ArchiverRoute(StrEnum):
     GENERAL = "GENERAL"
 
 
+class RouterDecision(BaseModel):
+    """router LLM Structured Output — 단일 route 키워드."""
+
+    route: Literal["BASIC", "RAG", "SEARCH", "GENERAL"] = Field(
+        description="질문 처리 경로. 외부·최신 정보 필요 시 SEARCH.",
+    )
+
+
 def parse_archiver_route(raw: str) -> ArchiverRoute:
     """모델 출력에서 라우트 키워드를 추출한다. 실패 시 GENERAL로 폴백."""
     token = raw.strip().upper()
     if token in _VALID_ROUTES:
         return ArchiverRoute(token)
 
-    for route in ArchiverRoute:
+    # GENERAL은 다른 route 키워드보다 나중에 매칭 (과잉 GENERAL 방지)
+    priority = (
+        ArchiverRoute.SEARCH,
+        ArchiverRoute.RAG,
+        ArchiverRoute.BASIC,
+        ArchiverRoute.GENERAL,
+    )
+    for route in priority:
         if route.value in token:
             return route
 
@@ -84,7 +101,7 @@ class ArchiverState(TypedDict):
 
     messages: Annotated[list[BaseMessage], add_messages]
 
-    user_id: int
+    user_id: uuid.UUID
     session_id: NotRequired[str]
     context_title: str
     context_url: str

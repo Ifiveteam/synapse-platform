@@ -9,6 +9,9 @@ MAX_RETRIEVAL_ATTEMPTS = 2
 # RAG 수집
 RAG_SEARCH_LIMIT = 3
 
+# multi-turn 대화 (user+assistant 메시지 쌍 상한)
+MAX_HISTORY_MESSAGES = 20
+
 # Gemini
 GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_API_KEY_ENV_VARS = ("GOOGLE_API_KEY", "GEMINI_API_KEY")
@@ -39,5 +42,6 @@ ARCHIVER_STORE_KEY = "archiver_store"
 # DB ai_chat_logs.agent_type 필터
 ARCHIVER_AGENT_TYPE = "ARCHIVER"
 
-# 사용자-facing 스트림 오류 메시지
-STREAM_ERROR_MESSAGE = "❌ 아카이버 코어 엔진 오류가 발생했습니다."
+# 사용자-facing 스트림 오류 메시지 (SSE token·DB 영속 정책 SSOT)
+STREAM_ERROR_PREFIX = "❌"
+STREAM_ERROR_MESSAGE = f"{STREAM_ERROR_PREFIX} 아카이버 코어 엔진 오류가 발생했습니다."

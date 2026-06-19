@@ -13,7 +13,8 @@
     "jsx": "react-jsx",
     "strict": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@synapse/shared/*": ["../shared/*"]
     }
   },
   "include": ["src"]

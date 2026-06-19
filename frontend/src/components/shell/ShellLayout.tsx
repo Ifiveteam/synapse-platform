@@ -4,6 +4,10 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { refreshSession } from "@/api/auth";
 import { LoginModal } from "@/components/auth/login-modal";
 import { Sidebar } from "@/components/shell/Sidebar";
+import {
+  clearAuthFromExtension,
+  syncAuthToExtension,
+} from "@/lib/extension-auth-sync";
 import { ROUTES } from "@/routes";
 import { isMockAuthToken, useAuthStore } from "@/stores/auth";
 import { useShellStore } from "@/stores/shell";
@@ -25,7 +29,7 @@ function AuthLoading() {
 export function ShellLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { token, authReady, setToken, setUser, setAuthReady } = useAuthStore();
+  const { token, user, authReady, setToken, setUser, setAuthReady } = useAuthStore();
   const openLoginModal = useShellStore((s) => s.openLoginModal);
   const closeLoginModal = useShellStore((s) => s.closeLoginModal);
   const isHomePage = location.pathname === ROUTES.home;
@@ -49,6 +53,7 @@ export function ShellLayout() {
         if (session) {
           setToken(session.access_token);
           setUser(session.user);
+          void syncAuthToExtension(session.access_token);
           closeLoginModal();
         }
       } finally {
@@ -61,6 +66,20 @@ export function ShellLayout() {
       cancelled = true;
     };
   }, [setToken, setUser, setAuthReady, closeLoginModal]);
+
+  /** 로그인·세션 갱신·로그아웃 시 익스텐션 chrome.storage와 동기화 */
+  useEffect(() => {
+    if (!authReady) return;
+
+    if (token && user && !isMockAuthToken(token)) {
+      void syncAuthToExtension(token);
+      return;
+    }
+
+    if (!token) {
+      clearAuthFromExtension();
+    }
+  }, [authReady, token, user]);
 
   useEffect(() => {
     if (token) closeLoginModal();

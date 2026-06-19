@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import time
+import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import BaseMessage
 from langgraph.graph import END, START, StateGraph
 
 from app.agents.archiver.branches import (
@@ -84,15 +85,15 @@ class ArchiverEngine:
     @staticmethod
     def build_initial_state(
         *,
-        message: str,
-        user_id: int,
+        messages: list[BaseMessage],
+        user_id: uuid.UUID,
         session_id: str,
         context_title: str | None = None,
         context_url: str | None = None,
     ) -> ArchiverState:
         """Service가 주입하는 초기 State 가방."""
         return {
-            "messages": [HumanMessage(content=message)],
+            "messages": messages,
             "user_id": user_id,
             "session_id": session_id,
             "context_title": context_title or NO_CONTEXT_TITLE,

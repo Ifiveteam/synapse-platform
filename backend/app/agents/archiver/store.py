@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, Protocol, runtime_checkable
 
 from langgraph.types import RunnableConfig
@@ -25,11 +26,12 @@ class ArchiverStore(Protocol):
 
     async def search_past_knowledge(
         self,
-        user_id: int,
+        user_id: uuid.UUID,
         query_text: str,
         *,
         exclude_query_text: str | None = None,
         limit: int = RAG_SEARCH_LIMIT,
+        retrieval_attempt: int = 1,
     ) -> list[PastKnowledgeHit]: ...
 
 

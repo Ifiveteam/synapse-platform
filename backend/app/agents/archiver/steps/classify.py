@@ -9,13 +9,15 @@ from google.genai import types
 from langgraph.config import get_stream_writer
 
 from app.agents.archiver.constants import CLASSIFY_TEMPERATURE
-from app.agents.archiver.gemini import GEMINI_MODEL, get_client
+from app.agents.archiver.gemini import GEMINI_MODEL, get_client, invoke_structured_safe
 from app.agents.archiver.prompts import build_router_prompt
+from app.agents.archiver.router_heuristics import detect_route_heuristic
 from app.agents.archiver.steps._common import latest_user_message
 from app.agents.archiver.trace import log_node_enter, log_router_result
 from app.agents.archiver.types import (
     ArchiverRoute,
     ArchiverState,
+    RouterDecision,
     parse_archiver_route,
 )
 
@@ -23,19 +25,33 @@ logger = logging.getLogger(__name__)
 
 
 async def classify_archiver_route(user_message: str) -> tuple[ArchiverRoute, str | None]:
-    """고속 Gemini 호출로 BASIC/RAG/SEARCH/GENERAL 중 하나를 반환한다."""
+    """규칙 → Structured Output → 텍스트 파싱 순으로 BASIC/RAG/SEARCH/GENERAL을 반환한다."""
     message = user_message.strip()
     if not message:
         return ArchiverRoute.GENERAL, None
 
+    heuristic = detect_route_heuristic(message)
+    if heuristic is not None:
+        return heuristic, f"heuristic:{heuristic.value}"
+
     try:
+        decision = await invoke_structured_safe(
+            system_instruction=build_router_prompt(message),
+            user_content=message,
+            schema=RouterDecision,
+            temperature=CLASSIFY_TEMPERATURE,
+        )
+        if decision is not None:
+            route = ArchiverRoute(decision.route)
+            return route, decision.route
+
         response = await get_client().aio.models.generate_content(
             model=GEMINI_MODEL,
             contents=message,
             config=types.GenerateContentConfig(
                 system_instruction=build_router_prompt(message),
                 temperature=CLASSIFY_TEMPERATURE,
-                max_output_tokens=16,
+                max_output_tokens=8,
             ),
         )
         raw_route = (response.text or "").strip()

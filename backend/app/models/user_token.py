@@ -33,3 +33,10 @@ class UserToken(TimestampMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+
+    extension_refresh_token: Mapped[str | None] = mapped_column(
+        String(512), nullable=True
+    )
+    extension_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

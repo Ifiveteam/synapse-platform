@@ -8,6 +8,15 @@ export const STORAGE_KEYS = {
 
   /** 유저가 패키징한 컨텍스트 스크랩 목록 (로컬 캐시) */
   SCRAP_LIST: 'synapse_scrap_list',
+
+  /** backend JWT access token — Archiver 등 인증 API 호출용 (프론트 로그인과 동기화) */
+  ACCESS_TOKEN: 'synapse_access_token',
+
+  /** 프론트 OAuth 로그인 유저 스냅샷 */
+  AUTH_USER: 'synapse_auth_user',
+
+  /** 익스텐션 전용 refresh token (웹 httpOnly 쿠키와 분리) */
+  REFRESH_TOKEN: 'synapse_extension_refresh_token',
 } as const
 
 /** STORAGE_KEYS 값의 유니온 타입 — storage get/set 시 타입 안전성 확보 */
