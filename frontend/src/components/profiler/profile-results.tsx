@@ -14,49 +14,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { AXIS_LABELS, LAYER_B_LABELS } from "@/lib/profiler/labels";
-import type { ProfilerResult } from "@/api/types/profiler";
+import { AXIS_LABELS } from "@/lib/profiler/labels";
+import type { DbProfileResponse } from "@/api/types/profiler";
 import { SYNAPSE_AXIS_KEYS } from "@/api/types/profiler";
 
 interface ProfileResultsProps {
-  result: ProfilerResult;
-}
-
-function LayerBGauge({
-  label,
-  value,
-  max,
-  format,
-}: {
-  label: string;
-  value: number;
-  max: number;
-  format: (v: number) => string;
-}) {
-  const pct = Math.min(100, (value / max) * 100);
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-sm">
-        <span>{label}</span>
-        <span className="text-muted-foreground font-mono">{format(value)}</span>
-      </div>
-      <div className="bg-muted h-2 overflow-hidden rounded-full">
-        <div
-          className="bg-primary h-full rounded-full transition-all"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
+  result: DbProfileResponse;
 }
 
 export function ProfileResults({ result }: ProfileResultsProps) {
   const radarData = SYNAPSE_AXIS_KEYS.map((key) => ({
     axis: AXIS_LABELS[key],
-    value: result.axes[key],
+    value: Math.round((result.scores[key] ?? 0) * 100),
   }));
-
-  const { interpretation, layer_b: layerB } = result;
 
   return (
     <div className="space-y-6">
@@ -75,8 +45,8 @@ export function ProfileResults({ result }: ProfileResultsProps) {
                 <Radar
                   name="점수"
                   dataKey="value"
-                  stroke="#171717"
-                  fill="#171717"
+                  stroke="#6366f1"
+                  fill="#6366f1"
                   fillOpacity={0.35}
                 />
               </RadarChart>
@@ -86,123 +56,86 @@ export function ProfileResults({ result }: ProfileResultsProps) {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Layer B</CardTitle>
-            <CardDescription>인지주권 4지표</CardDescription>
+            <CardTitle className="text-lg">분석 요약</CardTitle>
+            {result.persona_label && (
+              <CardDescription>{result.persona_label}</CardDescription>
+            )}
           </CardHeader>
-          <CardContent className="space-y-4">
-            <LayerBGauge
-              label={LAYER_B_LABELS.search_active_ratio}
-              value={layerB.search_active_ratio}
-              max={1}
-              format={(v) => `${(v * 100).toFixed(0)}%`}
-            />
-            <LayerBGauge
-              label={LAYER_B_LABELS.viewing_concentration}
-              value={layerB.viewing_concentration}
-              max={1}
-              format={(v) => `${(v * 100).toFixed(0)}%`}
-            />
-            <LayerBGauge
-              label={LAYER_B_LABELS.taste_diversity_index}
-              value={layerB.taste_diversity_index}
-              max={100}
-              format={(v) => `${v.toFixed(1)}`}
-            />
-            <LayerBGauge
-              label={LAYER_B_LABELS.exploration_depth}
-              value={layerB.exploration_depth}
-              max={1}
-              format={(v) => `${(v * 100).toFixed(0)}%`}
-            />
+          <CardContent className="space-y-3 text-sm">
+            <p className="leading-relaxed">{result.summary_text}</p>
+            {result.behavior_reasoning && (
+              <p className="text-muted-foreground border-t pt-3 leading-relaxed">
+                {result.behavior_reasoning}
+              </p>
+            )}
+            {result.tone_of_user && (
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium">톤:</span> {result.tone_of_user}
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">해석</CardTitle>
-          <CardDescription>
-            소비 유형 · {interpretation.consumption_mode} · 인지주권{" "}
-            {interpretation.sovereignty_verdict}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          <p>
-            <span className="text-muted-foreground">개선 레버:</span>{" "}
-            {interpretation.primary_lever}
-          </p>
-          <p className="leading-relaxed">{interpretation.radar_gap_insight}</p>
-          <p className="text-muted-foreground leading-relaxed border-t pt-3">
-            {result.summary}
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">TOP5 관심사</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ol className="space-y-3">
-            {result.top5_interests.map((item) => (
-              <li key={item.rank} className="flex gap-3 text-sm">
-                <span className="text-muted-foreground w-6 font-mono">
-                  {item.rank}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">{item.label}</p>
-                  {item.evidence.length > 0 && (
-                    <p className="text-muted-foreground truncate text-xs">
-                      {item.evidence.join(" · ")}
-                    </p>
-                  )}
-                </div>
-                <span className="text-muted-foreground font-mono text-xs">
-                  {(item.score * 100).toFixed(0)}%
-                </span>
-              </li>
-            ))}
-          </ol>
-        </CardContent>
-      </Card>
-
-      {result.behavior_patterns && (
+      {result.dominant_traits && result.dominant_traits.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">행동 패턴</CardTitle>
+            <CardTitle className="text-lg">주요 성향</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-4 text-sm sm:grid-cols-2">
-            <div>
-              <p className="text-muted-foreground mb-2">시간대 분포</p>
-              <ul className="space-y-1 font-mono text-xs">
-                {Object.entries(result.behavior_patterns.hour_distribution).map(
-                  ([bucket, ratio]) => (
-                    <li key={bucket}>
-                      {bucket}: {(ratio * 100).toFixed(0)}%
-                    </li>
-                  ),
-                )}
-              </ul>
-            </div>
-            <div>
-              <p className="text-muted-foreground mb-2">
-                주말 비율:{" "}
-                {(result.behavior_patterns.weekend_ratio * 100).toFixed(0)}%
-              </p>
-              <p className="text-muted-foreground mb-1">반복 채널</p>
-              <ul className="space-y-1 text-xs">
-                {result.behavior_patterns.top_repeated_channels
-                  .slice(0, 4)
-                  .map((ch) => (
-                    <li key={ch.channel}>
-                      {ch.channel} ({ch.count})
-                    </li>
-                  ))}
-              </ul>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {result.dominant_traits.map((trait) => (
+                <span
+                  key={trait}
+                  className="bg-primary/10 text-primary rounded-full px-3 py-1 text-xs font-medium"
+                >
+                  {trait}
+                </span>
+              ))}
             </div>
           </CardContent>
         </Card>
       )}
+
+      <div className="grid gap-6 sm:grid-cols-2">
+        {result.top_categories.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Top 카테고리</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ol className="space-y-2">
+                {result.top_categories.slice(0, 5).map((item, i) => (
+                  <li key={item.category_id} className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground w-5 font-mono text-xs">{i + 1}</span>
+                    <span className="flex-1 truncate">{item.category_id}</span>
+                    <span className="text-muted-foreground font-mono text-xs">{item.count}</span>
+                  </li>
+                ))}
+              </ol>
+            </CardContent>
+          </Card>
+        )}
+
+        {result.top_channels.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Top 채널</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ol className="space-y-2">
+                {result.top_channels.slice(0, 5).map((item, i) => (
+                  <li key={item.channel} className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground w-5 font-mono text-xs">{i + 1}</span>
+                    <span className="flex-1 truncate">{item.channel}</span>
+                    <span className="text-muted-foreground font-mono text-xs">{item.count}</span>
+                  </li>
+                ))}
+              </ol>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

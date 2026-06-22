@@ -64,6 +64,7 @@ export function TrendHoverOverlay() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissedRef = useRef(false);
 
   const cancelClose = () => {
     if (closeTimer.current) {
@@ -74,57 +75,67 @@ export function TrendHoverOverlay() {
 
   const scheduleClose = () => {
     cancelClose();
-    closeTimer.current = setTimeout(() => setOpen(false), 200);
+    closeTimer.current = setTimeout(() => {
+      setOpen(false);
+      dismissedRef.current = false;
+    }, 200);
   };
 
   const handleOpen = () => {
+    if (dismissedRef.current) return;
     cancelClose();
     setOpen(true);
   };
 
+  const handleDismiss = () => {
+    dismissedRef.current = true;
+    cancelClose();
+    setOpen(false);
+  };
+
   return (
     <>
-      {/* 우측 상단 + 오른쪽 가장자리 호버 트리거 */}
+      {/* 오른쪽 아래 호버 트리거 */}
       <div
-        className="absolute top-0 right-0 z-20 h-28 w-28"
+        className="absolute bottom-0 right-0 z-20 h-20 w-20"
         onMouseEnter={handleOpen}
         onMouseLeave={scheduleClose}
         aria-hidden
       />
       <div
-        className="absolute top-1/2 right-0 z-20 flex h-24 w-5 -translate-y-1/2 cursor-pointer items-center justify-center"
+        className="absolute bottom-4 right-0 z-20 flex w-5 h-14 cursor-pointer items-center justify-center"
         onMouseEnter={handleOpen}
         onMouseLeave={scheduleClose}
       >
-        <div className="bg-primary flex h-14 w-1.5 rounded-l-full opacity-80" />
+        <div className="bg-primary h-10 w-1.5 rounded-l-full opacity-80" />
       </div>
 
-      {/* 슬라이드 패널 */}
+      {/* 패널 — 오른쪽 아래에서 올라옴 */}
       <aside
         className={cn(
-          "border-border absolute top-0 right-0 z-30 flex h-full w-[min(360px,88%)] flex-col border-l bg-card/98 shadow-2xl backdrop-blur-sm transition-transform duration-200 ease-out",
-          open ? "translate-x-0" : "pointer-events-none translate-x-full",
+          "border-border absolute bottom-2 right-2 z-30 flex w-[min(360px,88%)] max-h-[90%] flex-col overflow-hidden rounded-2xl border bg-card/98 shadow-2xl backdrop-blur-sm transition-all duration-200 ease-out",
+          open ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0",
         )}
         onMouseEnter={handleOpen}
         onMouseLeave={scheduleClose}
       >
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div className="flex items-center gap-2">
-            <TrendingUp size={18} className="text-primary" />
+            <TrendingUp size={15} className="text-primary" />
             <span className="text-sm font-semibold">트렌드</span>
           </div>
           <button
             type="button"
-            onClick={() => setOpen(false)}
+            onClick={handleDismiss}
             className="text-muted-foreground hover:bg-secondary rounded-lg p-1.5 transition-colors"
             aria-label="닫기"
           >
-            <X size={16} />
+            <X size={14} />
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-          <div className="border-border rounded-xl border bg-secondary/30 px-4 py-5">
+        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto p-4">
+          <div className="border-border rounded-xl border bg-secondary/30 px-4 py-4">
             <p className="text-muted-foreground text-[10px] font-semibold tracking-widest uppercase">
               {MOCK_HOT_NEWS.title}
             </p>
@@ -148,13 +159,10 @@ export function TrendHoverOverlay() {
           </div>
         </div>
 
-        <div className="border-t p-4">
-          <Button
-            className="w-full gap-2"
-            onClick={() => navigate(ROUTES.trends)}
-          >
+        <div className="border-t p-3">
+          <Button className="w-full gap-2" size="sm" onClick={() => navigate(ROUTES.trends)}>
             더보기
-            <ArrowRight size={16} />
+            <ArrowRight size={14} />
           </Button>
         </div>
       </aside>

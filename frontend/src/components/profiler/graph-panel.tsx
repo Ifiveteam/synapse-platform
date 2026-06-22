@@ -18,11 +18,10 @@ type GraphSubTab = "visual" | "list";
 type GraphKind = "taste" | "knowledge";
 
 interface GraphPanelProps {
-  userId: string;
   profileComputedAt?: string | null;
 }
 
-export function GraphPanel({ userId, profileComputedAt }: GraphPanelProps) {
+export function GraphPanel({ profileComputedAt }: GraphPanelProps) {
   const [kind, setKind] = useState<GraphKind>("taste");
   const [subTab, setSubTab] = useState<GraphSubTab>("visual");
   const [graph, setGraph] = useState<GraphViewData | null>(null);
@@ -33,7 +32,7 @@ export function GraphPanel({ userId, profileComputedAt }: GraphPanelProps) {
     setLoading(true);
     setError(null);
     try {
-      const data = await getGraph(userId, kind);
+      const data = await getGraph(kind);
       setGraph(data);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "그래프를 불러오지 못했습니다.");
@@ -41,7 +40,7 @@ export function GraphPanel({ userId, profileComputedAt }: GraphPanelProps) {
     } finally {
       setLoading(false);
     }
-  }, [userId, kind]);
+  }, [kind]);
 
   useEffect(() => {
     void loadGraph();

@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 import { refreshSession } from "@/api/auth";
 import { LoginModal } from "@/components/auth/login-modal";
@@ -30,6 +31,7 @@ export function ShellLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { token, user, authReady, setToken, setUser, setAuthReady } = useAuthStore();
+  const prevToken = useRef<string | null>(null);
   const openLoginModal = useShellStore((s) => s.openLoginModal);
   const closeLoginModal = useShellStore((s) => s.closeLoginModal);
   const isHomePage = location.pathname === ROUTES.home;
@@ -51,10 +53,15 @@ export function ShellLayout() {
         const session = await refreshSession();
         if (cancelled) return;
         if (session) {
+          const isFirstLogin = prevToken.current === null;
+          prevToken.current = session.access_token;
           setToken(session.access_token);
           setUser(session.user);
           void syncAuthToExtension(session.access_token);
           closeLoginModal();
+          if (isFirstLogin) {
+            toast.success(`${session.user.name}님, 환영합니다!`);
+          }
         }
       } finally {
         if (!cancelled) setAuthReady(true);

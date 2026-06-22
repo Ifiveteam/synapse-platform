@@ -18,6 +18,7 @@ import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ScrapDetailPage } from "@/pages/ScrapDetailPage";
 import { ScrapPage } from "@/pages/ScrapPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { PaymentSuccessPage } from "@/pages/PaymentSuccessPage";
 import { SetupPage } from "@/pages/SetupPage";
 import { UploadPage } from "@/pages/UploadPage";
 import { TrendDetailPage } from "@/pages/TrendDetailPage";
@@ -36,6 +37,7 @@ export const router = createBrowserRouter([
       { path: ROUTES.scraps, element: <ScrapPage /> },
       { path: "/me/scraps/:id", element: <ScrapDetailPage /> },
       { path: ROUTES.settings, element: <SettingsPage /> },
+      { path: ROUTES.paymentSuccess, element: <PaymentSuccessPage /> },
       { path: ROUTES.download, element: <DownloadPage /> },
       { path: ROUTES.login, element: <LoginPage /> },
       { path: ROUTES.upload, element: <UploadPage /> },

@@ -3,7 +3,9 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Bookmark,
   MessageSquare,
+  Moon,
   Settings,
+  Sun,
   Target,
   User,
 } from "lucide-react";
@@ -14,17 +16,62 @@ import { ROUTES } from "@/routes";
 import { useAuthStore } from "@/stores/auth";
 import { useShellStore } from "@/stores/shell";
 import { useSidebarStore } from "@/stores/sidebar";
+import { useThemeStore } from "@/stores/theme";
+
+function ThemeToggle({ expanded }: { expanded: boolean }) {
+  const { theme, toggle } = useThemeStore();
+  const isDark = theme === "dark";
+
+  if (!expanded) {
+    return (
+      <button
+        type="button"
+        onClick={toggle}
+        title={isDark ? "라이트 모드" : "다크 모드"}
+        className="text-muted-foreground hover:text-foreground hover:bg-secondary flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors"
+      >
+        {isDark ? <Sun size={15} /> : <Moon size={15} />}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-2">
+      <Moon size={14} className="text-muted-foreground shrink-0" />
+      <button
+        type="button"
+        role="switch"
+        aria-checked={isDark}
+        onClick={toggle}
+        className={cn(
+          "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200",
+          isDark ? "bg-primary" : "bg-muted",
+        )}
+      >
+        <span
+          className={cn(
+            "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200",
+            isDark ? "translate-x-4" : "translate-x-0",
+          )}
+        />
+      </button>
+      <Sun size={14} className="text-muted-foreground shrink-0" />
+    </div>
+  );
+}
 
 function BrandLogo({ expanded }: { expanded: boolean }) {
+  const { theme } = useThemeStore();
   return (
-    <span
+    <img
+      src="/src/assets/logo.png"
+      alt="Synapse"
       className={cn(
-        "bg-primary flex shrink-0 items-center justify-center rounded-lg",
+        "shrink-0 object-contain",
         expanded ? "h-8 w-8" : "h-9 w-9",
+        theme === "dark" && "invert brightness-200",
       )}
-    >
-      <span className="text-primary-foreground text-xs font-bold">S</span>
-    </span>
+    />
   );
 }
 
@@ -63,12 +110,12 @@ function SidebarRow({
 
   const content = (
     <>
-      <Icon size={16} className="shrink-0" />
+      <Icon size={15} className="shrink-0" />
       {expanded && (
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{label}</span>
+          <span className="block truncate text-xs font-medium">{label}</span>
           {sublabel && (
-            <span className="text-muted-foreground block truncate text-xs">
+            <span className="text-muted-foreground block truncate text-[10px]">
               {sublabel}
             </span>
           )}
@@ -126,7 +173,7 @@ export function Sidebar() {
     <aside
       className={cn(
         "border-border bg-card flex h-screen shrink-0 flex-col border-r transition-[width] duration-200 ease-in-out",
-        expanded ? "w-[260px]" : "w-[60px]",
+        expanded ? "w-[220px]" : "w-[52px]",
       )}
     >
       <div
@@ -191,8 +238,15 @@ export function Sidebar() {
                 </div>
               )}
               {expanded && (
-                <span className="min-w-0 truncate text-left text-sm font-medium">
-                  {user.name}
+                <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">
+                  <span className="truncate text-left text-sm font-medium">
+                    {user.name}
+                  </span>
+                  {user.plan === "pro" && (
+                    <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
+                      Pro
+                    </span>
+                  )}
                 </span>
               )}
             </Link>
@@ -258,10 +312,10 @@ export function Sidebar() {
                         className="text-muted-foreground mt-0.5 shrink-0"
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm">
+                        <span className="block truncate text-xs">
                           {scrap.title}
                         </span>
-                        <span className="text-muted-foreground text-xs">
+                        <span className="text-muted-foreground text-[10px]">
                           {scrap.savedAt}
                         </span>
                       </span>
@@ -289,10 +343,10 @@ export function Sidebar() {
                         className="text-muted-foreground mt-0.5 shrink-0"
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm">
+                        <span className="block truncate text-xs">
                           {chat.title}
                         </span>
-                        <span className="text-muted-foreground text-xs">
+                        <span className="text-muted-foreground text-[10px]">
                           {chat.updatedAt}
                         </span>
                       </span>
@@ -328,16 +382,19 @@ export function Sidebar() {
       <div
         className={cn(
           "border-border shrink-0 border-t px-2 py-3",
-          expanded ? "" : "flex justify-center",
+          expanded ? "flex items-center gap-1" : "flex flex-col items-center gap-1",
         )}
       >
-        <SidebarRow
-          expanded={expanded}
-          icon={Settings}
-          label="설정"
-          href={ROUTES.settings}
-          active={pathname.startsWith(ROUTES.settings)}
-        />
+        <div className={cn(expanded ? "flex-1" : "")}>
+          <SidebarRow
+            expanded={expanded}
+            icon={Settings}
+            label="설정"
+            href={ROUTES.settings}
+            active={pathname.startsWith(ROUTES.settings)}
+          />
+        </div>
+        <ThemeToggle expanded={expanded} />
       </div>
     </aside>
   );

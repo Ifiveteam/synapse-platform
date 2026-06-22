@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { toast } from "sonner";
 
 import { logoutSession } from "@/api/auth";
 import { clearAuthFromExtension } from "@/lib/extension-auth-sync";
@@ -8,6 +9,7 @@ export interface AuthUser {
   email: string;
   name: string;
   picture: string | null;
+  plan: string;
 }
 
 export const MOCK_AUTH_TOKEN = "mock-dev-token";
@@ -17,6 +19,7 @@ const MOCK_USER: AuthUser = {
   email: "dev@synapse.local",
   name: "Synapse Dev",
   picture: null,
+  plan: "free",
 };
 
 interface AuthStore {
@@ -49,5 +52,6 @@ export const useAuthStore = create<AuthStore>()((set) => ({
     void logoutSession();
     clearAuthFromExtension();
     set({ token: null, user: null, authReady: true });
+    toast.success("로그아웃 되었습니다");
   },
 }));
