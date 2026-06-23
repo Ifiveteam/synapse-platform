@@ -1,30 +1,81 @@
-import type { ComponentType, ReactNode } from "react";
+import { type ComponentType, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Bookmark,
   MessageSquare,
+  Moon,
+  Pencil,
   Settings,
+  Sun,
   Target,
+  Trash2,
   User,
 } from "lucide-react";
 
+import { deleteSession, fetchSessionMessages } from "@/api/curator";
 import { cn } from "@/lib/utils";
 import { IDEAL_META } from "@/lib/navigator/types";
 import { ROUTES } from "@/routes";
 import { useAuthStore } from "@/stores/auth";
+import { useChatStore } from "@/stores/chat";
 import { useShellStore } from "@/stores/shell";
 import { useSidebarStore } from "@/stores/sidebar";
+import { useThemeStore } from "@/stores/theme";
+
+function ThemeToggle({ expanded }: { expanded: boolean }) {
+  const { theme, toggle } = useThemeStore();
+  const isDark = theme === "dark";
+
+  if (!expanded) {
+    return (
+      <button
+        type="button"
+        onClick={toggle}
+        title={isDark ? "라이트 모드" : "다크 모드"}
+        className="text-muted-foreground hover:text-foreground hover:bg-secondary flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors"
+      >
+        {isDark ? <Sun size={15} /> : <Moon size={15} />}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-2">
+      <Moon size={14} className="text-muted-foreground shrink-0" />
+      <button
+        type="button"
+        role="switch"
+        aria-checked={isDark}
+        onClick={toggle}
+        className={cn(
+          "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200",
+          isDark ? "bg-primary" : "bg-muted",
+        )}
+      >
+        <span
+          className={cn(
+            "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200",
+            isDark ? "translate-x-4" : "translate-x-0",
+          )}
+        />
+      </button>
+      <Sun size={14} className="text-muted-foreground shrink-0" />
+    </div>
+  );
+}
 
 function BrandLogo({ expanded }: { expanded: boolean }) {
+  const { theme } = useThemeStore();
   return (
-    <span
+    <img
+      src="/src/assets/logo.png"
+      alt="Synapse"
       className={cn(
-        "bg-primary flex shrink-0 items-center justify-center rounded-lg",
+        "shrink-0 object-contain",
         expanded ? "h-8 w-8" : "h-9 w-9",
+        theme === "dark" && "invert brightness-200",
       )}
-    >
-      <span className="text-primary-foreground text-xs font-bold">S</span>
-    </span>
+    />
   );
 }
 
@@ -63,12 +114,12 @@ function SidebarRow({
 
   const content = (
     <>
-      <Icon size={16} className="shrink-0" />
+      <Icon size={15} className="shrink-0" />
       {expanded && (
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{label}</span>
+          <span className="block truncate text-xs font-medium">{label}</span>
           {sublabel && (
-            <span className="text-muted-foreground block truncate text-xs">
+            <span className="text-muted-foreground block truncate text-[10px]">
               {sublabel}
             </span>
           )}
@@ -102,6 +153,64 @@ export function Sidebar() {
   const activeIdealType = useSidebarStore((s) => s.activeIdealType);
   const scraps = useSidebarStore((s) => s.scraps);
   const chats = useSidebarStore((s) => s.chats);
+  const setSession = useChatStore((s) => s.setSession);
+  const currentSessionId = useChatStore((s) => s.sessionId);
+  const cachedSessions = useChatStore((s) => s.sessions);
+  const clearMessages = useChatStore((s) => s.clearMessages);
+  const renameChat = useSidebarStore((s) => s.renameChat);
+  const deleteChat = useSidebarStore((s) => s.deleteChat);
+  const clearChats = useSidebarStore((s) => s.clearChats);
+
+  useEffect(() => {
+    if (!user) {
+      clearChats();
+      clearMessages();
+    }
+  }, [user, clearChats, clearMessages]);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  const startEdit = useCallback((id: string, currentTitle: string) => {
+    setEditingId(id);
+    setEditValue(currentTitle);
+    setTimeout(() => editInputRef.current?.focus(), 0);
+  }, []);
+
+  const commitEdit = useCallback(() => {
+    if (editingId && editValue.trim()) renameChat(editingId, editValue.trim());
+    setEditingId(null);
+  }, [editingId, editValue, renameChat]);
+
+  const handleDeleteChat = useCallback(async (id: string) => {
+    deleteChat(id);
+    if (id === currentSessionId) clearMessages();
+    try { await deleteSession(id); } catch { /* ignore */ }
+  }, [deleteChat, clearMessages, currentSessionId]);
+
+  const handleChatClick = useCallback(async (sessionId: string) => {
+    // 이미 캐시된 세션이면 DB 요청 없이 바로 전환
+    if (cachedSessions[sessionId]?.length) {
+      setSession(sessionId, cachedSessions[sessionId]);
+      navigate(ROUTES.home);
+      return;
+    }
+    try {
+      const items = await fetchSessionMessages(sessionId);
+      setSession(
+        sessionId,
+        items.map((m) => ({
+          id: Math.random().toString(36).slice(2, 10),
+          role: m.role,
+          content: m.content,
+        })),
+      );
+      navigate(ROUTES.home);
+    } catch {
+      // 네트워크 오류 등 무시
+    }
+  }, [setSession, navigate, cachedSessions]);
 
   const latestScraps = scraps.slice(0, 3);
   const isScrapsSection =
@@ -126,7 +235,7 @@ export function Sidebar() {
     <aside
       className={cn(
         "border-border bg-card flex h-screen shrink-0 flex-col border-r transition-[width] duration-200 ease-in-out",
-        expanded ? "w-[260px]" : "w-[60px]",
+        expanded ? "w-[220px]" : "w-[52px]",
       )}
     >
       <div
@@ -191,8 +300,15 @@ export function Sidebar() {
                 </div>
               )}
               {expanded && (
-                <span className="min-w-0 truncate text-left text-sm font-medium">
-                  {user.name}
+                <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">
+                  <span className="truncate text-left text-sm font-medium">
+                    {user.name}
+                  </span>
+                  {user.plan === "pro" && (
+                    <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
+                      Pro
+                    </span>
+                  )}
                 </span>
               )}
             </Link>
@@ -258,10 +374,10 @@ export function Sidebar() {
                         className="text-muted-foreground mt-0.5 shrink-0"
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm">
+                        <span className="block truncate text-xs">
                           {scrap.title}
                         </span>
-                        <span className="text-muted-foreground text-xs">
+                        <span className="text-muted-foreground text-[10px]">
                           {scrap.savedAt}
                         </span>
                       </span>
@@ -278,29 +394,65 @@ export function Sidebar() {
               <div className="flex flex-col gap-0.5 px-2 pb-2">
                 {chats.length > 0 ? (
                   chats.map((chat) => (
-                    <button
+                    <div
                       key={chat.id}
-                      type="button"
-                      title={chat.title}
-                      className="hover:bg-secondary flex items-start gap-2 rounded-xl px-3 py-2 text-left transition-colors"
+                      className="group relative flex items-center rounded-xl transition-colors hover:bg-secondary"
                     >
-                      <MessageSquare
-                        size={14}
-                        className="text-muted-foreground mt-0.5 shrink-0"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm">
-                          {chat.title}
-                        </span>
-                        <span className="text-muted-foreground text-xs">
-                          {chat.updatedAt}
-                        </span>
-                      </span>
-                    </button>
+                      {editingId === chat.id ? (
+                        <div className="flex flex-1 items-center gap-2 px-3 py-2">
+                          <MessageSquare size={14} className="text-muted-foreground shrink-0" />
+                          <input
+                            ref={editInputRef}
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onBlur={commitEdit}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") commitEdit();
+                              if (e.key === "Escape") setEditingId(null);
+                            }}
+                            className="flex-1 bg-transparent text-xs outline-none"
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          title={chat.title}
+                          onClick={() => void handleChatClick(chat.id)}
+                          className="flex min-w-0 flex-1 items-start gap-2 px-3 py-2 text-left"
+                        >
+                          <MessageSquare size={14} className="text-muted-foreground mt-0.5 shrink-0" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs">{chat.title}</span>
+                            <span className="text-muted-foreground text-[10px]">{chat.updatedAt}</span>
+                          </span>
+                        </button>
+                      )}
+
+                      {editingId !== chat.id && (
+                        <div className="absolute right-1.5 hidden shrink-0 items-center gap-0.5 group-hover:flex">
+                          <button
+                            type="button"
+                            title="제목 수정"
+                            onClick={(e) => { e.stopPropagation(); startEdit(chat.id, chat.title); }}
+                            className="text-muted-foreground hover:text-foreground flex h-6 w-6 items-center justify-center rounded-lg transition-colors hover:bg-background"
+                          >
+                            <Pencil size={11} />
+                          </button>
+                          <button
+                            type="button"
+                            title="삭제"
+                            onClick={(e) => { e.stopPropagation(); void handleDeleteChat(chat.id); }}
+                            className="text-muted-foreground hover:text-destructive flex h-6 w-6 items-center justify-center rounded-lg transition-colors hover:bg-background"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   ))
                 ) : (
                   <p className="text-muted-foreground px-3 py-2 text-xs">
-                    채팅 기록이 없습니다
+                    {user ? "채팅 기록이 없습니다" : "로그인 후 이용해주세요"}
                   </p>
                 )}
               </div>
@@ -328,16 +480,19 @@ export function Sidebar() {
       <div
         className={cn(
           "border-border shrink-0 border-t px-2 py-3",
-          expanded ? "" : "flex justify-center",
+          expanded ? "flex items-center gap-1" : "flex flex-col items-center gap-1",
         )}
       >
-        <SidebarRow
-          expanded={expanded}
-          icon={Settings}
-          label="설정"
-          href={ROUTES.settings}
-          active={pathname.startsWith(ROUTES.settings)}
-        />
+        <div className={cn(expanded ? "flex-1" : "")}>
+          <SidebarRow
+            expanded={expanded}
+            icon={Settings}
+            label="설정"
+            href={ROUTES.settings}
+            active={pathname.startsWith(ROUTES.settings)}
+          />
+        </div>
+        <ThemeToggle expanded={expanded} />
       </div>
     </aside>
   );

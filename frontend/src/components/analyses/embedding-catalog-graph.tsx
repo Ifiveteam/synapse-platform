@@ -30,6 +30,7 @@ const TOOLTIP_MAX_HEIGHT = 132;
 interface EmbeddingCatalogGraphProps {
   data: EmbeddingGraphData | null;
   className?: string;
+  hideControls?: boolean;
 }
 
 function GraphFallback() {
@@ -45,7 +46,7 @@ function truncateTitle(title: string, max = 26): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-export function EmbeddingCatalogGraph({ data, className }: EmbeddingCatalogGraphProps) {
+export function EmbeddingCatalogGraph({ data, className, hideControls = false }: EmbeddingCatalogGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graphRef = useRef<any>(undefined);
@@ -288,57 +289,61 @@ export function EmbeddingCatalogGraph({ data, className }: EmbeddingCatalogGraph
 
   return (
     <div className={cn("border-border rounded-2xl border bg-card p-4", className)}>
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <p className="text-sm font-semibold">시청 그래프</p>
-          <p className="text-muted-foreground text-xs">
-            영상 {data.total}개 · 유사도 60% 이상 · 노드당 최대 5개 연결
-          </p>
-        </div>
-        <button
-          type="button"
-          className="text-muted-foreground hover:text-foreground text-[10px] underline-offset-2 hover:underline"
-          onClick={handleZoomToFit}
-        >
-          전체 보기
-        </button>
-      </div>
+      {!hideControls && (
+        <>
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold">시청 그래프</p>
+              <p className="text-muted-foreground text-xs">
+                영상 {data.total}개 · 유사도 60% 이상 · 노드당 최대 5개 연결
+              </p>
+            </div>
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground text-[10px] underline-offset-2 hover:underline"
+              onClick={handleZoomToFit}
+            >
+              전체 보기
+            </button>
+          </div>
 
-      <div className="flex flex-wrap gap-1.5 pb-3">
-        <button
-          type="button"
-          onClick={() => setCategoryFilter(null)}
-          className={cn(
-            "rounded-full border px-2.5 py-0.5 text-[10px]",
-            categoryFilter === null
-              ? "border-foreground bg-foreground text-background"
-              : "border-border text-muted-foreground",
-          )}
-        >
-          전체
-        </button>
-        {legend.slice(0, 8).map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() =>
-              setCategoryFilter((prev) => (prev === item.id ? null : item.id))
-            }
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]",
-              categoryFilter === item.id
-                ? "border-transparent text-white"
-                : "border-border text-muted-foreground",
-            )}
-            style={
-              categoryFilter === item.id ? { backgroundColor: item.color } : undefined
-            }
-          >
-            <span className="size-2 rounded-full" style={{ backgroundColor: item.color }} />
-            {item.label} ({item.count})
-          </button>
-        ))}
-      </div>
+          <div className="flex flex-wrap gap-1.5 pb-3">
+            <button
+              type="button"
+              onClick={() => setCategoryFilter(null)}
+              className={cn(
+                "rounded-full border px-2.5 py-0.5 text-[10px]",
+                categoryFilter === null
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border text-muted-foreground",
+              )}
+            >
+              전체
+            </button>
+            {legend.slice(0, 8).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() =>
+                  setCategoryFilter((prev) => (prev === item.id ? null : item.id))
+                }
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]",
+                  categoryFilter === item.id
+                    ? "border-transparent text-white"
+                    : "border-border text-muted-foreground",
+                )}
+                style={
+                  categoryFilter === item.id ? { backgroundColor: item.color } : undefined
+                }
+              >
+                <span className="size-2 rounded-full" style={{ backgroundColor: item.color }} />
+                {item.label} ({item.count})
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <div
         ref={containerRef}
@@ -482,10 +487,12 @@ export function EmbeddingCatalogGraph({ data, className }: EmbeddingCatalogGraph
         )}
       </div>
 
-      <p className="text-muted-foreground mt-2 text-[10px]">
-        노드 {graphData.nodes.length} · 연결 {graphData.links.length} ·{" "}
-        {viewMode === "2d" ? "드래그·줌 지원" : "드래그 회전·휠 확대"}
-      </p>
+      {!hideControls && (
+        <p className="text-muted-foreground mt-2 text-[10px]">
+          노드 {graphData.nodes.length} · 연결 {graphData.links.length} ·{" "}
+          {viewMode === "2d" ? "드래그·줌 지원" : "드래그 회전·휠 확대"}
+        </p>
+      )}
     </div>
   );
 }

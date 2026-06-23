@@ -32,15 +32,15 @@ export function DemoMenu() {
     <div ref={ref} className="relative">
       <Button
         type="button"
-        variant="outline"
+        variant="ghost"
         size="sm"
-        className="border-border text-muted-foreground hover:text-foreground gap-1.5"
+        className="text-muted-foreground hover:text-foreground h-7 gap-1.5 px-2.5 text-xs"
         onClick={() => setOpen((v) => !v)}
       >
-        <FlaskConical size={14} />
-        시연 메뉴
+        <FlaskConical size={13} />
+        시연
         <ChevronDown
-          size={14}
+          size={12}
           className={`transition-transform ${open ? "rotate-180" : ""}`}
         />
       </Button>

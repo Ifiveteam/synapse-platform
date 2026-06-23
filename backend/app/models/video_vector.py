@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
+from uuid import UUID
+
 from sqlalchemy import (
     ARRAY,
     Boolean,
@@ -13,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
 )
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database.base import Base
@@ -35,6 +38,6 @@ class VideoVector(Base):
     is_shorts: Mapped[bool | None] = mapped_column(Boolean)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM))
     weight: Mapped[float | None] = mapped_column(Float, default=1.0)
-    user_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id"), nullable=True, index=True
+    user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
     )
