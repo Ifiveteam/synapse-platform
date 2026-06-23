@@ -8,11 +8,11 @@ from typing import Any, Protocol, runtime_checkable
 from langgraph.types import RunnableConfig
 from pydantic import BaseModel, Field
 
-from app.agents.archiver.constants import ARCHIVER_STORE_KEY, RAG_SEARCH_LIMIT
+from app.agents.archiver.core.constants import ARCHIVER_STORE_KEY, RAG_SEARCH_LIMIT
 
 
 class PastKnowledgeHit(BaseModel):
-    """RAG 검색 1건 — Repository ↔ collect step 계약."""
+    """RAG 검색 1건 — Repository ↔ rag_node 계약."""
 
     role: str
     content: str

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from langchain_core.messages import HumanMessage
 
-from app.agents.archiver.types import ArchiverState
+from app.agents.archiver.models import ArchiverState
 
 
 def latest_user_message(state: ArchiverState) -> str:

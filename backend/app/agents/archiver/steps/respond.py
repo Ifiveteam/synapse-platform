@@ -9,18 +9,19 @@ from google.genai import types
 from langchain_core.messages import AIMessage
 from langgraph.config import get_stream_writer
 
-from app.agents.archiver.constants import (
+from app.agents.archiver.core.constants import (
     RESPOND_DEFAULT_TEMPERATURE,
     RESPOND_TEMPERATURES,
     STREAM_ERROR_MESSAGE,
 )
-from app.agents.archiver.gemini import GEMINI_MODEL, get_client
+from app.agents.archiver.core.gemini import GEMINI_MODEL, get_client
+from app.agents.archiver.protocols.stream_status import MSG_RESPOND_GENERATING, status_event
 from app.agents.archiver.steps.respond_context import (
     build_gemini_contents,
     resolve_system_instruction,
 )
 from app.agents.archiver.trace import log_node_enter, log_respond_result
-from app.agents.archiver.types import ArchiverState, resolve_route
+from app.agents.archiver.models import ArchiverState, resolve_route
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +36,7 @@ async def respond(state: ArchiverState) -> dict[str, Any]:
     writer = get_stream_writer()
     gemini_contents = build_gemini_contents(state.get("messages", []))
 
-    writer(
-        {
-            "event": "status",
-            "content": "✨ [Respond] 최종 답변을 생성합니다...\n\n",
-        }
-    )
+    writer(status_event(MSG_RESPOND_GENERATING))
 
     chunks: list[str] = []
 

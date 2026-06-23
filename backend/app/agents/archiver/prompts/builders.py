@@ -10,7 +10,7 @@ from app.agents.archiver.prompts.system_prompt import (
     ARCHIVER_SEARCH_COLLECT_TEMPLATE,
     ARCHIVER_SEARCH_RESPOND_TEMPLATE,
 )
-from app.agents.archiver.types import (
+from app.agents.archiver.models import (
     NO_CONTEXT_BODY,
     NO_CONTEXT_TITLE,
     NO_CONTEXT_URL,
@@ -42,10 +42,7 @@ def build_rag_route_instruction(*, past_rag_knowledge: str | None = None) -> str
         if rag_payload
         else NO_RAG_CONTEXT
     )
-    return ARCHIVER_RAG_TEMPLATE.format(
-        current_date=format_archiver_current_date(),
-        rag_context=rag_section,
-    )
+    return ARCHIVER_RAG_TEMPLATE.format(rag_context=rag_section)
 
 
 def build_search_collect_instruction(
@@ -53,7 +50,7 @@ def build_search_collect_instruction(
     context_title: str | None = None,
     context_url: str | None = None,
 ) -> str:
-    """search 스텝 — Google Search grounding으로 사실만 수집."""
+    """search_node 수집 단계 — Google Search Tool 호출용 지시."""
     return ARCHIVER_SEARCH_COLLECT_TEMPLATE.format(
         current_date=format_archiver_current_date(),
         context_title=context_title or NO_CONTEXT_TITLE,
@@ -66,7 +63,7 @@ def build_search_route_instruction(
     context_title: str | None = None,
     context_url: str | None = None,
 ) -> str:
-    """respond 스텝 — SEARCH 경로 최종 답변용 프롬프트 빌더."""
+    """SEARCH respond 경로 — 수집된 검색 결과 기반 답변 프롬프트."""
     return ARCHIVER_SEARCH_RESPOND_TEMPLATE.format(
         current_date=format_archiver_current_date(),
         context_title=context_title or NO_CONTEXT_TITLE,
@@ -76,6 +73,4 @@ def build_search_route_instruction(
 
 def build_general_route_instruction() -> str:
     """GENERAL 경로 — 일상 대화 및 스몰토크 전용 프롬프트 빌더."""
-    return ARCHIVER_GENERAL_TEMPLATE.format(
-        current_date=format_archiver_current_date(),
-    )
+    return ARCHIVER_GENERAL_TEMPLATE

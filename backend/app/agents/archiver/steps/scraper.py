@@ -7,8 +7,12 @@ import logging
 import httpx
 from bs4 import BeautifulSoup
 
-from app.agents.archiver.constants import MAX_CONTEXT_BODY_CHARS
-from app.agents.archiver.types import NO_CONTEXT_URL
+from app.agents.archiver.core.constants import MAX_CONTEXT_BODY_CHARS
+from app.agents.archiver.utils.context_body_quality import (
+    is_meaningful_context_body,
+    prepare_context_body,
+)
+from app.agents.archiver.models import NO_CONTEXT_BODY, NO_CONTEXT_URL, OFF_TAB_BODY
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +25,38 @@ _BROWSER_HEADERS = {
 }
 _NOISE_TAGS = ("script", "style", "nav", "footer", "header")
 
+_SCRAPE_FAILURE_PREFIXES = (
+    "스크래핑할 수 없",
+    "웹페이지에 접근할 수 없",
+    "웹페이지 본문을 추출하지 못했",
+    "네트워크 문제로",
+)
+
 
 def is_scrapable_url(url: str | None) -> bool:
     """스크래핑 가능한 HTTP(S) URL인지 판별한다."""
     return bool(url and url != NO_CONTEXT_URL and url.startswith("http"))
+
+
+def normalize_client_context_body(body: str | None) -> str | None:
+    """익스텐션이 주입한 DOM 본문을 품질 검사 후 정규화한다."""
+    prepared = prepare_context_body(body)
+    if prepared:
+        return prepared
+    normalized = (body or "").strip()
+    return normalized or None
+
+
+def is_usable_context_body(body: str | None) -> bool:
+    """수집·스크래핑 본문이 답변 근거로 쓸 수 있는지 판별한다."""
+    normalized = normalize_client_context_body(body)
+    if not normalized:
+        return False
+    if normalized in {NO_CONTEXT_BODY, OFF_TAB_BODY}:
+        return False
+    if any(normalized.startswith(prefix) for prefix in _SCRAPE_FAILURE_PREFIXES):
+        return False
+    return is_meaningful_context_body(normalized)
 
 
 def _extract_main_text(html: str) -> str:
@@ -52,7 +84,7 @@ async def scrape_context_body(
     context_url: str,
 ) -> str:
     """사용자가 대화 중인 웹페이지 URL 본문을 긁어와 반환한다."""
-    _ = context_title  # 향후 메타데이터 활용 여지
+    _ = context_title
     if not is_scrapable_url(context_url):
         return "스크래핑할 수 없는 유효하지 않은 도메인입니다."
 

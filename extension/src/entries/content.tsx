@@ -1,9 +1,11 @@
 /**
  * Synapse Content Script 진입점.
- * Shadow Root 안에 React FAB를 마운트한다.
+ * - Tracking: Shadow Root FAB 마운트
+ * - Archiver: 페이지 본문 추출 브릿지 (content ↔ sidepanel)
  */
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { bootArchiverContentScript } from '@/features/archiver/content/bootContentScript'
 import { FloatingWidget } from '@/features/tracking/components/FloatingWidget'
 import { initAuthBridge } from '@/shared/auth/authBridge'
 
@@ -16,7 +18,6 @@ function mountSynapseWidget() {
   const existing = document.getElementById(HOST_ROOT_ID)
   if (existing) {
     const appRoot = existing.shadowRoot?.getElementById('synapse-app-within-shadow')
-    // Shadow가 비어 있으면 이전 리로드/HMR 실패 잔해 — 제거 후 재마운트
     if (appRoot?.childElementCount) return
     existing.remove()
   }
@@ -62,16 +63,29 @@ function mountWhenReady() {
   observer.observe(document.documentElement, { childList: true })
 }
 
+function bootArchiverBridge() {
+  bootArchiverContentScript()
+}
+
+function bootTrackingFab() {
+  initAuthBridge()
+  mountWhenReady()
+}
+
 function bootContentScript() {
   try {
-    initAuthBridge()
-    mountWhenReady()
+    const topFrame = window === window.top
+
+    bootArchiverBridge()
+
+    if (topFrame) {
+      bootTrackingFab()
+    }
   } catch (error) {
-    console.error('[Synapse] FAB 마운트 실패:', error)
+    console.error('[Synapse] content script boot 실패:', error)
   }
 }
 
-// Rolldown이 export를 제거해도 Vite 플러그인·CRXJS 로더가 globalThis로 재호출 가능
 ;(globalThis as Record<string, unknown>)[BOOT_KEY] = bootContentScript
 
 /** CRXJS 로더 진입점 */
