@@ -18,6 +18,7 @@ from app.schemas.auth import (
     ExtensionRevokeRequest,
     ExtensionSessionResponse,
     RefreshResponse,
+    UpdateMeRequest,
     UserResponse,
 )
 from app.services import (
@@ -106,6 +107,34 @@ async def auth_status() -> AuthStatusResponse:
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(user: User = Depends(get_current_user_dep)) -> UserResponse:
+    return UserResponse.model_validate(user)
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(
+    request: Request,
+    response: Response,
+    user: User = Depends(get_current_user_dep),
+    session: AsyncSession = Depends(get_db),
+) -> None:
+    await session.delete(user)
+    await session.commit()
+    token_service.clear_refresh_cookie(response)
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_me(
+    body: UpdateMeRequest,
+    user: User = Depends(get_current_user_dep),
+    session: AsyncSession = Depends(get_db),
+) -> UserResponse:
+    if body.nickname is not None:
+        user.name = body.nickname
+    if body.picture is not None:
+        user.picture = body.picture
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
     return UserResponse.model_validate(user)
 
 

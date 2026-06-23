@@ -5,18 +5,21 @@ from __future__ import annotations
 from google.genai import types
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
+from app.agents.archiver.core.tools import GOOGLE_SEARCH_TOOL
+from app.agents.archiver.models import (
+    ArchiverRoute,
+    ArchiverState,
+    Evaluation,
+    get_context_dom,
+    get_context_rag,
+    get_context_search,
+    resolve_route,
+)
 from app.agents.archiver.prompts import (
     build_basic_route_instruction,
     build_general_route_instruction,
     build_rag_route_instruction,
     build_search_route_instruction,
-)
-from app.agents.archiver.tools import GOOGLE_SEARCH_TOOL
-from app.agents.archiver.types import (
-    ArchiverRoute,
-    ArchiverState,
-    Evaluation,
-    resolve_route,
 )
 
 
@@ -35,8 +38,9 @@ def resolve_system_instruction(
 ) -> tuple[str, list[types.Tool] | None]:
     """수집된 근거와 route에 따라 respond용 system_instruction을 조립한다."""
     route = resolve_route(state)
-    rag_data = (state.get("rag_data") or "").strip()
-    search_data = (state.get("search_data") or "").strip()
+    rag_data = get_context_rag(state)
+    search_data = get_context_search(state)
+    context_body = get_context_dom(state)
     evaluation = Evaluation.from_state(state)
 
     if route == ArchiverRoute.RAG and rag_data:
@@ -46,7 +50,7 @@ def resolve_system_instruction(
         instruction = build_basic_route_instruction(
             context_title=state.get("context_title"),
             context_url=state.get("context_url"),
-            context_body=state.get("context_body"),
+            context_body=context_body,
         )
         if search_data:
             instruction += f"\n\n[웹 검색 보완 결과]\n{search_data}"

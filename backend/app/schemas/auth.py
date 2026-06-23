@@ -52,3 +52,8 @@ class ExtensionSessionResponse(BaseModel):
 class AuthStatusResponse(BaseModel):
     connected: bool
     message: str
+
+
+class UpdateMeRequest(BaseModel):
+    nickname: str | None = None
+    picture: str | None = None

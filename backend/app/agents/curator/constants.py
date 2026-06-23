@@ -1,0 +1,16 @@
+"""Curator 런타임 상수."""
+
+from __future__ import annotations
+
+GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_API_KEY_ENV_VARS = ("GOOGLE_API_KEY", "GEMINI_API_KEY")
+
+VIDEO_SEARCH_LIMIT = 8
+ANALYSIS_SEARCH_LIMIT = 6
+RECENT_VIDEO_LIMIT = 8
+TOP_CHANNEL_LIMIT = 5
+HISTORY_MESSAGE_LIMIT = 10   # DB에서 로드할 최근 메시지 수
+RESPOND_MESSAGE_WINDOW = 10  # LLM에 전달할 메시지 윈도우
+
+CURATOR_AGENT_TYPE = "CURATOR"
+STREAM_ERROR_MESSAGE = "❌ 큐레이터 오류가 발생했습니다."

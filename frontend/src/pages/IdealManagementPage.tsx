@@ -12,7 +12,6 @@ import {
   type IdealResponse,
 } from "@/lib/ideals/api";
 import { ROUTES } from "@/routes";
-import { useSidebarStore } from "@/stores/sidebar";
 
 const TABS = [
   { id: "confirmed", label: "확정 이상향" },
@@ -137,15 +136,6 @@ export function IdealManagementPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabId>("confirmed");
-  const setActiveIdealLabel = useSidebarStore((s) => s.setActiveIdealLabel);
-
-  const syncSidebar = useCallback(
-    (list: IdealResponse[]) => {
-      const active = list.find((x) => x.is_active);
-      setActiveIdealLabel(active ? IDEAL_TYPE_LABEL[active.ideal_type] : null);
-    },
-    [setActiveIdealLabel],
-  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -153,13 +143,12 @@ export function IdealManagementPage() {
     try {
       const list = await listIdeals();
       setIdeals(list);
-      syncSidebar(list);
     } catch {
       setError("이상향을 불러오지 못했습니다. 로그인 상태를 확인하세요.");
     } finally {
       setLoading(false);
     }
-  }, [syncSidebar]);
+  }, []);
 
   useEffect(() => {
     void load();

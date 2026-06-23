@@ -229,8 +229,20 @@ async def fetch_graph_summary(
 async def fetch_catalog_embedding_rows(
     session: AsyncSession,
     user_id: uuid.UUID,
+    *,
+    before: datetime | None = None,
+    after: datetime | None = None,
 ) -> list[dict]:
     """임베딩 그래프용 catalog 행 (embedding 있는 것만)."""
+    conditions = [
+        UserWatchCatalog.user_id == user_id,
+        UserWatchCatalog.embedding.isnot(None),
+    ]
+    if before:
+        conditions.append(UserWatchCatalog.watched_at < before)
+    if after:
+        conditions.append(UserWatchCatalog.watched_at >= after)
+
     rows = await session.execute(
         select(
             UserWatchCatalog.id,
@@ -240,10 +252,7 @@ async def fetch_catalog_embedding_rows(
             UserWatchCatalog.is_shorts,
             UserWatchCatalog.embedding,
         )
-        .where(
-            UserWatchCatalog.user_id == user_id,
-            UserWatchCatalog.embedding.isnot(None),
-        )
+        .where(*conditions)
         .order_by(UserWatchCatalog.watched_at.desc())
     )
     result: list[dict] = []

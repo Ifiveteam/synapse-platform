@@ -8,65 +8,24 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from langchain_core.messages import BaseMessage
-from langgraph.graph import END, START, StateGraph
 
-from app.agents.archiver.branches import (
-    route_after_collect,
-    route_after_evaluator,
-    route_after_router,
-)
-from app.agents.archiver.steps import classify, collect, evaluate, respond, search
-from app.agents.archiver.store import ArchiverStore, build_run_config
+from app.agents.archiver.core.store import ArchiverStore, build_run_config
 from app.agents.archiver.trace import log_workflow_end, log_workflow_start
-from app.agents.archiver.types import (
+from app.agents.archiver.models import (
     NO_CONTEXT_TITLE,
     NO_CONTEXT_URL,
     ArchiverState,
     ArchiverStreamEvent,
 )
+from app.agents.archiver.workflow import build_archiver_workflow
 
 _compiled_graph = None
 _archiver_engine_runner: ArchiverEngine | None = None
 
 
 def build_archiver_engine():
-    """router → (GENERAL⇒respond | RAG/BASIC⇒collect | SEARCH⇒search) ⇄ evaluator → respond."""
-    graph = StateGraph(ArchiverState)
-
-    graph.add_node("router", classify)
-    graph.add_node("collect", collect)
-    graph.add_node("search", search)
-    graph.add_node("evaluator", evaluate)
-    graph.add_node("respond", respond)
-
-    graph.add_edge(START, "router")
-    graph.add_conditional_edges(
-        "router",
-        route_after_router,
-        {
-            "respond": "respond",
-            "collect": "collect",
-            "search": "search",
-        },
-    )
-    graph.add_conditional_edges(
-        "collect",
-        route_after_collect,
-        {"evaluator": "evaluator"},
-    )
-    graph.add_edge("search", "evaluator")
-    graph.add_conditional_edges(
-        "evaluator",
-        route_after_evaluator,
-        {
-            "search": "search",
-            "collect": "collect",
-            "respond": "respond",
-        },
-    )
-    graph.add_edge("respond", END)
-
-    return graph.compile()
+    """병렬 fan-out / fan-in 오케스트레이션 워크플로우를 반환한다."""
+    return build_archiver_workflow()
 
 
 def _get_compiled_graph():
@@ -90,9 +49,13 @@ class ArchiverEngine:
         session_id: str,
         context_title: str | None = None,
         context_url: str | None = None,
+        context_body: str | None = None,
+        dom_continuation: bool = False,
     ) -> ArchiverState:
         """Service가 주입하는 초기 State 가방."""
-        return {
+        from app.agents.archiver.steps.scraper import normalize_client_context_body
+
+        state: ArchiverState = {
             "messages": messages,
             "user_id": user_id,
             "session_id": session_id,
@@ -100,7 +63,16 @@ class ArchiverEngine:
             "context_url": context_url or NO_CONTEXT_URL,
             "retrieval_attempts": 0,
             "search_attempts": 0,
+            "executed_steps": [],
+            "target_engines": [],
         }
+        client_body = normalize_client_context_body(context_body)
+        if client_body:
+            state["context_body"] = client_body
+            state["context_dom"] = client_body
+        if dom_continuation:
+            state["dom_continuation"] = True
+        return state
 
     async def stream(
         self,
@@ -129,7 +101,7 @@ class ArchiverEngine:
 
             event_type = chunk.get("event")
             content = chunk.get("content")
-            if not content or event_type not in {"status", "token"}:
+            if not content or event_type not in {"status", "token", "need_dom"}:
                 continue
 
             yield ArchiverStreamEvent(event=event_type, content=content)
@@ -149,3 +121,4 @@ def get_archiver_engine() -> ArchiverEngine:
 # 하위 호환 alias
 ArchiverGraph = ArchiverEngine
 get_archiver_graph = get_archiver_engine
+

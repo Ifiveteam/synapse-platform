@@ -1,3 +1,5 @@
+import type { IdealType } from "@/lib/navigator/types";
+
 export interface SidebarScrap {
   id: string;
   title: string;
@@ -10,8 +12,7 @@ export interface SidebarChat {
   updatedAt: string;
 }
 
-/** 현재 적용 중인 이상향 표시 라벨 (초기값 — 백엔드 로드 전) */
-export const MOCK_ACTIVE_IDEAL_LABEL: string | null = null;
+export const MOCK_ACTIVE_IDEAL: IdealType = "expansion";
 
 export const MOCK_SCRAPS: SidebarScrap[] = [
   { id: "1", title: "AI 에이전트 트렌드 2024", savedAt: "2시간 전" },

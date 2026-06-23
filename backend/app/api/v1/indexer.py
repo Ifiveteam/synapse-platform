@@ -226,13 +226,29 @@ async def get_graph_summary(
 
 @router.get("/embedding-graph")
 async def get_embedding_graph(
-    session: AsyncSession = Depends(get_db), user=Depends(get_current_user_dep)
+    before: str | None = None,
+    after: str | None = None,
+    session: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user_dep),
 ):
-    """영상별 임베딩 PCA 2D 투영 그래프."""
+    """영상별 임베딩 PCA 2D 투영 그래프. before/after: ISO 날짜 문자열 (선택)."""
+    from datetime import datetime, timezone
+
     from app.repositories.indexer_repository import fetch_catalog_embedding_rows
     from app.services.catalog_embedding_graph import build_embedding_graph_payload
 
-    rows = await fetch_catalog_embedding_rows(session, user.id)
+    def _parse(s: str | None):
+        if not s:
+            return None
+        try:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
+    rows = await fetch_catalog_embedding_rows(
+        session, user.id, before=_parse(before), after=_parse(after)
+    )
     return build_embedding_graph_payload(rows)
 
 

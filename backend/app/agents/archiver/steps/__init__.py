@@ -1,22 +1,35 @@
-"""Archiver LangGraph 스텝."""
+"""Archiver LangGraph **제어 스텝** — router / evaluator / respond / need_dom.
 
-from app.agents.archiver.steps.classify import classify, classify_archiver_route
-from app.agents.archiver.steps.collect import collect
-from app.agents.archiver.steps.evaluate import evaluate, evaluate_with_llm
-from app.agents.archiver.steps.rag import format_past_knowledge_for_rag
+`workflow.py`가 이 패키지에서 가져오는 노드는 **오케스트레이션·판단·응답** 역할만 담당한다.
+
+| 스텝        | 그래프 노드명 | 책임 |
+|-------------|---------------|------|
+| classify    | router        | LLM 라우터 — target_engines·route·is_general 결정 |
+| evaluate    | evaluator     | 수집 근거 통합 채점 — fan-in 후 분기 |
+| respond     | respond       | 최종 답변 스트리밍 |
+| need_dom    | need_dom      | 클라이언트 DOM 수집 SSE 신호 |
+
+병렬 **데이터 수집** fan-out 엔진은 `nodes/` 패키지가 담당한다 (`collect_node`, `rag_node`, `search_node`).
+"""
+
+from app.agents.archiver.steps.classify import classify
+from app.agents.archiver.steps.evaluate import evaluate
+from app.agents.archiver.steps.need_dom import need_dom
 from app.agents.archiver.steps.respond import respond
-from app.agents.archiver.steps.scraper import is_scrapable_url, scrape_context_body
-from app.agents.archiver.steps.search import search
+from app.agents.archiver.steps.scraper import (
+    is_scrapable_url,
+    is_usable_context_body,
+    normalize_client_context_body,
+    scrape_context_body,
+)
 
 __all__ = [
     "classify",
-    "classify_archiver_route",
-    "collect",
     "evaluate",
-    "evaluate_with_llm",
-    "format_past_knowledge_for_rag",
     "is_scrapable_url",
+    "is_usable_context_body",
+    "need_dom",
+    "normalize_client_context_body",
     "respond",
     "scrape_context_body",
-    "search",
 ]

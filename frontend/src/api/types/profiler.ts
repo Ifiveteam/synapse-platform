@@ -1,5 +1,13 @@
 export type JobStatus = "pending" | "running" | "completed" | "failed";
 
+export interface AnalysisListItem {
+  id: string;
+  title: string;
+  snapshot_date: string | null;
+  status: string;
+  kind: string;
+}
+
 export interface TopCategoryItem {
   category_id: string;
   count: number;
@@ -108,7 +116,7 @@ export interface JobResponse {
   current_step: string | null;
   created_at: string;
   updated_at: string;
-  result: ProfilerResult | null;
+  result: DbProfileResponse | null;
   error: string | null;
   notification: NotificationPayload | null;
 }

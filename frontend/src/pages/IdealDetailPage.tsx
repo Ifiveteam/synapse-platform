@@ -19,7 +19,6 @@ import {
   type IdealResponse,
 } from "@/lib/ideals/api";
 import { ROUTES } from "@/routes";
-import { useSidebarStore } from "@/stores/sidebar";
 
 function GapBadge({ gap }: { gap: number }) {
   if (gap === 0) return <span className="text-muted-foreground text-xs">±0</span>;
@@ -39,7 +38,6 @@ function GapBadge({ gap }: { gap: number }) {
 
 export function IdealDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const setActiveIdealLabel = useSidebarStore((s) => s.setActiveIdealLabel);
 
   const [ideal, setIdeal] = useState<IdealResponse | null>(null);
   const [comparison, setComparison] = useState<ComparisonResponse | null>(null);
@@ -110,7 +108,6 @@ export function IdealDetailPage() {
   const handleApply = async () => {
     await applyIdeal(ideal.id);
     setIdeal({ ...ideal, is_active: true });
-    setActiveIdealLabel(IDEAL_TYPE_LABEL[ideal.ideal_type]);
   };
 
   const handleRegenerateGuide = async () => {

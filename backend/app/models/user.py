@@ -24,6 +24,10 @@ class User(Base):
     picture: Mapped[str | None] = mapped_column(Text, nullable=True)
     access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    plan: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'free'")
+    )
+
     analysis_interval: Mapped[str] = mapped_column(
         String(50), nullable=False, server_default=text("'WEEKLY'")
     )
