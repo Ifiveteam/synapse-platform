@@ -79,7 +79,7 @@ class CuratorEngine:
 
             event_type = chunk.get("event")
             content = chunk.get("content")
-            if not content or event_type not in {"status", "token"}:
+            if not content or event_type not in {"status", "token", "chart"}:
                 continue
 
             yield CuratorStreamEvent(event=event_type, content=content)

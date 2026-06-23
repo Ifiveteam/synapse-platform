@@ -2,17 +2,20 @@ import { ArrowUp, Search } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { streamCurator } from "@/api/curator";
+import type { ChartEntry } from "@/stores/chat";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
+import { useSidebarStore } from "@/stores/sidebar";
 
-export function OrchestratorInput() {
+export function CuratorInput() {
   const user = useAuthStore((s) => s.user);
   const isStreaming = useChatStore((s) => s.isStreaming);
   const sessionId = useChatStore((s) => s.sessionId);
-  const { addUserMessage, startAssistantMessage, appendToken, setStatus, finishAssistantMessage } =
+  const { addUserMessage, startAssistantMessage, appendToken, setStatus, addChartEntry, finishAssistantMessage } =
     useChatStore();
 
+  const loadChats = useSidebarStore((s) => s.loadChats);
   const disabled = !user || isStreaming;
   const [focused, setFocused] = useState(false);
   const [value, setValue] = useState("");
@@ -30,6 +33,13 @@ export function OrchestratorInput() {
       for await (const chunk of streamCurator(trimmed, sessionId)) {
         if (chunk.event === "status") {
           setStatus(assistantId, chunk.content);
+        } else if (chunk.event === "chart") {
+          try {
+            const entry = JSON.parse(chunk.content) as ChartEntry;
+            addChartEntry(assistantId, entry);
+          } catch {
+            // ignore malformed chart data
+          }
         } else {
           appendToken(assistantId, chunk.content);
         }
@@ -38,6 +48,7 @@ export function OrchestratorInput() {
       appendToken(assistantId, "❌ 오류가 발생했습니다.");
     } finally {
       finishAssistantMessage(assistantId);
+      void loadChats();
     }
   };
 
@@ -66,10 +77,10 @@ export function OrchestratorInput() {
           disabled={disabled}
           placeholder={
             !user
-              ? "로그인 후 오케스트레이터와 대화할 수 있습니다."
+              ? "로그인 후 큐레이터와 대화할 수 있습니다."
               : isStreaming
                 ? "답변 생성 중..."
-                : "Ask Orchestrator anything..."
+                : "큐레이터에게 무엇이든 물어보세요..."
           }
           className="placeholder:text-muted-foreground flex-1 bg-transparent text-sm outline-none focus:outline-none disabled:cursor-not-allowed"
           onFocus={() => setFocused(true)}

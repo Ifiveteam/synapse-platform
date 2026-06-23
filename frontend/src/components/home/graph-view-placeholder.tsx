@@ -74,21 +74,23 @@ function GlobeDetailView({ data, label, onBack }: GlobeDetailViewProps) {
   );
 }
 
-// ── 듀얼 구체 뷰 ────────────────────────────────────────────────────────────
+// ── 멀티 구체 뷰 (최대 5개) ─────────────────────────────────────────────────
 
 interface DualGlobeViewProps {
   analyses: AnalysisListItem[];
 }
 
 function DualGlobeView({ analyses }: DualGlobeViewProps) {
-  const sorted = [...analyses].sort((a, b) =>
-    (a.snapshot_date ?? "").localeCompare(b.snapshot_date ?? ""),
+  const sorted = useMemo(
+    () =>
+      [...analyses]
+        .sort((a, b) => (a.snapshot_date ?? "").localeCompare(b.snapshot_date ?? ""))
+        .slice(0, 5),
+    [analyses],
   );
-  const latest = sorted[sorted.length - 1];
 
-  const [globe1, setGlobe1] = useState<EmbeddingGraphData | null>(null);
-  const [globe2, setGlobe2] = useState<EmbeddingGraphData | null>(null);
-  const [selected, setSelected] = useState<1 | 2 | null>(null);
+  const [globes, setGlobes] = useState<(EmbeddingGraphData | null)[]>([]);
+  const [selected, setSelected] = useState<number | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 640, h: 400 });
@@ -105,41 +107,49 @@ function DualGlobeView({ analyses }: DualGlobeViewProps) {
   }, []);
 
   useEffect(() => {
-    fetchEmbeddingGraph({ before: latest.snapshot_date ?? undefined })
-      .then((d) => setGlobe1(d.total > 0 ? d : null))
-      .catch(() => setGlobe1(null));
-    fetchEmbeddingGraph()
-      .then((d) => setGlobe2(d.total > 0 ? d : null))
-      .catch(() => setGlobe2(null));
-  }, [latest.snapshot_date]);
+    const fetches = sorted.map((item, i) => {
+      const isLast = i === sorted.length - 1;
+      return (
+        isLast
+          ? fetchEmbeddingGraph()
+          : fetchEmbeddingGraph({ before: item.snapshot_date ?? undefined })
+      )
+        .then((d) => (d.total > 0 ? d : null))
+        .catch(() => null);
+    });
+    Promise.all(fetches).then(setGlobes);
+  }, [sorted]);
 
-  const label1 = formatDate(sorted[0].snapshot_date);
-  const label2 = formatDate(latest.snapshot_date);
+  const pairs = useMemo(
+    () =>
+      sorted
+        .map((item, i) => ({ data: globes[i] ?? null, label: formatDate(item.snapshot_date) }))
+        .filter((p): p is { data: EmbeddingGraphData; label: string } => p.data !== null),
+    [sorted, globes],
+  );
+
+  const globeData = useMemo(() => pairs.map((p) => p.data), [pairs]);
+  const globeLabels = useMemo(() => pairs.map((p) => p.label), [pairs]);
 
   // 구체 클릭 → 3D 상세 뷰
-  if (selected === 1 && globe1) {
+  if (selected !== null && pairs[selected]) {
     return (
       <div ref={containerRef} className="relative h-full w-full">
-        <GlobeDetailView data={globe1} label={label1} onBack={() => setSelected(null)} />
-      </div>
-    );
-  }
-  if (selected === 2 && globe2) {
-    return (
-      <div ref={containerRef} className="relative h-full w-full">
-        <GlobeDetailView data={globe2} label={label2} onBack={() => setSelected(null)} />
+        <GlobeDetailView
+          data={pairs[selected].data}
+          label={pairs[selected].label}
+          onBack={() => setSelected(null)}
+        />
       </div>
     );
   }
 
   return (
     <div ref={containerRef} className="relative h-full w-full">
-      {globe1 && globe2 ? (
+      {globeData.length > 0 ? (
         <DualGlobeCanvas
-          data1={globe1}
-          data2={globe2}
-          label1={label1}
-          label2={label2}
+          data={globeData}
+          labels={globeLabels}
           width={size.w}
           height={size.h}
           onGlobeClick={setSelected}

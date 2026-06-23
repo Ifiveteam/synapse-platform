@@ -1,8 +1,36 @@
+import { apiFetchAuth } from "@/api/client";
 import { API_BASE_URL } from "@/lib/env";
 import { useAuthStore } from "@/stores/auth";
 
+export interface CuratorSession {
+  session_id: string;
+  title: string;
+  updated_at: string;
+}
+
+export async function fetchCuratorSessions(): Promise<CuratorSession[]> {
+  const data = await apiFetchAuth<{ sessions: CuratorSession[] }>("/api/v1/curator/sessions");
+  return data.sessions;
+}
+
+export interface CuratorMessageItem {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export async function fetchSessionMessages(sessionId: string): Promise<CuratorMessageItem[]> {
+  const data = await apiFetchAuth<{ messages: CuratorMessageItem[] }>(
+    `/api/v1/curator/sessions/${sessionId}/messages`,
+  );
+  return data.messages;
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  await apiFetchAuth(`/api/v1/curator/sessions/${sessionId}`, { method: "DELETE" });
+}
+
 export interface CuratorSSEEvent {
-  event: "token" | "status";
+  event: "token" | "status" | "chart";
   content: string;
 }
 
@@ -42,7 +70,7 @@ export async function* streamCurator(
     for (const line of lines) {
       if (line.startsWith("event: ")) {
         const ev = line.slice(7).trim();
-        if (ev === "status" || ev === "token") currentEvent = ev;
+        if (ev === "status" || ev === "token" || ev === "chart") currentEvent = ev as typeof currentEvent;
       } else if (line.startsWith("data: ")) {
         try {
           const data = JSON.parse(line.slice(6)) as { content: string };
