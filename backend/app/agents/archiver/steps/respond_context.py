@@ -6,12 +6,6 @@ from google.genai import types
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from app.agents.archiver.core.tools import GOOGLE_SEARCH_TOOL
-from app.agents.archiver.prompts import (
-    build_basic_route_instruction,
-    build_general_route_instruction,
-    build_rag_route_instruction,
-    build_search_route_instruction,
-)
 from app.agents.archiver.models import (
     ArchiverRoute,
     ArchiverState,
@@ -21,6 +15,13 @@ from app.agents.archiver.models import (
     get_context_search,
     resolve_route,
 )
+from app.agents.archiver.prompts import (
+    build_basic_route_instruction,
+    build_general_route_instruction,
+    build_rag_route_instruction,
+    build_search_route_instruction,
+)
+
 
 def resolve_respond_tools(
     route: ArchiverRoute,

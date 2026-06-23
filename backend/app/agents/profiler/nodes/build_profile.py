@@ -18,6 +18,7 @@ from app.agents.profiler.prompt import (
     VALUES_TEMPERAMENT_SYSTEM,
 )
 from app.agents.profiler.state import ProfilerState
+from app.agents.shared.analysis_window import WATCH_CATALOG_WINDOW_DAYS
 from app.schemas.profiler import (
     BehaviorSpiderOutput,
     ProfileInsightOutput,
@@ -473,12 +474,15 @@ async def _load_context(
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     from app.core.database.session import AsyncSessionLocal
     from app.repositories.profiler_repository import (
-        fetch_catalog_rows,
+        fetch_recent_catalog_rows,
         fetch_video_analyses_for_user,
     )
 
     async with AsyncSessionLocal() as session:
-        rows = await fetch_catalog_rows(session, user_id)
+        # 누적 catalog 전체가 아니라 최근 윈도우(인덱서와 공유 상수)만 채점에 사용.
+        rows = await fetch_recent_catalog_rows(
+            session, user_id, WATCH_CATALOG_WINDOW_DAYS
+        )
         stats = _build_catalog_stats(rows)
         analyses = await fetch_video_analyses_for_user(session, user_id, limit=50)
 

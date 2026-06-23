@@ -1,216 +1,169 @@
+"""Navigator 에이전트 파사드 — 기능(ideal·guide)·graph 조율을 소유하는 진입점.
+
+DB·HTTP는 모른다. plain 데이터(dict)를 받고 도메인 객체를 반환한다.
+service는 이 파사드만 호출하고, ideal·guide·graph를 직접 import하지 않는다.
 """
-Navigator Agent - Base (Dual-Layer v1.1)
-외부에서 Navigator 에이전트를 실행하는 진입점
-"""
 
-from typing import AsyncIterator, Optional
+from __future__ import annotations
 
-from langchain_core.messages import HumanMessage
+import uuid
+from collections.abc import AsyncIterator
 
-from .graph import get_navigator_graph
-from .schemas import (
+from langchain_core.messages import BaseMessage
+
+from app.agents.navigator.behavior_map import derive_8_from_13
+from app.agents.navigator.graph import build_navigator_graph
+from app.agents.navigator.ideal import (
+    clamp_scores,
+    extract_8axis,
+    persona_label_from_scores,
+    propose_ideals,
+)
+from app.agents.navigator.ideal import (
+    compare as compute_comparison,
+)
+from app.agents.navigator.schemas import (
     Guide,
-    IdealDesignResponse,
-    IdealRadarChart,
-    IdealType,
-    ProfilerData,
-    Quest,
+    NavigatorStreamEvent,
+    ProposedIdeal,
+    RadarComparison,
 )
-from .state import NavigatorState
-from .tool import (
-    compare_radar,
-    compute_dominant_weak,
-    enrich_quests_with_layer_b,
-    generate_all_ideals,
-    generate_guide,
-    generate_quests,
-)
+from app.agents.navigator.state import NavigatorState
+from app.agents.navigator.sub_agent.guide import CatalogStore, run_guide
+
+_ALLOWED_EVENTS = {"status", "token", "ideal"}
 
 
 class NavigatorAgent:
-    """
-    Navigator 에이전트 메인 클래스 (Dual-Layer v1.1)
-
-    사용 예시:
-        agent = NavigatorAgent()
-
-        # 이상향 자동 설계 (Profiler v1.1 데이터 수신)
-        result = agent.design_ideal_auto(
-            user_id="user_123",
-            profiler_data=profiler_data,
-            top5_interests=["운동", "IT", "독서"],
-        )
-    """
+    """기능(ideal·guide)·graph(챗)를 조합해 에이전트 능력을 노출하는 파사드."""
 
     def __init__(self) -> None:
-        self._graph = get_navigator_graph()
+        self._graph = build_navigator_graph()
 
-    # ──────────────────────────────────────────
-    # 이상향 자동 설계 (수식 기반, LLM 없이 즉시 반환)
-    # ──────────────────────────────────────────
-
-    def design_ideal_auto(
+    # ── 단발성 능력 (tool 조합) ──────────────────────────────
+    async def propose(
         self,
-        user_id: str,
-        profiler_data: ProfilerData,
-        top5_interests: list[str],
-    ) -> IdealDesignResponse:
-        """
-        3가지 이상향 생성 (반대방향형은 Gemini LLM, 나머지는 수식 기반)
-        반대방향형 LLM이 가이드도 동시에 생성하여 반환
-        """
-        dominant, weak = compute_dominant_weak(profiler_data.layer_a)
-        proposals, opposite_guide = generate_all_ideals(
-            profiler_data.layer_a,
-            dominant,
-            weak,
-            layer_b=profiler_data.layer_b,
-            top5_interests=top5_interests,
-        )
-        return IdealDesignResponse(
+        profile_21: dict[str, float],
+        top_interests: dict[str, list] | None = None,
+    ) -> list[ProposedIdeal]:
+        """21축 → 반대·강점심화·균형 이상향 3종 (각 13축 설계 + 8축 파생)."""
+        return await propose_ideals(profile_21, top_interests)
+
+    def current_axes(self, profile_21: dict[str, float]) -> dict[str, float]:
+        """21축에서 행동 8축만 추출."""
+        return extract_8axis(profile_21)
+
+    def derive_behavior(self, values13: dict[str, float]) -> dict[str, float]:
+        """이상향 13축 → 행동 8축 파생."""
+        return derive_8_from_13(values13)
+
+    def normalize_ideal(self, scores: dict[str, float]) -> dict[str, float]:
+        """8축 점수를 0~100으로 보정."""
+        return clamp_scores(scores)
+
+    def persona_label(self, scores8: dict[str, float]) -> str:
+        """상위 축 기반 규칙형 페르소나 명칭 (LLM 명칭 폴백용)."""
+        return persona_label_from_scores(scores8)
+
+    def compare(
+        self, profile_21: dict[str, float], ideal_8: dict[str, float]
+    ) -> RadarComparison:
+        """현재(8축) vs 이상향 gap."""
+        return compute_comparison(extract_8axis(profile_21), ideal_8)
+
+    async def generate_guide(
+        self,
+        *,
+        store: CatalogStore | None,
+        user_id: uuid.UUID,
+        profile_21: dict[str, float],
+        ideal_8: dict[str, float],
+        ideal_type: str,
+        reasoning: str,
+    ) -> Guide:
+        """가이드 서브에이전트에 위임 — catalog RAG 근거로 행동 가이드 생성."""
+        return await run_guide(
+            store=store,
             user_id=user_id,
-            proposals=proposals,
-            opposite_guide=opposite_guide,
-            agent_message=(
-                "3가지 이상향을 자동으로 설계했습니다. "
-                "마음에 드는 방향을 선택하거나, 대화로 조율해보세요."
-            ),
+            profile_21=profile_21,
+            ideal_8=ideal_8,
+            ideal_type=ideal_type,
+            reasoning=reasoning,
         )
 
-    # ──────────────────────────────────────────
-    # 가이드 + 퀘스트 빠른 생성
-    # ──────────────────────────────────────────
-
-    def generate_guide_and_quests(
+    # ── 대화형 능력 (graph 실행) ─────────────────────────────
+    async def chat_stream(
         self,
-        profiler_data: ProfilerData,
-        selected_ideal: IdealRadarChart,
-        top5_interests: list[str],
-    ) -> tuple[Guide, list[Quest]]:
-        """이상향 확정 후 가이드 + 퀘스트 즉시 생성 (Layer B 보강 포함)"""
-        comparison = compare_radar(profiler_data.layer_a, selected_ideal)
-        guide = generate_guide(comparison, top5_interests)
-        quests = generate_quests(comparison, top5_interests, count=3)
-        quests = enrich_quests_with_layer_b(quests, profiler_data.layer_b)
-        return guide, quests
-
-    # ──────────────────────────────────────────
-    # LangGraph 전체 플로우 실행
-    # ──────────────────────────────────────────
-
-    async def run(
-        self,
-        user_id: str,
-        profiler_data: ProfilerData,
-        top5_interests: list[str],
-        selected_ideal_type: Optional[IdealType] = None,
-    ) -> NavigatorState:
-        """Navigator 전체 워크플로우 실행"""
-        dominant, weak = compute_dominant_weak(profiler_data.layer_a)
-        proposals, _ = generate_all_ideals(
-            profiler_data.layer_a,
-            dominant,
-            weak,
-            layer_b=profiler_data.layer_b,
-            top5_interests=top5_interests,
-        )
-        target_type = selected_ideal_type or IdealType.EXPANSION
-        selected = next(
-            (p for p in proposals if p.ideal_type == target_type), proposals[0]
-        )
-
-        initial_state = NavigatorState(
+        *,
+        messages: list[BaseMessage],
+        user_id: uuid.UUID,
+        session_id: str,
+        profile_21: dict[str, float],
+        current_8axis: dict[str, float],
+        working_ideal: dict[str, float] | None = None,
+        working_values: dict[str, float] | None = None,
+        ideal_type: str | None = None,
+        top_interests: dict[str, list] | None = None,
+    ) -> AsyncIterator[NavigatorStreamEvent]:
+        """챗 그래프를 돌려 custom 이벤트(status/token/ideal)만 방출한다."""
+        initial_state = self._build_initial_state(
+            messages=messages,
             user_id=user_id,
-            current_radar=profiler_data.layer_a,
-            layer_b=profiler_data.layer_b,
-            top5_interests=top5_interests,
-            is_ideal_confirmed=True,
-            selected_ideal=selected,
-            ideal_type=target_type,
-            ideal_proposals=IdealDesignResponse(
-                user_id=user_id,
-                proposals=proposals,
-                selected=selected,
-            ),
+            session_id=session_id,
+            profile_21=profile_21,
+            current_8axis=current_8axis,
+            working_ideal=working_ideal,
+            working_values=working_values,
+            ideal_type=ideal_type,
+            top_interests=top_interests,
         )
-
-        result = await self._graph.ainvoke(initial_state)
-        return result
-
-    # ──────────────────────────────────────────
-    # 스트리밍 대화
-    # ──────────────────────────────────────────
-
-    async def chat(
-        self,
-        state: NavigatorState,
-        user_message: str,
-    ) -> AsyncIterator[str]:
-        """유저 메시지를 받아 Navigator와 대화"""
-        updated_state = state.model_copy(deep=True)
-        updated_state.messages.append(HumanMessage(content=user_message))
-
-        confirm_keywords = ["좋아", "확정", "이걸로", "결정", "선택"]
-        if any(kw in user_message for kw in confirm_keywords):
-            updated_state.is_ideal_confirmed = True
-
-        if "반대" in user_message or "opposite" in user_message.lower():
-            _set_ideal_by_type(updated_state, IdealType.OPPOSITE)
-        elif "확장" in user_message or "expansion" in user_message.lower():
-            _set_ideal_by_type(updated_state, IdealType.EXPANSION)
-        elif (
-            "균형" in user_message
-            or "balanced" in user_message.lower()
-            or "밸런스" in user_message
+        async for mode, chunk in self._graph.astream(
+            initial_state, stream_mode=["custom", "values"]
         ):
-            _set_ideal_by_type(updated_state, IdealType.BALANCED)
-
-        async for chunk in self._graph.astream(updated_state, stream_mode="values"):
-            if chunk.get("messages"):
-                last_msg = chunk["messages"][-1]
-                if hasattr(last_msg, "content"):
-                    yield last_msg.content
-
-    # ──────────────────────────────────────────
-    # 초기 상태 빌더
-    # ──────────────────────────────────────────
+            if mode != "custom" or not isinstance(chunk, dict):
+                continue
+            event_type = chunk.get("event")
+            content = chunk.get("content")
+            if not content or event_type not in _ALLOWED_EVENTS:
+                continue
+            yield NavigatorStreamEvent(event=event_type, content=content)
 
     @staticmethod
-    def create_initial_state(
-        user_id: str,
-        profiler_data: ProfilerData,
-        top5_interests: list[str],
+    def _build_initial_state(
+        *,
+        messages: list[BaseMessage],
+        user_id: uuid.UUID,
+        session_id: str,
+        profile_21: dict[str, float],
+        current_8axis: dict[str, float],
+        working_ideal: dict[str, float] | None = None,
+        working_values: dict[str, float] | None = None,
+        ideal_type: str | None = None,
+        top_interests: dict[str, list] | None = None,
     ) -> NavigatorState:
-        return NavigatorState(
-            user_id=user_id,
-            current_radar=profiler_data.layer_a,
-            layer_b=profiler_data.layer_b,
-            top5_interests=top5_interests,
-        )
+        state: NavigatorState = {
+            "messages": messages,
+            "user_id": user_id,
+            "session_id": session_id,
+            "profile_21": profile_21,
+            "current_8axis": current_8axis,
+        }
+        if working_ideal:
+            state["working_ideal"] = working_ideal
+        if working_values:
+            state["working_values"] = working_values
+        if ideal_type:
+            state["ideal_type"] = ideal_type
+        if top_interests:
+            state["top_interests"] = top_interests
+        return state
 
 
-# ──────────────────────────────────────────
-# 헬퍼
-# ──────────────────────────────────────────
-
-
-def _set_ideal_by_type(state: NavigatorState, ideal_type: IdealType) -> None:
-    if state.ideal_proposals:
-        for p in state.ideal_proposals.proposals:
-            if p.ideal_type == ideal_type:
-                state.selected_ideal = p
-                state.ideal_type = ideal_type
-                break
-
-
-# ──────────────────────────────────────────
-# 싱글톤
-# ──────────────────────────────────────────
-
-_navigator_agent: Optional[NavigatorAgent] = None
+_navigator_agent: NavigatorAgent | None = None
 
 
 def get_navigator_agent() -> NavigatorAgent:
+    """FastAPI Depends용 NavigatorAgent 싱글톤."""
     global _navigator_agent
     if _navigator_agent is None:
         _navigator_agent = NavigatorAgent()

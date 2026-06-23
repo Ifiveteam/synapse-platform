@@ -120,7 +120,6 @@ export function InteractiveGraph() {
   const dragNodeRef = useRef<NodeDatum | null>(null);
   const [popup, setPopup] = useState<NodePopup | null>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const popupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -249,7 +248,6 @@ export function InteractiveGraph() {
         const node = nodes[popup.nodeId];
         const el = containerRef.current;
         if (!el || !detail) return null;
-        const rect = el.getBoundingClientRect();
         const pxX = (node.x ?? 0);
         const pxY = (node.y ?? 0);
         const popupW = 180;

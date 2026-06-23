@@ -8,15 +8,17 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.archiver.core.constants import ARCHIVER_AGENT_TYPE, RAG_SEARCH_LIMIT
+from app.agents.archiver.core.store import PastKnowledgeHit
 from app.agents.archiver.rag.embedding import (
     build_embedding_source,
     embed_text_safe,
 )
 from app.agents.archiver.rag.retrieval import (
     extract_search_keywords,
+)
+from app.agents.archiver.rag_retrieval import (
     search_past_knowledge as run_rag_search,
 )
-from app.agents.archiver.core.store import PastKnowledgeHit
 from app.models.chat import AIChatLog
 from app.schemas.archiver import ArchiverChatMessage, ArchiverSessionSummary
 
@@ -231,12 +233,7 @@ class ArchiverRepository:
                 )
             )
 
-        stmt = (
-            select(AIChatLog)
-            .where(*filters)
-            .order_by(distance)
-            .limit(limit)
-        )
+        stmt = select(AIChatLog).where(*filters).order_by(distance).limit(limit)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 

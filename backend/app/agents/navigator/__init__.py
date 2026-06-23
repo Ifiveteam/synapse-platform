@@ -1,47 +1,24 @@
-"""Navigator Agent 패키지 (Dual-Layer v1.1)"""
+"""Navigator Agent 패키지 — 21축 입력 · 8축 이상향 설계."""
 
-from .base import NavigatorAgent, get_navigator_agent
-from .schemas import (
-    AXIS_META,
-    AxisKey,
+from app.agents.navigator.base import NavigatorAgent, get_navigator_agent
+from app.agents.navigator.graph import build_navigator_graph
+from app.agents.navigator.schemas import (
     Guide,
-    IdealDesignRequest,
-    IdealDesignResponse,
-    IdealRadarChart,
+    IdealAdjustment,
+    IdealRadar,
     IdealType,
-    Playlist,
-    PlaylistItem,
-    ProfilerData,
-    ProfilerLayerB,
-    Quest,
-    RadarChart,
     RadarComparison,
 )
-from .state import NavigatorState, NavigatorStep
+from app.agents.navigator.state import NavigatorState
 
 __all__ = [
-    # Agent
     "NavigatorAgent",
     "get_navigator_agent",
-    # Layer A 축
-    "AxisKey",
-    "AXIS_META",
-    # Profiler 데이터 모델 (v1.1)
-    "ProfilerData",
-    "ProfilerLayerB",
-    "RadarChart",
-    # 이상향 모델
-    "IdealDesignRequest",
-    "IdealDesignResponse",
-    "IdealRadarChart",
-    "IdealType",
-    "RadarComparison",
-    # 산출물
-    "Guide",
-    "Quest",
-    "Playlist",
-    "PlaylistItem",
-    # 상태
+    "build_navigator_graph",
     "NavigatorState",
-    "NavigatorStep",
+    "IdealType",
+    "IdealRadar",
+    "IdealAdjustment",
+    "RadarComparison",
+    "Guide",
 ]
