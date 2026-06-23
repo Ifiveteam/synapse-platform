@@ -1,48 +1,41 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-
-import { FlatCompat } from "@eslint/eslintrc";
 import js from "@eslint/js";
-import nextPlugin from "@next/eslint-plugin-next";
+import reactHooks from "eslint-plugin-react-hooks";
+import reactRefresh from "eslint-plugin-react-refresh";
+import globals from "globals";
+import tseslint from "typescript-eslint";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-  recommendedConfig: js.configs.recommended,
-});
-
-const eslintConfig = [
-  js.configs.recommended,
-  nextPlugin.flatConfig.coreWebVitals,
-  ...compat.extends(
-    "plugin:react/recommended",
-    "plugin:react-hooks/recommended",
-    "plugin:@typescript-eslint/recommended",
-  ),
-  {
-    settings: {
-      next: {
-        rootDir: __dirname,
-      },
-      react: {
-        version: "detect",
-      },
-    },
-    rules: {
-      "react/react-in-jsx-scope": "off",
-      "react/prop-types": "off",
-    },
-  },
+export default tseslint.config(
   {
     ignores: [
-      ".next/**",
-      "out/**",
-      "build/**",
+      "dist/**",
       "node_modules/**",
-      "next-env.d.ts",
+      ".next/**",
+      "coverage/**",
     ],
   },
-];
-
-export default eslintConfig;
+  {
+    extends: [js.configs.recommended, ...tseslint.configs.recommended],
+    files: ["src/**/*.{ts,tsx}"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: globals.browser,
+    },
+    plugins: {
+      "react-hooks": reactHooks,
+      "react-refresh": reactRefresh,
+    },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      "react-refresh/only-export-components": [
+        "warn",
+        { allowConstantExport: true },
+      ],
+    },
+  },
+  {
+    files: ["vite.config.ts"],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+);

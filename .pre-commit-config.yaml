@@ -15,10 +15,11 @@ repos:
     hooks:
       - id: eslint-frontend
         name: eslint (frontend)
-        entry: npx --prefix frontend eslint --fix --config frontend/eslint.config.mjs
+        entry: pnpm --dir frontend exec eslint src --fix
         language: system
-        files: ^frontend/
+        files: ^frontend/src/
         types_or: [javascript, jsx, ts, tsx]
+        pass_filenames: false
 
       - id: eslint-extension
         name: eslint (extension)
