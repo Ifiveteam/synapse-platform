@@ -58,7 +58,7 @@ function HorizontalBarChart({ items, title }: { items: RankItem[]; title: string
             axisLine={false}
           />
           <Tooltip
-            formatter={(v: number) => [`${v}개`, "시청"]}
+            formatter={(value) => [`${value}개`, "시청"]}
             contentStyle={{ fontSize: 12, borderRadius: 8 }}
           />
           <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={20}>
@@ -80,11 +80,11 @@ export function ChartBlock({ charts }: { charts: ChartEntry[] }) {
       {charts.map((chart, i) => {
         if (chart.type === "video_list" || chart.type === "shorts_list") {
           return (
-            <VideoList key={i} items={chart.items as VideoItem[]} title={chart.title} />
+            <VideoList key={i} items={chart.items as unknown as VideoItem[]} title={chart.title} />
           );
         }
         return (
-          <HorizontalBarChart key={i} items={chart.items as RankItem[]} title={chart.title} />
+          <HorizontalBarChart key={i} items={chart.items as unknown as RankItem[]} title={chart.title} />
         );
       })}
     </div>

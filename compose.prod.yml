@@ -1,0 +1,94 @@
+# ─────────────────────────────────────────────────────────
+# Synapse Platform — production compose (EC2)
+#
+# 이미지는 Docker Hub에서 pull (EC2에서 빌드 안 함 — OOM 회피).
+# CD(GitHub Actions)가 이 파일 옆에 .env(EC2_ENV_FILE 시크릿)를 써넣음.
+#
+#   접속: http://<EC2>  (web = frontend nginx 단일 진입점)
+#         /      → SPA
+#         /api/  → backend:8000
+#
+# 필요 셸 변수(CD가 export): DOCKER_HUB_USERNAME, IMAGE_TAG
+# 런타임 시크릿(.env): POSTGRES_*, DATABASE_URL, GOOGLE_*, OPENAI_API_KEY,
+#   GEMINI_API_KEY, YOUTUBE_API_KEY, JWT_SECRET_KEY, COOKIE_SECURE,
+#   FRONTEND_BASE_URL, RESEND_*, NAVER_* 등 (.env.example 참고)
+# ─────────────────────────────────────────────────────────
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: synapse-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # prod: 5432 미공개 (내부 네트워크만)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - synapse-net
+
+  migrate:
+    image: ${DOCKER_HUB_USERNAME}/synapse-backend:${IMAGE_TAG:-latest}
+    container_name: synapse-migrate
+    restart: "no"
+    entrypoint: ["uv", "run", "alembic", "upgrade", "head"]
+    env_file:
+      - .env
+    networks:
+      - synapse-net
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend:
+    image: ${DOCKER_HUB_USERNAME}/synapse-backend:${IMAGE_TAG:-latest}
+    container_name: synapse-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # .env에 없는 비밀 아닌 기본값 (모델명 등)
+      NAVIGATOR_MODEL: ${NAVIGATOR_MODEL:-gpt-4o}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+    expose:
+      - "8000"
+    networks:
+      - synapse-net
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  web:
+    image: ${DOCKER_HUB_USERNAME}/synapse-frontend:${IMAGE_TAG:-latest}
+    container_name: synapse-web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - synapse-net
+    depends_on:
+      backend:
+        condition: service_healthy
+
+networks:
+  synapse-net:
+    driver: bridge
+
+volumes:
+  pgdata:

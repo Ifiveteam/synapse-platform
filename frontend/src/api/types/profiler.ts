@@ -31,6 +31,7 @@ export interface DbProfileResponse {
   tone_of_user: string | null;
   top_categories: TopCategoryItem[];
   top_channels: TopChannelItem[];
+  llm_used?: boolean;
 }
 
 export interface Synapse8Axes {

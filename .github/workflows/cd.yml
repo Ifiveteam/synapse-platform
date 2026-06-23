@@ -5,7 +5,6 @@ on:
     branches: [main]
 
 env:
-  DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
@@ -15,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      image_tag: ${{ env.IMAGE_TAG }}
+      image_tag: ${{ github.sha }}
 
     steps:
       - name: Checkout
@@ -30,27 +29,32 @@ jobs:
       - name: Docker Buildx 설정
         uses: docker/setup-buildx-action@v3
 
-      # ── Backend ──────────────────────────────────────
+      # ── Backend (migrate + backend 공용) ─────────────
       - name: Backend 이미지 빌드 & 푸시
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: true
           tags: |
-            ${{ env.DOCKER_HUB_USERNAME }}/synapse-backend:latest
-            ${{ env.DOCKER_HUB_USERNAME }}/synapse-backend:${{ env.IMAGE_TAG }}
+            ${{ secrets.DOCKER_HUB_USERNAME }}/synapse-backend:latest
+            ${{ secrets.DOCKER_HUB_USERNAME }}/synapse-backend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # ── Nginx ────────────────────────────────────────
-      - name: Nginx 이미지 빌드 & 푸시
+      # ── Frontend (nginx + dist 단일 이미지) ──────────
+      # 컨텍스트=루트 (frontend/ + 형제 shared/ 필요), Dockerfile은 frontend/
+      - name: Frontend 이미지 빌드 & 푸시
         uses: docker/build-push-action@v5
         with:
-          context: ./nginx
+          context: .
+          file: ./frontend/Dockerfile
+          target: runtime
           push: true
+          build-args: |
+            VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}
           tags: |
-            ${{ env.DOCKER_HUB_USERNAME }}/synapse-nginx:latest
-            ${{ env.DOCKER_HUB_USERNAME }}/synapse-nginx:${{ env.IMAGE_TAG }}
+            ${{ secrets.DOCKER_HUB_USERNAME }}/synapse-frontend:latest
+            ${{ secrets.DOCKER_HUB_USERNAME }}/synapse-frontend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -61,8 +65,17 @@ jobs:
     needs: build-and-push
 
     steps:
-      - name: Checkout (docker-compose.yaml 전달용)
+      - name: Checkout
         uses: actions/checkout@v4
+
+      - name: compose.prod.yml EC2로 복사
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host:     ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key:      ${{ secrets.EC2_SSH_KEY }}
+          source:   "compose.prod.yml"
+          target:   "synapse"
 
       - name: EC2 SSH 배포
         uses: appleboy/ssh-action@v1
@@ -71,21 +84,25 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key:      ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # 환경변수 설정
+            set -e
+            mkdir -p ~/synapse
+            cd ~/synapse
+
+            # 런타임 시크릿(.env) 써넣기 — 따옴표 heredoc이라 $ 미전개
+            cat > .env <<'ENV_EOF'
+            ${{ secrets.EC2_ENV_FILE }}
+            ENV_EOF
+
+            # compose 인터폴레이션용 셸 변수
             export DOCKER_HUB_USERNAME=${{ secrets.DOCKER_HUB_USERNAME }}
             export IMAGE_TAG=${{ needs.build-and-push.outputs.image_tag }}
-            export OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-            export YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }}
 
-            # 작업 디렉토리 이동
-            cd ~/synapse-platform
+            # Docker Hub 로그인 (private 리포 pull 대비)
+            echo "${{ secrets.DOCKER_HUB_TOKEN }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
 
-            # 최신 docker-compose.yaml 가져오기
-            git pull origin main
-
-            # 이미지 pull & 재시작
-            docker compose pull
-            docker compose up -d --remove-orphans
+            # 이번 SHA 이미지 pull & 재시작 (migrate→backend→web)
+            docker compose -f compose.prod.yml pull
+            docker compose -f compose.prod.yml up -d --remove-orphans
 
             # 오래된 이미지 정리
             docker image prune -f

@@ -9,7 +9,7 @@ import type {
   Guide,
   Quest,
 } from "./types";
-import type { ProfilerResult } from "@/api/types/profiler";
+import type { DbProfileResponse } from "@/api/types/profiler";
 import { API_BASE_URL } from "@/lib/env";
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -216,14 +216,34 @@ export async function streamChat(options: ChatStreamOptions): Promise<void> {
  * - layer_b   → layer_b  (필드명 동일)
  * - top5_interests: Top5Interest[] → string[]  (label만 추출)
  */
-export function toProfilerData(result: ProfilerResult): ProfilerData {
+export function toProfilerData(result: DbProfileResponse): ProfilerData {
+  // 신형 DbProfileResponse(scores/top_categories) → Navigator ProfilerData 매핑.
+  // scores에 8축 키가 있으면 사용, 없으면 0. layer_b는 DbProfileResponse에
+  // 대응 데이터가 없어 0으로 둠(백엔드 보강 시 연동 — 후속 과제).
+  const scores = result.scores ?? {};
+  const axis = (k: string) => scores[k] ?? 0;
   return {
-    user_id:        result.user_id,
-    computed_at:    result.computed_at,
-    layer_a:        { user_id: result.user_id, ...result.axes },
-    layer_b:        result.layer_b,
-    top5_interests: result.top5_interests.map((i) => i.label),
-    summary:        result.summary,
+    user_id:     result.user_id,
+    computed_at: result.snapshot_date,
+    layer_a: {
+      user_id:                result.user_id,
+      intellectual_curiosity: axis("intellectual_curiosity"),
+      self_improvement:       axis("self_improvement"),
+      social_awareness:       axis("social_awareness"),
+      depth_immersion:        axis("depth_immersion"),
+      practical_orientation:  axis("practical_orientation"),
+      emotional_comfort:      axis("emotional_comfort"),
+      creative_expression:    axis("creative_expression"),
+      entertainment_release:  axis("entertainment_release"),
+    },
+    layer_b: {
+      search_active_ratio:   0,
+      viewing_concentration: 0,
+      taste_diversity_index: 0,
+      exploration_depth:     0,
+    },
+    top5_interests: (result.top_categories ?? []).slice(0, 5).map((c) => c.category_id),
+    summary:        result.summary_text ?? "",
   };
 }
 
