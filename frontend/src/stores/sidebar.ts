@@ -2,32 +2,32 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import {
-  MOCK_ACTIVE_IDEAL,
+  MOCK_ACTIVE_IDEAL_LABEL,
   MOCK_CHATS,
   MOCK_SCRAPS,
   type SidebarChat,
   type SidebarScrap,
 } from "@/lib/sidebar/mock";
-import type { IdealType } from "@/lib/navigator/types";
 
 interface SidebarStore {
-  activeIdealType: IdealType | null;
+  /** 현재 적용 중인 이상향 표시 라벨 (백엔드 active 이상향 기준) */
+  activeIdealLabel: string | null;
   scraps: SidebarScrap[];
   chats: SidebarChat[];
-  setActiveIdealType: (type: IdealType | null) => void;
+  setActiveIdealLabel: (label: string | null) => void;
 }
 
 export const useSidebarStore = create<SidebarStore>()(
   persist(
     (set) => ({
-      activeIdealType: MOCK_ACTIVE_IDEAL,
+      activeIdealLabel: MOCK_ACTIVE_IDEAL_LABEL,
       scraps: MOCK_SCRAPS,
       chats: MOCK_CHATS,
-      setActiveIdealType: (activeIdealType) => set({ activeIdealType }),
+      setActiveIdealLabel: (activeIdealLabel) => set({ activeIdealLabel }),
     }),
     {
       name: "synapse-sidebar",
-      partialize: (s) => ({ activeIdealType: s.activeIdealType }),
+      partialize: (s) => ({ activeIdealLabel: s.activeIdealLabel }),
     },
   ),
 );

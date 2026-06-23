@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { logoutSession } from "@/api/auth";
+import { devLogin, logoutSession } from "@/api/auth";
 import { clearAuthFromExtension } from "@/lib/extension-auth-sync";
 
 export interface AuthUser {
@@ -27,6 +27,7 @@ interface AuthStore {
   setUser: (user: AuthUser) => void;
   setAuthReady: (ready: boolean) => void;
   loginMock: () => void;
+  loginDev: () => Promise<void>;
   logout: () => void;
 }
 
@@ -44,6 +45,14 @@ export const useAuthStore = create<AuthStore>()((set) => ({
   loginMock: () => {
     clearAuthFromExtension();
     set({ token: MOCK_AUTH_TOKEN, user: MOCK_USER, authReady: true });
+  },
+  loginDev: async () => {
+    const session = await devLogin();
+    set({
+      token: session.access_token,
+      user: session.user,
+      authReady: true,
+    });
   },
   logout: () => {
     void logoutSession();

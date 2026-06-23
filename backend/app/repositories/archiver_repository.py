@@ -14,6 +14,8 @@ from app.agents.archiver.rag_embedding import (
 )
 from app.agents.archiver.rag_retrieval import (
     extract_search_keywords,
+)
+from app.agents.archiver.rag_retrieval import (
     search_past_knowledge as run_rag_search,
 )
 from app.agents.archiver.store import PastKnowledgeHit
@@ -231,12 +233,7 @@ class ArchiverRepository:
                 )
             )
 
-        stmt = (
-            select(AIChatLog)
-            .where(*filters)
-            .order_by(distance)
-            .limit(limit)
-        )
+        stmt = select(AIChatLog).where(*filters).order_by(distance).limit(limit)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 

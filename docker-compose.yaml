@@ -85,53 +85,6 @@ services:
       retries: 3
       start_period: 15s
 
-  redis:
-    image: redis:7-alpine
-    container_name: synapse-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    networks:
-      - synapse-net
-
-  celery-worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: synapse-celery-worker
-    restart: unless-stopped
-    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/synapse
-      REDIS_URL: redis://redis:6379/0
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
-    networks:
-      - synapse-net
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
-      migrate:
-        condition: service_completed_successfully
-
-  celery-beat:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: synapse-celery-beat
-    restart: unless-stopped
-    command: celery -A app.celery_app beat --loglevel=info
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/synapse
-      REDIS_URL: redis://redis:6379/0
-    networks:
-      - synapse-net
-    depends_on:
-      - redis
-      - celery-worker
-
   frontend:
     build:
       context: ./frontend

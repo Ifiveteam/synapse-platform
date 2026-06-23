@@ -12,7 +12,9 @@ import { LoginPage } from "@/pages/LoginPage";
 import { AnalysisComparePage } from "@/pages/AnalysisComparePage";
 import { AnalysisDetailPage } from "@/pages/AnalysisDetailPage";
 import { DownloadPage } from "@/pages/DownloadPage";
+import { IdealDetailPage } from "@/pages/IdealDetailPage";
 import { IdealManagementPage } from "@/pages/IdealManagementPage";
+import { IdealSetupPage } from "@/pages/IdealSetupPage";
 import { MyAnalysesPage } from "@/pages/MyAnalysesPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ScrapDetailPage } from "@/pages/ScrapDetailPage";
@@ -32,6 +34,8 @@ export const router = createBrowserRouter([
       { path: "/me/analyses/compare", element: <AnalysisComparePage /> },
       { path: "/me/analyses/:id", element: <AnalysisDetailPage /> },
       { path: ROUTES.idealManagement, element: <IdealManagementPage /> },
+      { path: ROUTES.idealSetup, element: <IdealSetupPage /> },
+      { path: "/me/ideals/:id", element: <IdealDetailPage /> },
       { path: ROUTES.trends, element: <TrendDetailPage /> },
       { path: ROUTES.scraps, element: <ScrapPage /> },
       { path: "/me/scraps/:id", element: <ScrapDetailPage /> },

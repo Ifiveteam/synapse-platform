@@ -33,6 +33,7 @@ function GoogleIcon() {
 export function LoginPanel() {
   const navigate = useNavigate();
   const loginMock = useAuthStore((s) => s.loginMock);
+  const loginDev = useAuthStore((s) => s.loginDev);
   const closeLoginModal = useShellStore((s) => s.closeLoginModal);
 
   // 실제 Google OAuth: 백엔드 /auth/login → 구글 동의 → 콜백(쿠키) → /upload
@@ -40,9 +41,13 @@ export function LoginPanel() {
     window.location.href = `${API_BASE_URL}/api/v1/auth/login`;
   };
 
-  // 개발 편의: 백엔드 없이 즉시 게스트 진입 (목 토큰 → /me 검증 스킵)
-  const handleGuestLogin = () => {
-    loginMock();
+  // 개발 편의: 백엔드 dev-login으로 즉시 진입 (실 JWT). 실패 시 목 토큰 폴백.
+  const handleGuestLogin = async () => {
+    try {
+      await loginDev();
+    } catch {
+      loginMock();
+    }
     closeLoginModal();
     navigate(ROUTES.upload);
   };

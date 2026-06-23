@@ -11,6 +11,8 @@ export const ROUTES = {
   analysisCompare: (fromId: string, toId: string) =>
     `/me/analyses/compare?from=${encodeURIComponent(fromId)}&to=${encodeURIComponent(toId)}`,
   idealManagement: "/me/ideals",
+  idealSetup: "/me/ideals/new",
+  idealDetail: (id: string) => `/me/ideals/${id}`,
   trends: "/trends",
   scraps: "/me/scraps",
   scrapDetail: (id: string) => `/me/scraps/${id}`,
