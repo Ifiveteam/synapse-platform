@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
-from app.agents.archiver.constants import MAX_HISTORY_MESSAGES
+from app.agents.archiver.core.constants import MAX_HISTORY_MESSAGES
 from app.schemas.archiver import ArchiverChatMessage
 
 

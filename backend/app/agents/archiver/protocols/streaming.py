@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from app.agents.archiver.types import ArchiverStreamEvent, StreamEventType
+from app.agents.archiver.models import ArchiverStreamEvent, StreamEventType
 
 
 def format_sse_event(*, event: StreamEventType, content: str) -> str:

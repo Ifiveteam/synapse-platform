@@ -1,72 +1,167 @@
-"""Archiver LangGraph 조건부 분기 — route별 수집 파이프라인 및 evaluator 루프."""
+"""Archiver LangGraph 조건부 분기 — 다중 엔진 fan-out / fan-in 및 evaluator 루프."""
 
 from __future__ import annotations
 
 from typing import Literal
 
+from langgraph.types import Send
+
+from app.agents.archiver.prompts.evaluator_prompt import ACTION_ENGINE_MAP
+from app.agents.archiver.models import (
+    ArchiverState,
+    normalize_target_engines,
+    remaining_engines,
+)
+from app.agents.archiver.steps.scraper import is_usable_context_body
 from app.agents.archiver.trace import log_evaluator_branch, log_router_branch
-from app.agents.archiver.types import (
+from app.agents.archiver.models import (
     MAX_RETRIEVAL_ATTEMPTS,
     MAX_SEARCH_ATTEMPTS,
     ArchiverRoute,
-    ArchiverState,
     Evaluation,
     resolve_route,
 )
+from app.agents.archiver.models import COLLECT_NODE, RAG_NODE, SEARCH_NODE
 
-RouteAfterRouter = Literal["respond", "collect", "search"]
-RouteAfterCollect = Literal["evaluator"]
-RouteAfterEvaluator = Literal["search", "collect", "respond"]
+RouteAfterRouter = (
+    Literal["respond", "need_dom", "collect_node", "rag_node", "search_node"]
+    | list[Send]
+)
+RouteAfterEvaluator = (
+    Literal["respond", "collect_node", "rag_node", "search_node"] | list[Send]
+)
+
+
+def needs_dom_collection(state: ArchiverState) -> bool:
+    """collect_node가 필요하지만 클라이언트 DOM이 아직 없을 때."""
+    if COLLECT_NODE not in normalize_target_engines(state.get("target_engines")):
+        return False
+    existing_body = (state.get("context_dom") or state.get("context_body") or "").strip()
+    dom_continuation = state.get("dom_continuation", False)
+    return not is_usable_context_body(existing_body) and not dom_continuation
+
+
+def _fan_out_sends(state: ArchiverState, engines: list[str]) -> list[Send]:
+    """지정 엔진에 대해 LangGraph Send fan-out 리스트를 생성한다."""
+    return [Send(engine, state) for engine in engines]
+
+
+def _filter_by_attempt_budget(state: ArchiverState, engines: list[str]) -> list[str]:
+    """시도 한도를 초과한 엔진을 제외한다."""
+    search_attempts = state.get("search_attempts", 0)
+    retrieval_attempts = state.get("retrieval_attempts", 0)
+    allowed: list[str] = []
+    for engine in engines:
+        if engine == SEARCH_NODE and search_attempts >= MAX_SEARCH_ATTEMPTS:
+            continue
+        if engine == RAG_NODE and retrieval_attempts >= MAX_RETRIEVAL_ATTEMPTS:
+            continue
+        allowed.append(engine)
+    return allowed
+
+
+def _engines_for_recommended_action(
+    action: str,
+    pending: list[str],
+) -> list[str]:
+    """evaluator recommended_action을 pending 엔진 목록에 매핑한다."""
+    if action in {"none", "respond"}:
+        return []
+    engine = ACTION_ENGINE_MAP.get(action)
+    if engine:
+        matched = [e for e in pending if e == engine]
+        if matched:
+            return matched
+    return pending
+
+
+def _is_general_fast_path_state(state: ArchiverState) -> bool:
+    """GENERAL 프리패스 — 수집·evaluator 파이프라인 생략."""
+    if state.get("is_general"):
+        return True
+    route = resolve_route(state)
+    targets = normalize_target_engines(state.get("target_engines"))
+    return route == ArchiverRoute.GENERAL or not targets
 
 
 def route_after_router(state: ArchiverState) -> RouteAfterRouter:
-    """GENERAL⇒respond, SEARCH⇒search, RAG/BASIC⇒collect."""
+    """router 이후 GENERAL→respond 프리패스, need_dom, 또는 1차 병렬 fan-out."""
+    if _is_general_fast_path_state(state):
+        route = resolve_route(state)
+        log_router_branch(route=route.value, next_node="respond", targets=[])
+        return "respond"
+
     route = resolve_route(state)
+    targets = normalize_target_engines(state.get("target_engines"))
 
-    if route == ArchiverRoute.GENERAL:
-        next_node: RouteAfterRouter = "respond"
-    elif route == ArchiverRoute.SEARCH:
-        next_node = "search"
-    else:
-        next_node = "collect"
+    if needs_dom_collection(state):
+        log_router_branch(route=route.value, next_node="need_dom", targets=targets)
+        return "need_dom"
 
-    log_router_branch(route=route.value, next_node=next_node)
-    return next_node
-
-
-def route_after_collect(_state: ArchiverState) -> RouteAfterCollect:
-    """collect 완료 후 evaluator로 진행."""
-    return "evaluator"
+    sends = _fan_out_sends(state, targets)
+    log_router_branch(route=route.value, next_node="parallel_fan_out", targets=targets)
+    return sends
 
 
 def route_after_evaluator(state: ArchiverState) -> RouteAfterEvaluator:
-    """LLM evaluator 채점 후 respond 진행 또는 수집 노드 역주행을 결정한다."""
+    """통합 평가 후 respond 또는 미실행 엔진으로 선택적 역주행 fan-out."""
     evaluation = Evaluation.from_state(state)
     search_attempts = state.get("search_attempts", 0)
     retrieval_attempts = state.get("retrieval_attempts", 0)
 
-    if evaluation is None:
+    if evaluation is None or evaluation.is_sufficient:
         next_node: RouteAfterEvaluator = "respond"
-    elif evaluation.is_sufficient:
-        next_node = "respond"
-    elif (
-        evaluation.recommended_action == "search"
-        and search_attempts < MAX_SEARCH_ATTEMPTS
-    ):
-        next_node = "search"
-    elif (
-        evaluation.recommended_action == "collect"
-        and retrieval_attempts < MAX_RETRIEVAL_ATTEMPTS
-    ):
-        next_node = "collect"
-    else:
-        next_node = "respond"
+        if evaluation is not None:
+            log_evaluator_branch(
+                evaluation=evaluation,
+                next_node=next_node,
+                search_attempts=search_attempts,
+                retrieval_attempts=retrieval_attempts,
+                remaining=[],
+            )
+        return next_node
 
-    if evaluation is not None:
+    action = evaluation.normalized_action()
+    if action == "none":
         log_evaluator_branch(
             evaluation=evaluation,
-            next_node=next_node,
+            next_node="respond",
             search_attempts=search_attempts,
             retrieval_attempts=retrieval_attempts,
+            remaining=[],
         )
-    return next_node
+        return "respond"
+
+    pending = remaining_engines(state)
+    pending = _filter_by_attempt_budget(state, pending)
+
+    if not pending:
+        log_evaluator_branch(
+            evaluation=evaluation,
+            next_node="respond",
+            search_attempts=search_attempts,
+            retrieval_attempts=retrieval_attempts,
+            remaining=[],
+        )
+        return "respond"
+
+    retry_targets = _engines_for_recommended_action(action, pending)
+    if not retry_targets:
+        log_evaluator_branch(
+            evaluation=evaluation,
+            next_node="respond",
+            search_attempts=search_attempts,
+            retrieval_attempts=retrieval_attempts,
+            remaining=[],
+        )
+        return "respond"
+
+    sends = _fan_out_sends(state, retry_targets)
+    log_evaluator_branch(
+        evaluation=evaluation,
+        next_node="parallel_fan_out",
+        search_attempts=search_attempts,
+        retrieval_attempts=retrieval_attempts,
+        remaining=retry_targets,
+    )
+    return sends

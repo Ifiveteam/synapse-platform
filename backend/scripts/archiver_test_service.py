@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import sys
 
-from app.agents.archiver.constants import STREAM_ERROR_MESSAGE
-from app.agents.archiver.types import ArchiverStreamEvent
+from app.agents.archiver.core.constants import STREAM_ERROR_MESSAGE
+from app.agents.archiver.models import ArchiverStreamEvent
 from app.services.archiver_service import (
     collect_token_chunks,
     join_assistant_tokens,

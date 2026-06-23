@@ -7,9 +7,9 @@ import re
 import uuid
 from typing import Protocol
 
-from app.agents.archiver.constants import RAG_SEARCH_LIMIT
-from app.agents.archiver.rag_embedding import expand_rag_query
-from app.agents.archiver.store import PastKnowledgeHit
+from app.agents.archiver.core.constants import RAG_SEARCH_LIMIT
+from app.agents.archiver.rag.embedding import expand_rag_query
+from app.agents.archiver.core.store import PastKnowledgeHit
 from app.models.chat import AIChatLog
 
 logger = logging.getLogger(__name__)

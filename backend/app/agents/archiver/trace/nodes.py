@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from app.agents.archiver.observability import log_event
 from app.agents.archiver.trace._common import logger, truncate
-from app.agents.archiver.types import Evaluation
+from app.agents.archiver.trace.observability import log_event
+from app.agents.archiver.models import Evaluation
 
 
 def log_router_result(*, route: str, raw_route: str | None = None) -> None:
@@ -61,13 +61,11 @@ def log_evaluation_result(*, evaluation: Evaluation, source: str = "llm") -> Non
     log_event(
         "evaluator.result",
         source=source,
-        eval_score=evaluation.score,
         is_sufficient=evaluation.is_sufficient,
         recommended_action=evaluation.recommended_action,
         reason=evaluation.reason,
     )
     logger.info("  ┌─ ⚖️ Evaluator AI 채점 (%s)", source)
-    logger.info("  │ score             : %s / 100", evaluation.score)
     logger.info("  │ is_sufficient     : %s", evaluation.is_sufficient)
     logger.info("  │ recommended_action: %s", evaluation.recommended_action)
     for line in truncate(evaluation.reason, limit=500).splitlines():

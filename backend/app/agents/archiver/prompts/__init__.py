@@ -15,7 +15,7 @@ from app.agents.archiver.prompts.system_prompt import (
     ARCHIVER_SEARCH_COLLECT_TEMPLATE,
     ARCHIVER_SEARCH_RESPOND_TEMPLATE,
 )
-from app.agents.archiver.types import (
+from app.agents.archiver.models import (
     NO_CONTEXT_BODY,
     NO_CONTEXT_TITLE,
     NO_CONTEXT_URL,
