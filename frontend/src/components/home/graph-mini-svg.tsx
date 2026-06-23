@@ -238,7 +238,7 @@ export function InteractiveGraph() {
   }, [scheduleClose]);
 
   const nodes = nodesRef.current;
-  const links = linksRef.current as Array<{ source: NodeDatum; target: NodeDatum }>;
+  const links = linksRef.current as unknown as Array<{ source: NodeDatum; target: NodeDatum }>;
 
   return (
     <div ref={containerRef} className="relative h-full w-full">

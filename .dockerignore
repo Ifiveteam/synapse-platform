@@ -1,0 +1,17 @@
+# 루트 컨텍스트(frontend 이미지) 빌드 시 전송 최소화.
+# frontend 이미지는 frontend/ + shared/ 만 필요.
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+.git
+.github
+docs
+backend
+extension
+nginx
+*.pem
+**/.env
+**/.env.local
+**/.env.*.local
+!**/.env.example
