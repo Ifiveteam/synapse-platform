@@ -22,4 +22,5 @@ export const ROUTES = {
   trendPosts: (slug: AgentId | string) => `/agents/${slug}/posts`,
   trendPost: (slug: AgentId | string, postId: string) =>
     `/agents/${slug}/posts/${postId}`,
+  paymentSuccess: "/payment/success",
 } as const;

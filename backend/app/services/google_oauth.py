@@ -123,8 +123,7 @@ async def upsert_user_and_token(
         session.add(user)
     else:
         user.access_token = google_access
-        user.name = info.get("name", user.name)
-        user.picture = info.get("picture", user.picture)
+        # name/picture는 사용자가 직접 수정했을 수 있으므로 덮어쓰지 않음
 
     await session.flush()  # user.id 확보
 

@@ -13,30 +13,37 @@ export function HomeHeader() {
   const openLoginModal = useShellStore((s) => s.openLoginModal);
 
   return (
-    <header className="flex shrink-0 items-start justify-between gap-4 px-6 pt-6 pb-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Home</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          {user
-            ? `${user.name}님, 오케스트레이터와 대화를 시작해 보세요.`
-            : "로그인이 필요합니다. 시작하려면 로그인해 주세요."}
-        </p>
-      </div>
+    <header className="flex shrink-0 items-center justify-between gap-4 px-6 pt-4 pb-2">
+      <p className="text-muted-foreground text-xs">
+        {user
+          ? `${user.name}님, 오케스트레이터와 대화를 시작해 보세요.`
+          : "로그인이 필요합니다. 시작하려면 로그인해 주세요."}
+      </p>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1.5">
         <DemoMenu />
-        <Button variant="outline" size="sm" className="gap-1.5" asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground hover:text-foreground h-7 gap-1.5 px-2.5 text-xs"
+          asChild
+        >
           <Link to={ROUTES.download}>
-            <Download size={14} />
+            <Download size={13} />
             Download
           </Link>
         </Button>
         {user ? (
-          <Button size="sm" variant="outline" onClick={logout}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-muted-foreground hover:text-foreground h-7 px-2.5 text-xs"
+            onClick={logout}
+          >
             로그아웃
           </Button>
         ) : (
-          <Button size="sm" onClick={openLoginModal}>
+          <Button size="sm" className="h-7 px-3 text-xs" onClick={openLoginModal}>
             로그인
           </Button>
         )}

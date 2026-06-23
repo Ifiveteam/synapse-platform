@@ -44,6 +44,13 @@ export async function fetchCatalogGraphSummary(): Promise<CatalogGraphSummary> {
   return apiFetchAuth<CatalogGraphSummary>("/api/v1/indexer/graph-summary");
 }
 
-export async function fetchEmbeddingGraph(): Promise<EmbeddingGraphData> {
-  return apiFetchAuth<EmbeddingGraphData>("/api/v1/indexer/embedding-graph");
+export async function fetchEmbeddingGraph(params?: {
+  before?: string;
+  after?: string;
+}): Promise<EmbeddingGraphData> {
+  const qs = new URLSearchParams();
+  if (params?.before) qs.set("before", params.before);
+  if (params?.after) qs.set("after", params.after);
+  const query = qs.toString() ? `?${qs}` : "";
+  return apiFetchAuth<EmbeddingGraphData>(`/api/v1/indexer/embedding-graph${query}`);
 }

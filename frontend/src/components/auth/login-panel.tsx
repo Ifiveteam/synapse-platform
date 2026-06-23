@@ -1,7 +1,7 @@
 import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-import { GraphMiniSvg } from "@/components/home/graph-mini-svg";
+import { PentagonGraph } from "@/components/home/pentagon-graph";
 import { API_BASE_URL } from "@/lib/env";
 import { ROUTES } from "@/routes";
 import { useAuthStore } from "@/stores/auth";
@@ -50,13 +50,8 @@ export function LoginPanel() {
   return (
     <div className="w-full max-w-md">
       <div className="border-border overflow-hidden rounded-2xl border bg-card">
-        <div className="border-border relative border-b bg-secondary/40 px-4 pt-3 pb-2">
-          <p className="text-muted-foreground mb-2 text-[10px] font-semibold tracking-widest uppercase">
-            Graph View
-          </p>
-          <div className="flex h-36 items-center justify-center">
-            <GraphMiniSvg className="h-full w-full" />
-          </div>
+        <div className="border-border relative border-b bg-secondary/40 px-4 pt-4 pb-4">
+          <PentagonGraph />
         </div>
 
         <div className="px-6 py-6 text-center">

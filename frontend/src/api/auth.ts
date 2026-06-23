@@ -7,6 +7,7 @@ export interface AuthUser {
   email: string;
   name: string;
   picture: string | null;
+  plan: string;
 }
 
 export interface SessionResponse {
@@ -60,6 +61,32 @@ export async function issueExtensionAuthCode(
   } catch {
     return null;
   }
+}
+
+export async function updateMe(
+  token: string,
+  data: { nickname?: string; picture?: string },
+): Promise<AuthUser | null> {
+  const res = await fetch(`${AUTH_API}/me`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function deleteMe(token: string): Promise<boolean> {
+  const res = await fetch(`${AUTH_API}/me`, {
+    method: "DELETE",
+    credentials: "include",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.ok;
 }
 
 export async function logoutSession(): Promise<void> {
