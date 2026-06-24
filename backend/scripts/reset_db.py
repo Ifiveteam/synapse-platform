@@ -4,8 +4,8 @@ import sys
 import os
 from pathlib import Path
 
-# 백엔드 경로 추가
-sys.path.insert(0, str(Path(__file__).parent))
+# 백엔드 경로 추가 (scripts/ 한 단계 위가 backend 루트)
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import asyncio
 from sqlalchemy import text
