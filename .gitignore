@@ -12,13 +12,22 @@ Desktop.ini
 !.vscode/extensions.json
 !.vscode/settings.json
 
-# Environment & secrets (.env.example 은 커밋)
+# Environment & secrets
 **/.env
 **/.env.local
 **/.env.*.local
 **/.env.development
 **/.env.production
-!**/.env.example
+
+# 개인키 / 인증서 (절대 커밋 금지 — EC2 .pem, SSH 키 등)
+*.pem
+*.key
+*.ppk
+*.p12
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
 
 # Python (backend)
 __pycache__/

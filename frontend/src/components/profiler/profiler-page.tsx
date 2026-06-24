@@ -127,9 +127,6 @@ export function ProfilerPage() {
             {jobStatus && (
               <span className="text-muted-foreground text-sm">
                 상태: {STATUS_LABEL[jobStatus]}
-                {result?.llm_used !== undefined && result && (
-                  <> · LLM {result.llm_used ? "사용" : "fallback"}</>
-                )}
               </span>
             )}
           </div>

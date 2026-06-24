@@ -1,5 +1,9 @@
 .venv
 .env
+.env.*
+!.env.example
+*.pem
+*.key
 __pycache__
 *.py[cod]
 .ruff_cache
