@@ -239,7 +239,11 @@ export function InteractiveGraph() {
   }, [scheduleClose]);
 
   const nodes = nodesRef.current;
-  const links = linksRef.current as Array<{ source: NodeDatum; target: NodeDatum }>;
+  // d3 forceLink가 시뮬레이션 시 source/target을 노드 객체로 치환(mutate)하므로 안전
+  const links = linksRef.current as unknown as Array<{
+    source: NodeDatum;
+    target: NodeDatum;
+  }>;
 
   return (
     <div ref={containerRef} className="relative h-full w-full">
