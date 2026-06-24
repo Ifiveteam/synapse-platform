@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import sys
-from datetime import UTC, datetime
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
-from app.agents.archiver.history import append_user_turn, history_to_messages
+from app.agents.archiver.core.history import append_user_turn, history_to_messages
 from app.agents.archiver.steps.respond_context import (
     build_gemini_contents,
     resolve_respond_tools,
     resolve_system_instruction,
 )
-from app.agents.archiver.streaming import format_sse_event
-from app.agents.archiver.types import ArchiverRoute
+from app.agents.archiver.protocols.streaming import format_sse_event
+from app.agents.archiver.models import ArchiverRoute
 from app.schemas.archiver import ArchiverChatMessage
 
 
@@ -25,16 +24,17 @@ def _assert(condition: bool, message: str, errors: list[str]) -> None:
 
 def run_p2_tests() -> list[str]:
     errors: list[str] = []
-    now = datetime.now(UTC)
 
+    # SSE envelope
     frame = format_sse_event(event="token", content="안녕")
     _assert(frame.startswith("event: token\n"), "SSE: event line", errors)
     _assert('"content": "안녕"' in frame, "SSE: JSON payload", errors)
     _assert(frame.endswith("\n\n"), "SSE: frame terminator", errors)
 
+    # multi-turn history
     history = [
-        ArchiverChatMessage(id=1, role="user", content="이전 질문", created_at=now),
-        ArchiverChatMessage(id=2, role="assistant", content="이전 답", created_at=now),
+        ArchiverChatMessage(id=1, role="user", content="이전 질문", created_at="2026-06-18T00:00:00Z"),  # type: ignore[arg-type]
+        ArchiverChatMessage(id=2, role="assistant", content="이전 답", created_at="2026-06-18T00:00:01Z"),  # type: ignore[arg-type]
     ]
     prior = history_to_messages(history, limit=20)
     full = append_user_turn(prior, "새 질문")
@@ -48,6 +48,7 @@ def run_p2_tests() -> list[str]:
     gemini_single = build_gemini_contents([HumanMessage(content="단일")])
     _assert(gemini_single == "단일", "gemini: single string shortcut", errors)
 
+    # respond tool binding
     _assert(
         resolve_respond_tools(ArchiverRoute.SEARCH, "") is not None,
         "tools: SEARCH without search_data binds tool",

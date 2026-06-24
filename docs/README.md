@@ -2,7 +2,7 @@
 
 플랫폼 문서를 모아 두는 폴더.
 
-**처음 시작:** [가이드](./GUIDE.md) — 클론 후 `uv sync`, `pre-commit install`
+**처음 시작:** [루트 `CLAUDE.md`](../CLAUDE.md) — 사전 요구사항, 최초 설정(`uv sync`, `pre-commit install`), 로컬 실행
 
 - **루트 (`docs/`)** — 에이전트 공통 문서 (아키텍처, 용어, API 개요 등)
 - **하위 폴더** — 에이전트별 문서

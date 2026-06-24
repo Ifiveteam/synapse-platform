@@ -14,6 +14,7 @@ export default defineManifest({
     'activeTab', // 유저가 현재 보고 있는 탭의 본문 텍스트 파싱용
     'storage', // FAB와 사이드패널 헤더 간 트래킹 토글 스위치 상태 실시간 동기화용
     'tabs', // 유저 제어형 실시간 URL 및 체류 시간 추적 모니터링용
+    'webNavigation', // tabContext: getAllFrames로 탭 내 모든 iframe frameId 수집
     'windows', // 멀티 모니터·다중 창 포커스 전환 시 세션 정산용
   ],
 
@@ -31,7 +32,8 @@ export default defineManifest({
     {
       matches: ['<all_urls>'],
       js: ['src/entries/content.tsx'],
-      // Tailwind CSS나 Shadcn UI 스타일링이 웹페이지에 깨짐 없이 주입되도록 보장
+      // all_frames: 각 프레임이 로컬 DOM만 추출 — sidepanel이 frameId별 sendMessage로 통합
+      all_frames: true,
       run_at: 'document_idle',
     },
   ],

@@ -1,7 +1,7 @@
 # Synapse DB 스키마
 
 PostgreSQL 17 · `pgvector` · `pgcrypto`  
-마이그레이션: `backend/alembic/versions/001_initial_schema.py` … `004_user_analysis_source.py`
+마이그레이션: `backend/alembic/versions/001_initial_schema.py` … `013_user_plan.py` (head)
 
 ---
 
@@ -10,12 +10,15 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | 테이블 | 설명 | 관계 |
 |--------|------|------|
 | `users` | 사용자 | `user_token` 1:1 |
-| `user_token` | 로그인·Google 토큰 | → `users` |
+| `user_token` | 로그인·Google·익스텐션 토큰 | → `users` |
+| `extension_auth_code` | 웹→익스텐션 1회용 연동 코드 | → `users` |
 | `user_watch_catalog` | 시청 기록 정본 (인덱서) | → `users`, ← `video_analysis` 0~1 |
 | `user_analysis_source` | 업로드 소스별 분석 이력 (중복 방지) | → `users`, → `user_profile_history` 0~1 |
 | `video_analysis` | 영상 LLM 분석 (프로파일러) | → `users`, → `user_watch_catalog` 1:1 |
 | `user_profile_history` | 성향 점수 + LLM 해석 스냅샷 | → `users` |
-| `user_ideal_persona` | 이상 자아 (네비게이터) | → `users` |
+| `user_ideal_persona` | 이상 자아 (네비게이터) | → `users`, → `user_profile_history` 0~1 |
+| `navigator_proposal_cache` | 이상향 제안 3안 캐시 (네비게이터) | → `users`, → `user_profile_history` |
+| `ai_chat_logs` | 통합 AI 채팅 로그 (Archiver·Curator) | → `users` |
 
 ---
 
@@ -31,6 +34,7 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `name` | VARCHAR(256) | N | 표시 이름 |
 | `picture` | TEXT | Y | 프로필 이미지 URL |
 | `access_token` | TEXT | Y | Google access token (Drive 등) |
+| `plan` | VARCHAR(20) | N | 요금제. 기본 `free` (013) |
 | `analysis_interval` | VARCHAR(50) | N | 프로파일러 분석 주기. 기본 `WEEKLY` |
 | `next_analysis_at` | TIMESTAMPTZ | N | 다음 프로파일 분석 예정 시각 |
 | `created_at` | TIMESTAMPTZ | N | 가입 시각 |
@@ -41,7 +45,7 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 
 ## user_token
 
-서비스 세션 토큰과 Google refresh token. `users`와 1:1.
+서비스 세션 토큰과 Google·익스텐션 refresh token. `users`와 1:1.
 
 | 컬럼 | 타입 | NULL | 설명 |
 |------|------|:----:|------|
@@ -50,6 +54,24 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `refresh_token` | VARCHAR(512) | N | 서비스 자체 refresh token |
 | `google_refresh_token` | VARCHAR(512) | Y | Google OAuth refresh token |
 | `expires_at` | TIMESTAMPTZ | N | 서비스 refresh token 만료 시각 |
+| `extension_refresh_token` | VARCHAR(512) | Y | 익스텐션 세션 refresh token (006) |
+| `extension_expires_at` | TIMESTAMPTZ | Y | 익스텐션 refresh token 만료 시각 (006) |
+| `created_at` | TIMESTAMPTZ | N | |
+| `updated_at` | TIMESTAMPTZ | N | |
+
+---
+
+## extension_auth_code
+
+웹 로그인 세션에서 발급하는 **익스텐션 1회용 연동 코드** (짧은 TTL). (006)
+
+| 컬럼 | 타입 | NULL | 설명 |
+|------|------|:----:|------|
+| `id` | UUID | N | PK. `gen_random_uuid()` |
+| `user_id` | UUID | N | FK → `users.id` ON DELETE CASCADE. index |
+| `code_hash` | VARCHAR(64) | N | 1회용 코드 해시. UK |
+| `expires_at` | TIMESTAMPTZ | N | 코드 만료 시각. index |
+| `used_at` | TIMESTAMPTZ | Y | 사용 시각 (소비되면 기록) |
 | `created_at` | TIMESTAMPTZ | N | |
 | `updated_at` | TIMESTAMPTZ | N | |
 
@@ -177,32 +199,81 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 
 ## user_ideal_persona
 
-네비게이터용 **이상 자아** 목표 점수 (Synapse 8축).
+네비게이터용 **이상 자아**. 유저당 여러 개 보관하고 그중 하나만 적용(`is_active`).
 
 | 컬럼 | 타입 | NULL | 설명 |
 |------|------|:----:|------|
-| `id` | UUID | N | PK |
+| `id` | UUID | N | PK. `gen_random_uuid()` |
 | `user_id` | UUID | N | FK → `users.id` ON DELETE CASCADE |
-| `exploration` | FLOAT | Y | 목표 — 탐색 |
-| `analytical` | FLOAT | Y | 목표 — 분석 |
-| `creativity` | FLOAT | Y | 목표 — 창의 |
-| `execution` | FLOAT | Y | 목표 — 실행 |
-| `achievement_drive` | FLOAT | Y | 목표 — 성취동기 |
-| `autonomy` | FLOAT | Y | 목표 — 자율 |
-| `sociality` | FLOAT | Y | 목표 — 사회성 |
-| `sensitivity` | FLOAT | Y | 목표 — 감수성 |
-| `description` | TEXT | Y | 이상 자아에 대한 설명 |
+| `source_profile_history_id` | UUID | Y | FK → `user_profile_history.id` ON DELETE SET NULL. 근거 스냅샷 (007) |
+| `exploration` | FLOAT | Y | 목표 8축 — 탐색 |
+| `analytical` | FLOAT | Y | 목표 8축 — 분석 |
+| `creativity` | FLOAT | Y | 목표 8축 — 창의 |
+| `execution` | FLOAT | Y | 목표 8축 — 실행 |
+| `achievement_drive` | FLOAT | Y | 목표 8축 — 성취동기 |
+| `autonomy` | FLOAT | Y | 목표 8축 — 자율 |
+| `sociality` | FLOAT | Y | 목표 8축 — 사회성 |
+| `sensitivity` | FLOAT | Y | 목표 8축 — 감수성 |
+| `persona_label` | TEXT | Y | 이상향 페르소나 명칭 (010) |
+| `values_temperament` | JSONB | Y | 설계 원본 13축(가치10+기질3). 8축 파생원본 (011) |
+| `description` | TEXT | Y | 이상 자아 설명 |
+| `is_active` | BOOLEAN | N | 적용 중 여부. 기본 `false` (008) |
+| `guide_json` | JSONB | Y | 행동 가이드 캐시 (009) |
+| `guide_generated_at` | TIMESTAMPTZ | Y | 가이드 생성 시각 (009) |
+| `guide_catalog_count` | INT | Y | 생성 당시 시청기록 수 → 현재 수와 다르면 stale (009) |
 | `created_at` | TIMESTAMPTZ | N | |
 | `updated_at` | TIMESTAMPTZ | N | |
 
-**인덱스:** `(user_id)`
+**인덱스:** `ix_uip_user (user_id)`, `ix_uip_user_active (user_id, is_active)`
 
 ---
 
-## DB에 없는 것
+## navigator_proposal_cache
+
+네비게이터 **이상향 제안 3안 캐시**. (유저 + 분석 스냅샷)별로 LLM 생성 결과를 보관, 같은 스냅샷이면 재사용(refresh 시 덮어씀). (012)
+
+| 컬럼 | 타입 | NULL | 설명 |
+|------|------|:----:|------|
+| `id` | UUID | N | PK. `gen_random_uuid()` |
+| `user_id` | UUID | N | FK → `users.id` ON DELETE CASCADE |
+| `source_profile_history_id` | UUID | N | FK → `user_profile_history.id` ON DELETE CASCADE. 근거 스냅샷 |
+| `proposals_json` | JSONB | N | 3안 전체(13축+8축+persona+reasoning) 직렬화본 |
+| `generated_at` | TIMESTAMPTZ | N | 생성 시각 |
+| `catalog_count` | INT | Y | 생성 당시 시청기록 수 (stale 힌트) |
+| `created_at` | TIMESTAMPTZ | N | |
+| `updated_at` | TIMESTAMPTZ | N | |
+
+**UK:** `(user_id, source_profile_history_id)` — `uq_npc_user_snapshot`
+
+---
+
+## ai_chat_logs
+
+에이전트 통합 **AI 채팅 로그**. Archiver(패시브 웹 맥락)·Curator(챗봇 세션)가 공유한다. `session_id`로 세션 묶음. (005)
+
+| 컬럼 | 타입 | NULL | 설명 |
+|------|------|:----:|------|
+| `id` | INTEGER | N | PK. autoincrement |
+| `session_id` | VARCHAR(50) | N | 세션 ID. index |
+| `user_id` | UUID | N | FK → `users.id`. index |
+| `agent_type` | VARCHAR(30) | N | 에이전트 종류 (`archiver`·`curator` 등). index |
+| `role` | VARCHAR(20) | N | 메시지 역할 (`user`·`assistant` 등) |
+| `content` | TEXT | N | 메시지 본문 |
+| `context_url` | VARCHAR(2048) | Y | (아카이버) 패시브 웹 맥락 URL |
+| `context_title` | VARCHAR(512) | Y | (아카이버) 패시브 웹 맥락 제목 |
+| `content_embedding` | VECTOR(1536) | Y | `content` RAG 임베딩 (과거 지식 검색) |
+| `created_at` | TIMESTAMPTZ | N | |
+
+**인덱스:** `(session_id)`, `(user_id)`, `(agent_type)`
+
+---
+
+## DB에 없는 것 / 레거시
 
 | 항목 | 처리 방식 |
 |------|-----------|
 | 인덱서 job 상태 | 서버 메모리 (`takeout_status`, `analysis_status`) |
 | 프로파일러 job 상태 | 서버 메모리 (`ProfilerService._jobs`) |
-| `user_video_watch`, `user_feature_snapshot`, `video_vectors`, `indexer_job` | 폐기 (스키마 미포함) |
+| `video_vectors` | 폐기. 미사용 ORM 모델(`VideoVector`)을 제거함. 인덱서 임베딩은 `user_watch_catalog.embedding`이 담당 |
+| `user_profile_insight` | 폐기 (003에서 `user_profile_history`로 병합) |
+| `user_video_watch`, `user_feature_snapshot`, `indexer_job` | 폐기 (스키마 미포함) |

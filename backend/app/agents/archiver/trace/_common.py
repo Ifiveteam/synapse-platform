@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from app.agents.archiver.constants import TRACE_PREVIEW_CHARS
+from app.agents.archiver.core.constants import TRACE_PREVIEW_CHARS
 
 logger = logging.getLogger("app.agents.archiver.workflow")
 

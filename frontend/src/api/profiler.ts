@@ -1,5 +1,6 @@
-import { apiFetch } from "@/api/client";
+import { apiFetch, apiFetchAuth } from "@/api/client";
 import type {
+  AnalysisListItem,
   AnalyzeResponse,
   GraphViewData,
   JobResponse,
@@ -13,32 +14,58 @@ export function getPersonas(): Promise<PersonasResponse> {
   return apiFetch<PersonasResponse>(`${PROFILER_PREFIX}/personas`);
 }
 
-export function analyzeProfile(
-  userId: string,
-  email: string,
-): Promise<AnalyzeResponse> {
-  return apiFetch<AnalyzeResponse>(`${PROFILER_PREFIX}/analyze`, {
+export function analyzeProfile(): Promise<AnalyzeResponse> {
+  return apiFetchAuth<AnalyzeResponse>(`${PROFILER_PREFIX}/run`, {
     method: "POST",
-    body: JSON.stringify({ user_id: userId, email }),
   });
 }
 
 export function getJob(jobId: string): Promise<JobResponse> {
-  return apiFetch<JobResponse>(`${PROFILER_PREFIX}/jobs/${jobId}`);
+  return apiFetchAuth<JobResponse>(`${PROFILER_PREFIX}/jobs/${jobId}`);
 }
 
 export function getProfile(userId: string): Promise<ProfilerResult> {
   return apiFetch<ProfilerResult>(`${PROFILER_PREFIX}/profile/${userId}`);
 }
 
-export function getGraph(
-  userId: string,
-  kind: "taste" | "knowledge",
-): Promise<GraphViewData> {
-  const params = new URLSearchParams({ kind });
-  return apiFetch<GraphViewData>(
-    `${PROFILER_PREFIX}/profile/${userId}/graph?${params}`,
-  );
+export async function getGraph(kind: "taste" | "knowledge"): Promise<GraphViewData> {
+  if (kind === "taste") {
+    const raw = await apiFetchAuth<{
+      total: number;
+      categories: { category_id: string; count: number }[];
+      channels: { channel: string; count: number; category_id: string }[];
+    }>("/api/v1/indexer/graph-summary");
+
+    const nodes: GraphViewData["nodes"] = [
+      ...raw.categories.map((c) => ({
+        id: `cat:${c.category_id}`,
+        type: "category",
+        label: c.category_id,
+        weight: c.count,
+      })),
+      ...raw.channels.map((ch) => ({
+        id: `ch:${ch.channel}`,
+        type: "channel",
+        label: ch.channel,
+        weight: ch.count,
+      })),
+    ];
+    const edges: GraphViewData["edges"] = raw.channels.map((ch) => ({
+      source: `ch:${ch.channel}`,
+      target: `cat:${ch.category_id}`,
+      weight: ch.count,
+      relation: "primary_category",
+    }));
+    return { kind: "taste", nodes, edges };
+  }
+
+  return apiFetchAuth<GraphViewData>("/api/v1/indexer/embedding-graph");
+}
+
+export function listMyAnalyses(): Promise<AnalysisListItem[]> {
+  return apiFetchAuth<{ items: AnalysisListItem[] }>(`${PROFILER_PREFIX}/me/analyses`)
+    .then((r) => r.items ?? [])
+    .catch(() => []);
 }
 
 export async function pollJobUntilDone(

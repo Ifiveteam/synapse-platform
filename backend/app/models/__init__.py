@@ -10,7 +10,6 @@ from app.models.user_profile_history import UserProfileHistory
 from app.models.user_token import UserToken
 from app.models.user_watch_catalog import UserWatchCatalog
 from app.models.video_analysis import VideoAnalysis
-from app.models.video_vector import VideoVector
 
 __all__ = [
     "AIChatLog",
@@ -23,5 +22,4 @@ __all__ = [
     "UserToken",
     "UserWatchCatalog",
     "VideoAnalysis",
-    "VideoVector",
 ]

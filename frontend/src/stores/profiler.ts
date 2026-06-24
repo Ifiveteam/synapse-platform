@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import type { ProfilerResult } from "@/api/types/profiler";
+import type { DbProfileResponse as ProfilerResult } from "@/api/types/profiler";
 
 interface ProfilerStore {
   result: ProfilerResult | null;

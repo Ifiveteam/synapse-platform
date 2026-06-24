@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, Index, String, Text, text
+from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -45,6 +45,6 @@ class UserAnalysisSource(TimestampMixin, Base):
     )
 
     __table_args__ = (
-        Index("uq_uas_user_source", "user_id", "source_key", unique=True),
+        UniqueConstraint("user_id", "source_key", name="uq_uas_user_source"),
         Index("ix_uas_user_created", "user_id", text("created_at DESC")),
     )
