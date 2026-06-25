@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import re
 
-from app.agents.archiver.models import ArchiverState, get_context_dom, wants_page_context
+from app.agents.archiver.models import (
+    ArchiverState,
+    enrich_collect_query,
+    get_context_dom,
+    wants_page_context,
+)
 from app.agents.archiver.utils.context_refine import (
     clean_context_title,
     extract_url_search_hint,
@@ -58,13 +63,13 @@ def build_search_user_content(state: ArchiverState, user_message: str) -> str:
     basic_dom_fallback = wants_page_context(state) and thin_body
     should_enrich = bool(title) and (thin_body or basic_dom_fallback)
 
-    if not should_enrich:
-        return message
+    if should_enrich:
+        message = _compose_search_query(
+            title=title,
+            url_hint=url_hint,
+            message=message,
+            wants_reviews=wants_reviews,
+            wants_info=wants_info,
+        )
 
-    return _compose_search_query(
-        title=title,
-        url_hint=url_hint,
-        message=message,
-        wants_reviews=wants_reviews,
-        wants_info=wants_info,
-    )
+    return enrich_collect_query(state, message)

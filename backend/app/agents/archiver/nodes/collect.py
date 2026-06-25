@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from langgraph.config import get_stream_writer
-from langgraph.types import RunnableConfig
 
 from app.agents.archiver.utils.context_refine import (
     clean_context_title,
@@ -28,10 +27,7 @@ from app.agents.archiver.protocols.stream_status import (
 from app.agents.archiver.trace import log_collect_result, log_node_enter
 
 
-async def collect_node(
-    state: ArchiverState,
-    _config: RunnableConfig,
-) -> dict[str, Any]:
+async def collect_node(state: ArchiverState) -> dict[str, Any]:
     """익스텐션 DOM 또는 서버 스크래핑으로 페이지 본문을 context_dom에 수집한다."""
     log_node_enter("collect_node", state=state)
     writer = get_stream_writer()

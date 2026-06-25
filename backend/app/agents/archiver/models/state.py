@@ -115,6 +115,31 @@ def recent_dialogue_snippet(
     return snippet
 
 
+def has_prior_dialogue(state: ArchiverState) -> bool:
+    """현재 user 턴을 제외한 직전 대화가 있는지 (멀티턴 세션)."""
+    messages = list(state.get("messages") or [])
+    return len(messages) > 1 and recent_dialogue_snippet(state) != "(없음)"
+
+
+def format_turn_with_dialogue(state: ArchiverState, current_text: str) -> str:
+    """수집·검색 쿼리용 — 직전 대화 블록 + 현재 질문."""
+    stripped = current_text.strip()
+    if not stripped:
+        return stripped
+    snippet = recent_dialogue_snippet(state)
+    if snippet == "(없음)":
+        return stripped
+    return f"[직전 대화]\n{snippet}\n\n[현재 질문]\n{stripped}"
+
+
+def enrich_collect_query(state: ArchiverState, query: str) -> str:
+    """멀티턴이면 search/RAG 쿼리에 직전 대화를 붙인다."""
+    base = query.strip()
+    if not base or not has_prior_dialogue(state):
+        return base
+    return format_turn_with_dialogue(state, base)
+
+
 def get_context_dom(state: ArchiverState) -> str:
     """DOM/페이지 본문 — context_dom 우선, 레거시 context_body 폴백."""
     return (state.get("context_dom") or state.get("context_body") or "").strip()

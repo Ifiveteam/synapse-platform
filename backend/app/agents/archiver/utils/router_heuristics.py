@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import re
 
-from app.agents.archiver.models import ArchiverState, recent_dialogue_snippet
+from app.agents.archiver.models import (
+    ArchiverState,
+    has_prior_dialogue,
+    recent_dialogue_snippet,
+)
 
 _GREETING_PATTERN = re.compile(
     r"^(?:"
@@ -50,10 +54,10 @@ def resolve_router_dialogue_context(
     state: ArchiverState,
     message: str,
 ) -> str | None:
-    """라우터 프롬프트에 넣을 직전 대화 — 불필요하거나 없으면 None."""
-    if not needs_dialogue_context(message):
-        return None
+    """라우터 프롬프트에 넣을 직전 대화 — 멀티턴 또는 지시어 후속이면 포함."""
     snippet = recent_dialogue_snippet(state)
     if snippet == "(없음)":
         return None
-    return snippet
+    if has_prior_dialogue(state) or needs_dialogue_context(message):
+        return snippet
+    return None

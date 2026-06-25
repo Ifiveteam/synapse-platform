@@ -17,6 +17,7 @@ from app.agents.archiver.core.constants import MAX_RETRIEVAL_ATTEMPTS
 from app.agents.archiver.models import (
     RAG_NODE,
     ArchiverState,
+    enrich_collect_query,
     get_context_dom,
     get_context_rag,
     latest_user_message,
@@ -69,12 +70,13 @@ async def rag_node(
 
     store = get_archiver_store(config)
     user_message = latest_user_message(state)
+    rag_query = enrich_collect_query(state, user_message)
     rag_payload = ""
 
     if store is not None:
         hits = await store.search_past_knowledge(
             user_id=state["user_id"],
-            query_text=user_message,
+            query_text=rag_query,
             exclude_query_text=user_message,
             retrieval_attempt=retrieval_attempts,
         )

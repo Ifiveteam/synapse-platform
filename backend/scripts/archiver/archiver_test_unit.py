@@ -273,8 +273,37 @@ def run_unit_tests() -> list[str]:
         errors,
     )
     _assert(
-        resolve_router_dialogue_context(dialogue_state, "오늘 서울 날씨") is None,
-        "router_heuristics: resolve skips explicit query",
+        resolve_router_dialogue_context(dialogue_state, "오늘 서울 날씨") is not None,
+        "router_heuristics: resolve dialogue for multi-turn explicit query",
+        errors,
+    )
+    single_turn_state = {
+        "messages": [HumanMessage(content="오늘 서울 날씨 알려줘")],
+        "user_id": "00000000-0000-0000-0000-000000000001",
+        "context_title": "t",
+        "context_url": "https://example.com",
+    }
+    _assert(
+        resolve_router_dialogue_context(single_turn_state, "오늘 서울 날씨 알려줘") is None,
+        "router_heuristics: resolve skips single-turn explicit query",
+        errors,
+    )
+
+    from app.agents.archiver.models import enrich_collect_query
+
+    _assert(
+        "[직전 대화]" in enrich_collect_query(dialogue_state, "레딕스 공홈 url"),
+        "enrich_collect_query: multi-turn prepends dialogue",
+        errors,
+    )
+    _assert(
+        enrich_collect_query(single_turn_state, "레딕스 공홈 url") == "레딕스 공홈 url",
+        "enrich_collect_query: single-turn unchanged",
+        errors,
+    )
+    _assert(
+        "[직전 대화]" in build_search_user_content(dialogue_state, "레딕스 공홈 url"),
+        "search_query: multi-turn includes dialogue block",
         errors,
     )
 
