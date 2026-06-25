@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,7 +21,7 @@ class AIChatLog(Base):
     session_id: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id"),
+        ForeignKey("users.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
     )
@@ -42,6 +42,15 @@ class AIChatLog(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
         nullable=False,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_ai_chat_logs_content_embedding",
+            "content_embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"content_embedding": "vector_cosine_ops"},
+        ),
     )

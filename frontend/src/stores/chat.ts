@@ -1,11 +1,21 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-export interface ChartEntry {
-  type: "video_list" | "shorts_list" | "channel_rank" | "category_bar";
+export interface VideoItem {
   title: string;
-  items: Array<Record<string, unknown>>;
+  channel: string;
 }
+
+export interface RankItem {
+  label: string;
+  count: number;
+}
+
+export type ChartEntry =
+  | { type: "video_list"; title: string; items: VideoItem[] }
+  | { type: "shorts_list"; title: string; items: VideoItem[] }
+  | { type: "channel_rank"; title: string; items: RankItem[] }
+  | { type: "category_bar"; title: string; items: RankItem[] };
 
 export interface ChatMessage {
   id: string;

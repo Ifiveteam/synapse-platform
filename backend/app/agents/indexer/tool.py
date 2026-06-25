@@ -14,12 +14,16 @@ import re
 import zipfile
 from datetime import datetime, timezone
 
+# 인덱서·프로파일러 공통 손잡이 (여기서 재노출 → 기존 import 경로 유지)
+from app.agents.shared.analysis_window import (  # noqa: F401
+    WATCH_CATALOG_WINDOW_DAYS,
+)
+
 # ---------------------------------------------------------------------------
 # 도메인 상수
 # ---------------------------------------------------------------------------
 
 SHORTS_MAX_DURATION_SEC = 180  # 3분 — is_shorts() 판별 기준 (URL /shorts/ OR 이하)
-WATCH_CATALOG_WINDOW_DAYS = 60  # preprocess — catalog에 넣을 시청 기록 일수
 # 공개 CDN 패턴. videos.list snippet.thumbnails 대신 사용 (quota 0)
 YOUTUBE_THUMBNAIL_URL = "https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
 

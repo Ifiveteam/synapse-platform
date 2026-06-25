@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Mapping, Sequence
 
 from sqlalchemy import desc, func, select
@@ -59,6 +59,35 @@ async def fetch_catalog_rows(
     result = await session.execute(
         select(UserWatchCatalog)
         .where(UserWatchCatalog.user_id == user_id)
+        .order_by(desc(UserWatchCatalog.watched_at))
+    )
+    return list(result.scalars().all())
+
+
+async def fetch_recent_catalog_rows(
+    session: AsyncSession, user_id: uuid.UUID, window_days: int
+) -> list[UserWatchCatalog]:
+    """누적 catalog 중 최근 시청 기준 window_days 이내 행만 (프로파일러 채점용 롤링 윈도우).
+
+    기준점은 '오늘'이 아니라 그 유저의 가장 최근 시청 시각(max watched_at)이다 —
+    한동안 import가 없어도 마지막 활동 기준 최근 N일을 안정적으로 잡기 위함.
+    """
+    anchor = (
+        await session.execute(
+            select(func.max(UserWatchCatalog.watched_at)).where(
+                UserWatchCatalog.user_id == user_id
+            )
+        )
+    ).scalar_one_or_none()
+    if anchor is None:
+        return []
+    start = anchor - timedelta(days=window_days)
+    result = await session.execute(
+        select(UserWatchCatalog)
+        .where(
+            UserWatchCatalog.user_id == user_id,
+            UserWatchCatalog.watched_at >= start,
+        )
         .order_by(desc(UserWatchCatalog.watched_at))
     )
     return list(result.scalars().all())

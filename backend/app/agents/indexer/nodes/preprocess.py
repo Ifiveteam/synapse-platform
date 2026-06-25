@@ -1,4 +1,4 @@
-"""노드: Takeout parse + filter + dedupe + 60일."""
+"""노드: Takeout parse + filter + dedupe + 시청 윈도우(WATCH_CATALOG_WINDOW_DAYS)."""
 
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ def apply_watch_window(
 
 
 def run_preprocess(json_path: str) -> dict:
-    """parse → filter → dedupe → 60일. DB 저장 전 in-memory."""
+    """parse → filter → dedupe → 시청 윈도우. DB 저장 전 in-memory."""
     raw_data = parse_takeout_file(json_path)
     cleaned = filter_takeout_rows(raw_data)
     for row in cleaned:

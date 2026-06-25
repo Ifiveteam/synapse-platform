@@ -14,7 +14,6 @@ import {
 
 import { deleteSession, fetchSessionMessages } from "@/api/curator";
 import { cn } from "@/lib/utils";
-import { IDEAL_META } from "@/lib/navigator/types";
 import { ROUTES } from "@/routes";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
@@ -150,7 +149,7 @@ export function Sidebar() {
   const expanded = useShellStore((s) => s.sidebarExpanded);
   const setSidebarExpanded = useShellStore((s) => s.setSidebarExpanded);
   const openLoginModal = useShellStore((s) => s.openLoginModal);
-  const activeIdealType = useSidebarStore((s) => s.activeIdealType);
+  const activeIdealLabel = useSidebarStore((s) => s.activeIdealLabel);
   const scraps = useSidebarStore((s) => s.scraps);
   const chats = useSidebarStore((s) => s.chats);
   const setSession = useChatStore((s) => s.setSession);
@@ -215,9 +214,7 @@ export function Sidebar() {
   const latestScraps = scraps.slice(0, 3);
   const isScrapsSection =
     pathname === ROUTES.scraps || pathname.startsWith(`${ROUTES.scraps}/`);
-  const idealLabel = activeIdealType
-    ? IDEAL_META[activeIdealType].label
-    : "이상향 미설정";
+  const idealLabel = activeIdealLabel ?? "이상향 미설정";
 
   const handleBrandClick = () => {
     if (!expanded) {

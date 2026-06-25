@@ -21,7 +21,12 @@ from app.schemas.auth import (
     UpdateMeRequest,
     UserResponse,
 )
-from app.services import auth_service, extension_auth_service, google_oauth, token_service
+from app.services import (
+    auth_service,
+    extension_auth_service,
+    google_oauth,
+    token_service,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -203,9 +208,7 @@ async def revoke_extension_session(
     session: AsyncSession = Depends(get_db),
 ) -> None:
     """익스텐션 refresh token 무효화."""
-    await extension_auth_service.revoke_extension_session(
-        session, body.refresh_token
-    )
+    await extension_auth_service.revoke_extension_session(session, body.refresh_token)
 
 
 @router.post("/extension-dev-login", response_model=ExtensionSessionResponse)

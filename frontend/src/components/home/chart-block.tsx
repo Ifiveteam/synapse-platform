@@ -1,16 +1,6 @@
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-import type { ChartEntry } from "@/stores/chat";
-
-interface VideoItem {
-  title: string;
-  channel: string;
-}
-
-interface RankItem {
-  label: string;
-  count: number;
-}
+import type { ChartEntry, RankItem, VideoItem } from "@/stores/chat";
 
 const BAR_COLORS = [
   "hsl(220, 70%, 55%)",
@@ -79,12 +69,10 @@ export function ChartBlock({ charts }: { charts: ChartEntry[] }) {
     <div className="mb-2 flex flex-col gap-4 rounded-xl border border-border/60 bg-muted/20 p-3">
       {charts.map((chart, i) => {
         if (chart.type === "video_list" || chart.type === "shorts_list") {
-          return (
-            <VideoList key={i} items={chart.items as unknown as VideoItem[]} title={chart.title} />
-          );
+          return <VideoList key={i} items={chart.items} title={chart.title} />;
         }
         return (
-          <HorizontalBarChart key={i} items={chart.items as unknown as RankItem[]} title={chart.title} />
+          <HorizontalBarChart key={i} items={chart.items} title={chart.title} />
         );
       })}
     </div>

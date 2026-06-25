@@ -3,12 +3,11 @@ import { persist } from "zustand/middleware";
 
 import { fetchCuratorSessions } from "@/api/curator";
 import {
-  MOCK_ACTIVE_IDEAL,
+  MOCK_ACTIVE_IDEAL_LABEL,
   MOCK_SCRAPS,
   type SidebarChat,
   type SidebarScrap,
 } from "@/lib/sidebar/mock";
-import type { IdealType } from "@/lib/navigator/types";
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -23,10 +22,11 @@ function formatRelativeTime(iso: string): string {
 }
 
 interface SidebarStore {
-  activeIdealType: IdealType | null;
+  /** 현재 적용 중인 이상향 표시 라벨 (백엔드 active 이상향 기준) */
+  activeIdealLabel: string | null;
   scraps: SidebarScrap[];
   chats: SidebarChat[];
-  setActiveIdealType: (type: IdealType | null) => void;
+  setActiveIdealLabel: (label: string | null) => void;
   loadChats: () => Promise<void>;
   renameChat: (id: string, title: string) => void;
   deleteChat: (id: string) => void;
@@ -36,10 +36,10 @@ interface SidebarStore {
 export const useSidebarStore = create<SidebarStore>()(
   persist(
     (set) => ({
-      activeIdealType: MOCK_ACTIVE_IDEAL,
+      activeIdealLabel: MOCK_ACTIVE_IDEAL_LABEL,
       scraps: MOCK_SCRAPS,
       chats: [],
-      setActiveIdealType: (activeIdealType) => set({ activeIdealType }),
+      setActiveIdealLabel: (activeIdealLabel) => set({ activeIdealLabel }),
       renameChat: (id, title) =>
         set((s) => ({ chats: s.chats.map((c) => (c.id === id ? { ...c, title } : c)) })),
 
@@ -65,7 +65,10 @@ export const useSidebarStore = create<SidebarStore>()(
     }),
     {
       name: "synapse-sidebar",
-      partialize: (s) => ({ activeIdealType: s.activeIdealType, chats: s.chats }),
+      partialize: (s) => ({
+        activeIdealLabel: s.activeIdealLabel,
+        chats: s.chats,
+      }),
     },
   ),
 );

@@ -1,377 +1,139 @@
-"""
-Navigator Agent - FastAPI Router (v1.1)
+"""Navigator 에이전트 라우터 — 이상향 설계·보관·적용·비교·가이드 (인증 필수).
 
-[이상향 자동 설계]
-  POST /navigator/design          → 수식 기반 3종 자동 제안
-
-[이상향 수정 — 3모드]
-  PATCH /navigator/ideal/direct   → Mode 1: 직접 수치 수정 (모델 없음)
-  POST  /navigator/ideal/chat     → Mode 2: 자연어 대화 수정 (gpt-4o-mini)
-  POST  /navigator/ideal/auto     → Mode 3: AI 최적 이상향 설계 (gpt-4o)
-
-[이상향 확정 후]
-  POST  /navigator/confirm        → 가이드 + 퀘스트 생성
-  POST  /navigator/chat           → 대화형 이상향 설계 SSE
-
-[재생목록]
-  POST  /navigator/playlist       → YouTube 재생목록 생성
+[제안]   GET  /navigator/proposals             → 21축 → 반대·강점심화·균형 3종
+[설계]   POST /navigator/chat/stream           → 대화형 이상향 설계 (SSE)
+[보관]   POST /navigator/ideal                 → 이상향 생성(여러 개 보관)
+         GET  /navigator/ideals                → 보관된 이상향 목록
+         GET  /navigator/ideal/{id}            → 단건
+[적용]   POST /navigator/ideal/{id}/apply      → 적용 중으로 설정 (1개만)
+[분석]   GET  /navigator/ideal/{id}/comparison → 현재 vs 그 이상향 gap
+         GET  /navigator/ideal/{id}/guide      → 그 이상향 기반 행동 가이드
 """
 
-from typing import Optional
+from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
 
-from app.agents.navigator import (
-    Guide,
-    IdealDesignResponse,
-    IdealRadarChart,
-    NavigatorAgent,
-    Playlist,
-    ProfilerData,
-    Quest,
-    get_navigator_agent,
+from app.api.v1.auth import get_current_user_dep
+from app.models.user import User
+from app.schemas.navigator import (
+    ComparisonResponse,
+    ConfirmIdealRequest,
+    GuideResponse,
+    IdealResponse,
+    NavigatorChatRequest,
+    ProposalsResponse,
 )
-from app.agents.navigator.modifier import modify_by_chat, modify_direct, optimize_auto
-from app.agents.navigator.tool import compare_radar
+from app.services.navigator import NavigatorService
 
-router = APIRouter(prefix="/navigator", tags=["navigator"])
-
-
-# ──────────────────────────────────────────
-# 공통 Request 모델
-# ──────────────────────────────────────────
+router = APIRouter(prefix="/navigator", tags=["Navigator Agent"])
 
 
-class DesignIdealRequest(BaseModel):
-    user_id: str
-    profiler_data: ProfilerData
-    top5_interests: list[str] = Field(default_factory=list)
+@router.get("/proposals", response_model=ProposalsResponse)
+async def get_proposals(
+    source_profile_history_id: str | None = Query(
+        default=None, description="기준 분석 스냅샷 (없으면 최신)"
+    ),
+    refresh: bool = Query(default=False, description="캐시 무시하고 3안 새로 생성"),
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> ProposalsResponse:
+    """선택한(없으면 최신) 21축 프로필을 근거로 반대·강점심화·균형 이상향을 제안한다.
 
-
-class ConfirmIdealRequest(BaseModel):
-    user_id: str
-    profiler_data: ProfilerData
-    selected_ideal: IdealRadarChart
-    top5_interests: list[str] = Field(default_factory=list)
-
-
-class ConfirmIdealResponse(BaseModel):
-    guide: Guide
-    quests: list[Quest]
-    message: str
-
-
-class PlaylistRequest(BaseModel):
-    user_id: str
-    profiler_data: ProfilerData
-    selected_ideal: IdealRadarChart
-    top5_interests: list[str] = Field(default_factory=list)
-    access_token: Optional[str] = None
-
-
-class ChatRequest(BaseModel):
-    user_id: str
-    profiler_data: ProfilerData
-    top5_interests: list[str] = Field(default_factory=list)
-    user_message: str
-    ideal_proposals: Optional[IdealDesignResponse] = None
-    selected_ideal: Optional[IdealRadarChart] = None
-    is_ideal_confirmed: bool = False
-
-
-# ──────────────────────────────────────────
-# 이상향 수정 3모드 Request 모델
-# ──────────────────────────────────────────
-
-
-class DirectModifyRequest(BaseModel):
-    """Mode 1: 직접 수정"""
-
-    user_id: str
-    ideal: IdealRadarChart
-    axis: str = Field(description="수정할 축 key (예: creative_expression)")
-    new_value: float = Field(ge=0, le=100, description="새 값 (0~100)")
-
-
-class DirectModifyResponse(BaseModel):
-    updated_ideal: IdealRadarChart
-    suggestions: list[str] = Field(description="연관 축 조정 제안 메시지")
-
-
-class ChatModifyRequest(BaseModel):
-    """Mode 2: 대화 수정"""
-
-    user_id: str
-    ideal: IdealRadarChart
-    user_message: str
-    profiler_data: Optional[ProfilerData] = None  # 컨텍스트용 (선택)
-
-
-class ChatModifyResponse(BaseModel):
-    updated_ideal: IdealRadarChart
-    adjustments: list[dict] = Field(description="적용된 변경 목록")
-    reasoning: str
-    reply: str = Field(description="유저에게 보낼 응답")
-
-
-class AutoOptimalRequest(BaseModel):
-    """Mode 3: AI 최적 설계"""
-
-    user_id: str
-    profiler_data: ProfilerData
-    top5_interests: list[str] = Field(default_factory=list)
-    user_goal: Optional[str] = Field(None, description="유저 목표 텍스트 (선택)")
-
-
-class AutoOptimalResponse(BaseModel):
-    ideal: IdealRadarChart
-    reasoning: str = Field(description="AI 설계 근거")
-
-
-# ──────────────────────────────────────────
-# 이상향 자동 설계 (수식 기반 3종)
-# ──────────────────────────────────────────
-
-
-@router.post(
-    "/design",
-    response_model=IdealDesignResponse,
-    summary="이상향 자동 설계 — 수식 기반 3종 (OPPOSITE / EXPANSION / BALANCED)",
-)
-async def design_ideal(req: DesignIdealRequest) -> IdealDesignResponse:
-    agent: NavigatorAgent = get_navigator_agent()
-    return agent.design_ideal_auto(
-        user_id=req.user_id,
-        profiler_data=req.profiler_data,
-        top5_interests=req.top5_interests,
-    )
-
-
-# ──────────────────────────────────────────
-# 이상향 수정 — Mode 1: DIRECT
-# ──────────────────────────────────────────
-
-
-@router.patch(
-    "/ideal/direct",
-    response_model=DirectModifyResponse,
-    summary="이상향 직접 수정 — 특정 축 수치 변경 (모델 없음)",
-)
-async def modify_ideal_direct(req: DirectModifyRequest) -> DirectModifyResponse:
+    같은 (유저+스냅샷)이면 캐시된 3안을 재사용한다. refresh=true로 새로 생성.
     """
-    슬라이더·직접 입력으로 특정 축 값을 수정.
-    AXIS_VECTORS 기반으로 연관 축 조정 제안도 함께 반환.
-    """
-    try:
-        updated, suggestions = modify_direct(req.ideal, req.axis, req.new_value)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-
-    return DirectModifyResponse(
-        updated_ideal=updated,
-        suggestions=suggestions,
-    )
-
-
-# ──────────────────────────────────────────
-# 이상향 수정 — Mode 2: CHAT (gpt-4o-mini)
-# ──────────────────────────────────────────
-
-
-@router.post(
-    "/ideal/chat",
-    response_model=ChatModifyResponse,
-    summary="이상향 대화 수정 — 자연어 → delta 추출 (gpt-4o-mini)",
-)
-async def modify_ideal_chat(req: ChatModifyRequest) -> ChatModifyResponse:
-    """
-    자연어 메시지로 이상향 조율.
-    예: "창의표현 좀 올리고 실용지향은 낮춰줘"
-
-    gpt-4o-mini가 의도를 파악해 delta 추출 → 적용 후 반환.
-    """
-    import os
-
-    if not os.getenv("OPENAI_API_KEY"):
-        raise HTTPException(
-            status_code=503,
-            detail="OPENAI_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.",
-        )
-
-    current_radar = req.profiler_data.layer_a if req.profiler_data else None
-    layer_b = req.profiler_data.layer_b if req.profiler_data else None
-
-    try:
-        updated, result = modify_by_chat(
-            ideal=req.ideal,
-            user_message=req.user_message,
-            current_radar=current_radar,
-            layer_b=layer_b,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"LLM 호출 실패: {str(e)}") from e
-
-    return ChatModifyResponse(
-        updated_ideal=updated,
-        adjustments=[a.model_dump() for a in result.adjustments],
-        reasoning=result.reasoning,
-        reply=result.reply,
-    )
-
-
-# ──────────────────────────────────────────
-# 이상향 수정 — Mode 3: AUTO OPTIMAL (gpt-4o)
-# ──────────────────────────────────────────
-
-
-@router.post(
-    "/ideal/auto",
-    response_model=AutoOptimalResponse,
-    summary="이상향 AI 최적 설계 — Layer A+B 종합 분석 (gpt-4o)",
-)
-async def optimize_ideal_auto(req: AutoOptimalRequest) -> AutoOptimalResponse:
-    """
-    gpt-4o가 현재 프로필(Layer A 8각 + Layer B 4지표)을 종합 분석하여
-    가장 이상적인 이상향을 자동 설계.
-
-    수식 기반 3종과 나란히 제시 → 유저 선택.
-    """
-    import os
-
-    if not os.getenv("OPENAI_API_KEY"):
-        raise HTTPException(
-            status_code=503,
-            detail="OPENAI_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.",
-        )
-
-    try:
-        ideal = optimize_auto(
-            current_radar=req.profiler_data.layer_a,
-            layer_b=req.profiler_data.layer_b,
-            top5_interests=req.top5_interests,
-            user_goal=req.user_goal,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"LLM 호출 실패: {str(e)}") from e
-
-    return AutoOptimalResponse(
-        ideal=ideal,
-        reasoning=ideal.reasoning,
-    )
-
-
-# ──────────────────────────────────────────
-# 이상향 확정 + 가이드/퀘스트
-# ──────────────────────────────────────────
-
-
-@router.post(
-    "/confirm",
-    response_model=ConfirmIdealResponse,
-    summary="이상향 확정 → 30일 가이드 + 퀘스트 생성",
-)
-async def confirm_ideal(req: ConfirmIdealRequest) -> ConfirmIdealResponse:
-    agent: NavigatorAgent = get_navigator_agent()
-    guide, quests = agent.generate_guide_and_quests(
-        profiler_data=req.profiler_data,
-        selected_ideal=req.selected_ideal,
-        top5_interests=req.top5_interests,
-    )
-    comparison = compare_radar(req.profiler_data.layer_a, req.selected_ideal)
-    gap_summary = f"총 gap: {comparison.total_gap:.1f}점"
-
-    return ConfirmIdealResponse(
-        guide=guide,
-        quests=quests,
-        message=f"이상향이 확정되었습니다! {gap_summary} — 오늘부터 시작해볼까요?",
-    )
-
-
-# ──────────────────────────────────────────
-# 대화형 이상향 설계 (SSE)
-# ──────────────────────────────────────────
-
-
-@router.post("/chat", summary="대화형 이상향 설계 (SSE 스트리밍)")
-async def chat_design(req: ChatRequest) -> StreamingResponse:
-    """
-    유저 메시지 → LangGraph chat 루프 → SSE 스트리밍 응답
-    이상향 타입 선택, 조율, 확정까지 대화로 진행
-    """
-    from app.agents.navigator.state import NavigatorState
-
-    state = NavigatorState(
-        user_id=req.user_id,
-        current_radar=req.profiler_data.layer_a,
-        layer_b=req.profiler_data.layer_b,
-        top5_interests=req.top5_interests,
-        ideal_proposals=req.ideal_proposals,
-        selected_ideal=req.selected_ideal,
-        is_ideal_confirmed=req.is_ideal_confirmed,
-    )
-
-    agent: NavigatorAgent = get_navigator_agent()
-
-    async def event_generator():
+    snapshot_id: uuid.UUID | None = None
+    if source_profile_history_id:
         try:
-            async for chunk in agent.chat(state, req.user_message):
-                yield f"data: {chunk}\n\n"
-        except Exception as e:
-            yield f"data: [ERROR] {str(e)}\n\n"
-        finally:
-            yield "data: [DONE]\n\n"
+            snapshot_id = uuid.UUID(source_profile_history_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="invalid source_profile_history_id",
+            ) from exc
+    return await navigator_service.get_proposals(
+        user_id=user.id, source_profile_history_id=snapshot_id, refresh=refresh
+    )
 
+
+@router.post("/chat/stream")
+async def stream_chat(
+    request: NavigatorChatRequest,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+):
+    """대화형 이상향 설계 SSE 스트림."""
     return StreamingResponse(
-        event_generator(),
+        navigator_service.stream_chat(request, user_id=user.id),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
-# ──────────────────────────────────────────
-# 재생목록
-# ──────────────────────────────────────────
+@router.post("/ideal", response_model=IdealResponse)
+async def create_ideal(
+    request: ConfirmIdealRequest,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> IdealResponse:
+    """이상향을 새로 생성해 보관한다 (적용은 별도)."""
+    return await navigator_service.confirm_ideal(request, user_id=user.id)
 
 
-@router.post(
-    "/playlist", response_model=Playlist, summary="이상향 기반 YouTube 재생목록 생성"
-)
-async def build_playlist(req: PlaylistRequest) -> Playlist:
-    from app.agents.navigator.graph import node_build_playlist
-    from app.agents.navigator.state import NavigatorState
-
-    state = NavigatorState(
-        user_id=req.user_id,
-        current_radar=req.profiler_data.layer_a,
-        layer_b=req.profiler_data.layer_b,
-        top5_interests=req.top5_interests,
-        selected_ideal=req.selected_ideal,
-        ideal_type=req.selected_ideal.ideal_type,
-    )
-
-    result = await node_build_playlist(state)
-    if "error" in result:
-        raise HTTPException(status_code=500, detail=result["error"])
-
-    playlist = result.get("playlist")
-    if not playlist:
-        raise HTTPException(status_code=500, detail="재생목록 생성 실패")
-
-    return playlist
+@router.get("/ideals", response_model=list[IdealResponse])
+async def list_ideals(
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> list[IdealResponse]:
+    """보관된 이상향 목록 (최신순)."""
+    return await navigator_service.list_ideals(user_id=user.id)
 
 
-# ──────────────────────────────────────────
-# 퀘스트 조회 (DB 연동 후 구현)
-# ──────────────────────────────────────────
+@router.get("/ideal/{ideal_id}", response_model=IdealResponse)
+async def get_ideal(
+    ideal_id: uuid.UUID,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> IdealResponse:
+    """단건 이상향 조회."""
+    return await navigator_service.get_ideal(user_id=user.id, ideal_id=ideal_id)
 
 
-@router.get(
-    "/quests/{user_id}", response_model=list[Quest], summary="오늘의 퀘스트 조회"
-)
-async def get_quests(user_id: str) -> list[Quest]:
-    raise HTTPException(
-        status_code=501,
-        detail="DB 연동 후 구현 예정. /confirm으로 퀘스트를 생성하세요.",
+@router.post("/ideal/{ideal_id}/apply", response_model=IdealResponse)
+async def apply_ideal(
+    ideal_id: uuid.UUID,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> IdealResponse:
+    """이 이상향을 '적용 중'으로 설정한다 (유저당 1개)."""
+    return await navigator_service.apply_ideal(user_id=user.id, ideal_id=ideal_id)
+
+
+@router.get("/ideal/{ideal_id}/comparison", response_model=ComparisonResponse)
+async def get_comparison(
+    ideal_id: uuid.UUID,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> ComparisonResponse:
+    """현재 행동 8축 vs 해당 이상향 gap."""
+    return await navigator_service.get_comparison(user_id=user.id, ideal_id=ideal_id)
+
+
+@router.get("/ideal/{ideal_id}/guide", response_model=GuideResponse)
+async def get_guide(
+    ideal_id: uuid.UUID,
+    refresh: bool = Query(default=False, description="캐시 무시하고 새로 생성"),
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> GuideResponse:
+    """해당 이상향 기반 행동 가이드 (catalog RAG 그라운딩, 생성 결과 캐시)."""
+    return await navigator_service.get_guide(
+        user_id=user.id, ideal_id=ideal_id, refresh=refresh
     )
