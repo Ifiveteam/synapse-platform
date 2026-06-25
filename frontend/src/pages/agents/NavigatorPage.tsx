@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { MOCK_PROFILER_DATA } from "@/lib/navigator/mock";
 import type { IdealType, IdealRadarChart, Guide, Quest } from "@/lib/navigator/types";
 import { useProfilerStore } from "@/stores/profiler";
-import { toProfilerData } from "@/lib/navigator/api";
+import { dbProfileToProfilerData } from "@/lib/navigator/api";
 import { NavigatorRadarChart } from "@/components/navigator/radar-chart";
 import { LayerBGauge } from "@/components/navigator/layer-b-gauge";
 import { AXIS_LABELS } from "@/lib/navigator/types";
@@ -42,7 +42,7 @@ function computeDominantWeak(layerA: Record<string, number>, threshold = 15) {
 
 function ProfileSection() {
   const profilerResult = useProfilerStore((s) => s.result);
-  const data = profilerResult ? toProfilerData(profilerResult) : MOCK_PROFILER_DATA;
+  const data = profilerResult ? dbProfileToProfilerData(profilerResult) : MOCK_PROFILER_DATA;
   const { dominant, weak } = computeDominantWeak(data.layer_a as unknown as Record<string, number>);
 
   const dominantLabels = dominant.map((a) => AXIS_LABELS[a as keyof typeof AXIS_LABELS] ?? a).join(", ");
@@ -230,7 +230,7 @@ function GuideSection({
 export function NavigatorPage() {
   // Profiler store → 실제 데이터 우선, 없으면 Mock fallback
   const profilerResult = useProfilerStore((s) => s.result);
-  const PROFILER_DATA  = profilerResult ? toProfilerData(profilerResult) : MOCK_PROFILER_DATA;
+  const PROFILER_DATA  = profilerResult ? dbProfileToProfilerData(profilerResult) : MOCK_PROFILER_DATA;
 
   const [tab,      setTab]      = useState<Tab>("profile");
   const [selected, setSelected] = useState<IdealType | null>(null);

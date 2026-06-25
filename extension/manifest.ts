@@ -27,13 +27,17 @@ export default defineManifest({
     type: 'module',
   },
 
-  // 플로팅 액션 버튼 (FAB) 및 확장 메뉴 주입 (Content Script 환경)
+  // 플로팅 액션 버튼 (FAB) — top frame / Archiver 브릿지 — all_frames 분리 주입
   content_scripts: [
     {
       matches: ['<all_urls>'],
-      js: ['src/entries/content.tsx'],
-      // all_frames: 각 프레임이 로컬 DOM만 추출 — sidepanel이 frameId별 sendMessage로 통합
+      js: ['src/entries/content-archiver.ts'],
       all_frames: true,
+      run_at: 'document_idle',
+    },
+    {
+      matches: ['<all_urls>'],
+      js: ['src/entries/content-tracking.tsx'],
       run_at: 'document_idle',
     },
   ],

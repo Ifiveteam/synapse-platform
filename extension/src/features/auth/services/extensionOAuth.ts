@@ -1,5 +1,5 @@
 import { API_BASE } from '@/shared/api/config'
-import { exchangeExtensionCode } from '@/shared/api/extensionAuth'
+import { exchangeExtensionCode } from '@/features/auth/services/extensionAuth'
 import { terminateAuthSession } from '@/shared/auth/sessionLifecycle'
 import { storeAuthSession } from '@/shared/auth/sessionStorage'
 import type { AuthSessionSnapshot } from '@/shared/auth/types'
@@ -35,7 +35,16 @@ export async function loginWithGoogleOAuth(): Promise<AuthSessionSnapshot> {
   const loginUrl = `${API_BASE}/api/v1/auth/extension/login?redirect_uri=${encodeURIComponent(redirectUri)}`
   const responseUrl = await launchWebAuthFlow(loginUrl)
 
-  const linkCode = new URL(responseUrl).searchParams.get('code')
+  const callbackUrl = new URL(responseUrl)
+  const oauthError = callbackUrl.searchParams.get('error')
+  if (oauthError) {
+    if (oauthError === 'access_denied') {
+      throw new Error('Google 로그인이 취소되었습니다')
+    }
+    throw new Error('OAuth가 취소되었습니다')
+  }
+
+  const linkCode = callbackUrl.searchParams.get('code')
   if (!linkCode) {
     throw new Error('OAuth 콜백에 연동 code가 없습니다')
   }

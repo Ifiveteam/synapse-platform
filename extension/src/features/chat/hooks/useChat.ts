@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   useArchiver,
-  type ArchiverChatMessage,
+  type ArchiverStreamEventPayload,
+  type ArchiverStreamEventType,
+  type ArchiverStreamStatus,
 } from '@/features/archiver/useArchiver'
+import type { ArchiverChatMessage } from '@/features/archiver/models/types'
 
-export interface ChatMessage {
+interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
@@ -25,20 +28,29 @@ function historyToChatMessages(history: ArchiverChatMessage[]): ChatMessage[] {
   }))
 }
 
+function normalizeStatusPayload(payload: ArchiverStreamEventPayload): ArchiverStreamStatus {
+  if (typeof payload === 'string') {
+    return payload.trim()
+  }
+  return payload
+}
+
 /** 사이드패널 채팅 UI — 렌더링·메시지 슬롯 관리만 담당. 엔진 로직은 useArchiver에 위임. */
 export function useChat() {
   const { currentContext, serverHistory, isStreaming, streamMessage } = useArchiver()
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [currentStatus, setCurrentStatus] = useState<ArchiverStreamStatus | null>(null)
   const scrollAnchorRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (isStreaming) return
     setMessages(historyToChatMessages(serverHistory))
+    setCurrentStatus(null)
   }, [serverHistory, isStreaming])
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, currentStatus])
 
   const sendMessage = async (userText: string) => {
     if (!userText.trim() || isStreaming) return
@@ -51,13 +63,22 @@ export function useChat() {
     }
 
     const assistantMessageId = crypto.randomUUID()
+    setCurrentStatus(null)
     setMessages((prev) => [...prev, userMessage])
-    const onChunk = (displayContent: string) => {
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMessageId ? { ...msg, content: displayContent } : msg,
-        ),
-      )
+
+    const onEvent = (event: ArchiverStreamEventType, payload: ArchiverStreamEventPayload) => {
+      if (event === 'status' || event === 'need_dom') {
+        setCurrentStatus(normalizeStatusPayload(payload))
+        return
+      }
+
+      if (event === 'token' && typeof payload === 'string') {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId ? { ...msg, content: msg.content + payload } : msg,
+          ),
+        )
+      }
     }
 
     setMessages((prev) => [
@@ -71,7 +92,7 @@ export function useChat() {
     ])
 
     try {
-      const finalContent = await streamMessage(userText, onChunk)
+      const finalContent = await streamMessage(userText, onEvent)
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantMessageId ? { ...msg, content: finalContent } : msg,
@@ -86,12 +107,15 @@ export function useChat() {
           msg.id === assistantMessageId ? { ...msg, content: errorContent } : msg,
         ),
       )
+    } finally {
+      setCurrentStatus(null)
     }
   }
 
   return {
     messages,
     currentContext,
+    currentStatus,
     isGenerating: isStreaming,
     sendMessage,
     scrollAnchorRef,

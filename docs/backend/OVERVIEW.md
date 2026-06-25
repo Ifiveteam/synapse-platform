@@ -116,17 +116,23 @@ Profiler 프로필·스냅샷 등은 현재 JSON mock 위주 — DB 미연동 �
 
 ```
 agents/archiver/
-├── engine.py           # LangGraph 컴파일·ArchiverEngine.stream()
-├── types.py            # ArchiverState, Evaluation (state/ 대신 단일 모듈)
-├── branches.py         # 조건부 분기
-├── steps/              # LangGraph 노드 함수 (nodes/ 대신)
-├── streaming.py        # SSE envelope
-├── rag_embedding.py    # RAG 임베딩·쿼리 확장
-├── store.py            # ArchiverStore Protocol
+├── engine.py           # ArchiverEngine.stream() — 그래프 실행 래퍼
+├── workflow.py         # StateGraph 정의·compile()
+├── branches.py         # router / evaluator 조건부 fan-out·fan-in
+├── steps/              # 제어 스텝: classify, evaluate, respond, need_dom
+├── nodes/              # 수집 엔진: collect_node, rag_node, search_node
+├── core/               # constants, store, history, tools
+├── models/             # ArchiverState (state.py) + context·routing·evaluation·stream_events
+├── past_knowledge/     # embedding, retrieval (DB hybrid RAG 전략)
+├── protocols/          # SSE envelope, stream_status 메시지 SSOT
+├── trace/              # 개발 trace + observability JSON
+├── utils/              # context_body_quality, context_refine, search_query
 └── prompts/
+
+agents/shared/gemini.py # Gemini 클라이언트 (Archiver·Curator 공용)
 ```
 
-Service(`archiver_service.py`)가 세션·DB·multi-turn·SSE를 담당하고, 그래프 실행은 `ArchiverEngine`에 일임한다.
+Service(`archiver_service.py`)가 세션·DB·multi-turn·SSE를 담당하고, 그래프 실행은 `ArchiverEngine`에 일임한다. 상세는 [docs/archiver](../archiver/ARCHITECTURE.md) 참고.
 
 #### 에이전트 공통 하위 구조 (에이전트마다 일부만 존재)
 

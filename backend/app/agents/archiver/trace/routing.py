@@ -18,7 +18,7 @@ def log_router_branch(
     targets: list[str] | None = None,
 ) -> None:
     target_list = targets or []
-    if next_node == "respond" and route == "GENERAL":
+    if next_node == "respond" and route == "general":
         reason = "GENERAL fast-path — 수집·evaluator 생략"
     elif next_node == "need_dom":
         reason = f"DOM 선행 수집 필요 — targets={target_list}"

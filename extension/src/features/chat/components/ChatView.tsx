@@ -4,6 +4,7 @@
  */
 import { Card, CardContent } from '@/components/ui/card'
 import { ChatMarkdown } from '@/features/chat/components/ChatMarkdown'
+import { StreamStatusIndicator } from '@/features/chat/components/StreamStatusIndicator'
 import { useChatContext } from '@/features/chat/context/ChatProvider'
 
 function resolveHostname(url: string) {
@@ -15,7 +16,8 @@ function resolveHostname(url: string) {
 }
 
 export function ChatView() {
-  const { messages, currentContext, scrollAnchorRef } = useChatContext()
+  const { messages, currentContext, currentStatus, isGenerating, scrollAnchorRef } =
+    useChatContext()
 
   return (
     <div className="flex min-h-full flex-col gap-4">
@@ -51,29 +53,41 @@ export function ChatView() {
             </p>
           </div>
         ) : (
-          messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex max-w-[85%] flex-col gap-1 ${
-                msg.role === 'user' ? 'self-end items-end' : 'self-start items-start'
-              }`}
-            >
+          messages.map((msg, index) => {
+            const isLastAssistantStreaming =
+              isGenerating && index === messages.length - 1 && msg.role === 'assistant'
+
+            return (
               <div
-                className={`rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'rounded-tr-sm bg-slate-900 text-white whitespace-pre-wrap'
-                    : 'rounded-tl-sm border border-slate-100 bg-white text-slate-800 shadow-sm'
+                key={msg.id}
+                className={`flex max-w-[85%] flex-col gap-1 ${
+                  msg.role === 'user' ? 'self-end items-end' : 'self-start items-start'
                 }`}
               >
-                {msg.role === 'assistant' ? (
-                  <ChatMarkdown content={msg.content} />
-                ) : (
-                  msg.content
+                {msg.role === 'assistant' && isLastAssistantStreaming && currentStatus && (
+                  <StreamStatusIndicator status={currentStatus} />
                 )}
+
+                {(msg.role === 'user' || msg.content.length > 0) && (
+                  <div
+                    className={`rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${
+                      msg.role === 'user'
+                        ? 'rounded-tr-sm bg-slate-900 text-white whitespace-pre-wrap'
+                        : 'rounded-tl-sm border border-slate-100 bg-white text-slate-800 shadow-sm'
+                    }`}
+                  >
+                    {msg.role === 'assistant' ? (
+                      <ChatMarkdown content={msg.content} />
+                    ) : (
+                      msg.content
+                    )}
+                  </div>
+                )}
+
+                <span className="px-1 text-[10px] text-slate-400">{msg.timestamp}</span>
               </div>
-              <span className="px-1 text-[10px] text-slate-400">{msg.timestamp}</span>
-            </div>
-          ))
+            )
+          })
         )}
 
         <div ref={scrollAnchorRef} />

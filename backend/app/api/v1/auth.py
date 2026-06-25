@@ -88,12 +88,16 @@ def extension_login(redirect_uri: str) -> RedirectResponse:
 
 @router.get("/callback")
 async def callback(
-    code: str,
+    code: str | None = None,
+    error: str | None = None,
     state: str = "",
     session: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
     return await auth_service.handle_oauth_callback(
-        code, state or None, session
+        code=code,
+        error=error,
+        state=state or None,
+        session=session,
     )
 
 

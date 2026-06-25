@@ -53,7 +53,7 @@ class ArchiverEngine:
         dom_continuation: bool = False,
     ) -> ArchiverState:
         """Service가 주입하는 초기 State 가방."""
-        from app.agents.archiver.steps.scraper import normalize_client_context_body
+        from app.agents.archiver.nodes.utils.scraper import normalize_client_context_body
 
         state: ArchiverState = {
             "messages": messages,
@@ -68,7 +68,6 @@ class ArchiverEngine:
         }
         client_body = normalize_client_context_body(context_body)
         if client_body:
-            state["context_body"] = client_body
             state["context_dom"] = client_body
         if dom_continuation:
             state["dom_continuation"] = True
@@ -104,7 +103,23 @@ class ArchiverEngine:
             if not content or event_type not in {"status", "token", "need_dom"}:
                 continue
 
-            yield ArchiverStreamEvent(event=event_type, content=content)
+            raw_engines = chunk.get("engines")
+            engines: tuple[str, ...] | None = None
+            if isinstance(raw_engines, list) and raw_engines:
+                engines = tuple(str(e) for e in raw_engines)
+
+            phase = chunk.get("phase")
+            message = chunk.get("message")
+            status_phase = phase if isinstance(phase, str) else None
+            status_message = message if isinstance(message, str) else None
+
+            yield ArchiverStreamEvent(
+                event=event_type,
+                content=content,
+                phase=status_phase,  # type: ignore[arg-type]
+                engines=engines,
+                message=status_message,
+            )
 
         latency_ms = int((time.perf_counter() - started_at) * 1000)
         log_workflow_end(final_state, latency_ms=latency_ms)
@@ -117,8 +132,3 @@ def get_archiver_engine() -> ArchiverEngine:
         _archiver_engine_runner = ArchiverEngine()
     return _archiver_engine_runner
 
-
-# 하위 호환 alias
-ArchiverGraph = ArchiverEngine
-get_archiver_graph = get_archiver_engine
-

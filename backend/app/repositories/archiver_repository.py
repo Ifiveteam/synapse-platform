@@ -8,11 +8,11 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.archiver.core.constants import ARCHIVER_AGENT_TYPE, RAG_SEARCH_LIMIT
-from app.agents.archiver.rag.embedding import (
+from app.agents.archiver.past_knowledge.embedding import (
     build_embedding_source,
     embed_text_safe,
 )
-from app.agents.archiver.rag.retrieval import (
+from app.agents.archiver.past_knowledge.retrieval import (
     extract_search_keywords,
     search_past_knowledge as run_rag_search,
 )

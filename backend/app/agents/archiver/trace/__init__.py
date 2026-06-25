@@ -1,6 +1,5 @@
 """Archiver 워크플로우 실행 추적."""
 
-from app.agents.archiver.trace._common import logger
 from app.agents.archiver.trace.nodes import (
     log_collect_result,
     log_evaluation_result,
@@ -16,7 +15,6 @@ from app.agents.archiver.trace.workflow import (
 )
 
 __all__ = [
-    "logger",
     "log_collect_result",
     "log_evaluation_result",
     "log_evaluator_branch",

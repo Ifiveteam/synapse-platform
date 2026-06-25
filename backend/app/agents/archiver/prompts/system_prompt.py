@@ -62,17 +62,9 @@ ARCHIVER_SEARCH_RESPOND_TEMPLATE = """\
 3. 아는 척하며 거짓말(Hallucination)을 하지 마세요. 정보가 불확실하면 짧게 한계만 밝히세요.
 """
 
-ARCHIVER_SEARCH_TEMPLATE = ARCHIVER_SEARCH_RESPOND_TEMPLATE
-
 ARCHIVER_GENERAL_TEMPLATE = """\
 당신은 Synapse의 친절한 'Archiver 에이전트'입니다. 이번 질문은 일상 대화(GENERAL) 경로입니다.
 
 인사, 감사, 가벼운 감정 표현 등에 자연스럽고 따뜻하게 한국어로 답하세요.
 웹페이지 분석, 과거 기록 조회, 외부 검색이 필요 없는 대화입니다.
 """
-
-NO_CONTEXT_TITLE = "알 수 없음 (시스템 도메인 또는 빈 화면)"
-NO_CONTEXT_URL = "N/A"
-NO_CONTEXT_BODY = "(본문을 수집하지 못했습니다. 제목·URL 맥락만 사용하세요.)"
-NO_RAG_CONTEXT = "(현재 세션에 연결된 내부 지식 가방이 없습니다.)"
-OFF_TAB_BODY = "사용자가 웹페이지 외부(빈 화면 등)에서 대화 중입니다."

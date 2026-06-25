@@ -1,4 +1,4 @@
-import { revokeExtensionSession } from '@/shared/api/extensionAuth'
+import { revokeExtensionSession } from '@/features/auth/services/extensionAuth'
 import { clearAuthSession, readAuthSession } from '@/shared/auth/sessionStorage'
 
 /** refresh token revoke(실패 무시) 후 로컬 세션을 제거한다. */

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any, NotRequired, TypedDict
 
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph.message import add_messages
 
 # ── 수집 엔진 노드명 (확장 시 이 집합에 추가) ─────────────────────
@@ -40,21 +40,18 @@ class ArchiverState(TypedDict):
     context_title: str
     context_url: str
 
+    # @deprecated 레거시 — 신규 코드는 is_general + target_engines 사용
     route: NotRequired[str]
     is_general: NotRequired[bool]
     target_engines: NotRequired[list[str]]
     executed_steps: Annotated[NotRequired[list[str]], merge_executed_steps]
 
-    # 엔진별 격리 수집 필드
+    # 엔진별 격리 수집 필드 (canonical)
     context_dom: NotRequired[str]
     context_rag: NotRequired[str]
     context_search: NotRequired[str]
 
-    # 하위 호환 (클라이언트 주입·레거시 노드)
-    context_body: NotRequired[str]
     dom_continuation: NotRequired[bool]
-    rag_data: NotRequired[str]
-    search_data: NotRequired[str]
 
     evaluation_result: NotRequired[dict[str, Any]]
     retrieval_attempts: NotRequired[int]
@@ -67,13 +64,64 @@ class ArchiverState(TypedDict):
     error: NotRequired[str]
 
 
+# 레거시 State 키 (TypedDict 미포함, 쓰기 금지): context_body, rag_data, search_data
+# → get_context_dom / get_context_rag / get_context_search 가 읽기 전용 폴백 제공
+
+
+def latest_user_message(state: ArchiverState) -> str:
+    """messages 스택에서 마지막 HumanMessage 본문을 추출한다."""
+    for message in reversed(state.get("messages", [])):
+        if isinstance(message, HumanMessage):
+            content = message.content
+            if isinstance(content, str):
+                return content.strip()
+            return str(content).strip()
+    return ""
+
+
+_ROUTER_DIALOGUE_SNIPPET_MAX_CHARS = 500
+
+
+def recent_dialogue_snippet(
+    state: ArchiverState,
+    *,
+    max_chars: int = _ROUTER_DIALOGUE_SNIPPET_MAX_CHARS,
+) -> str:
+    """라우터용 직전 대화 요약 — 현재 user 턴은 제외한다."""
+    messages: list[BaseMessage] = list(state.get("messages") or [])
+    if messages and isinstance(messages[-1], HumanMessage):
+        messages = messages[:-1]
+    if not messages:
+        return "(없음)"
+
+    lines: list[str] = []
+    for message in messages[-4:]:
+        if isinstance(message, HumanMessage):
+            role = "사용자"
+        elif isinstance(message, AIMessage):
+            role = "어시스턴트"
+        else:
+            continue
+        content = message.content
+        text = content.strip() if isinstance(content, str) else str(content).strip()
+        if text:
+            lines.append(f"{role}: {text}")
+
+    snippet = "\n".join(lines)
+    if not snippet:
+        return "(없음)"
+    if len(snippet) > max_chars:
+        return snippet[: max_chars - 3] + "..."
+    return snippet
+
+
 def get_context_dom(state: ArchiverState) -> str:
     """DOM/페이지 본문 — context_dom 우선, 레거시 context_body 폴백."""
     return (state.get("context_dom") or state.get("context_body") or "").strip()
 
 
 def get_context_rag(state: ArchiverState) -> str:
-    """내부 RAG — context_rag 우선, 레거시 rag_data 폴백."""
+    """과거 기억 — context_rag 우선, 레거시 rag_data 폴백."""
     return (state.get("context_rag") or state.get("rag_data") or "").strip()
 
 

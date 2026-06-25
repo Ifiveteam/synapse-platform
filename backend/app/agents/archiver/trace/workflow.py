@@ -7,7 +7,14 @@ from typing import Any
 
 from app.agents.archiver.trace.observability import log_event, log_workflow_summary
 from app.agents.archiver.trace._common import banner, logger, truncate
-from app.agents.archiver.models import ArchiverState, Evaluation, resolve_route
+from app.agents.archiver.models import (
+    ArchiverState,
+    Evaluation,
+    format_router_trace_label,
+    get_context_dom,
+    get_context_rag,
+    get_context_search,
+)
 
 
 def log_workflow_start(*, state: ArchiverState) -> None:
@@ -32,12 +39,12 @@ def log_workflow_start(*, state: ArchiverState) -> None:
 
 
 def log_workflow_end(state: dict[str, Any], *, latency_ms: int) -> None:
-    route_value = resolve_route(state).value  # type: ignore[arg-type]
+    route_value = format_router_trace_label(state)  # type: ignore[arg-type]
     evaluation = Evaluation.from_state(state)  # type: ignore[arg-type]
     final_response = state.get("final_response") or ""
     error = state.get("error")
     session_id = state.get("session_id", "?")
-    rag_hit = bool((state.get("rag_data") or "").strip())
+    rag_hit = bool(get_context_rag(state))  # type: ignore[arg-type]
     search_loops = int(state.get("search_attempts", 0))
 
     log_workflow_summary(
@@ -59,9 +66,9 @@ def log_workflow_end(state: dict[str, Any], *, latency_ms: int) -> None:
     logger.info("  ┌─ 최종 스냅샷")
     logger.info("  │ 충분성        : %s", evaluation.is_sufficient if evaluation else "—")
     logger.info("  │ 권장 액션     : %s", evaluation.recommended_action if evaluation else "—")
-    logger.info("  │ rag_data      : %s자", len(state.get("rag_data") or ""))
-    logger.info("  │ search_data   : %s자", len(state.get("search_data") or ""))
-    logger.info("  │ context_body  : %s자", len(state.get("context_body") or ""))
+    logger.info("  │ context_rag   : %s자", len(get_context_rag(state)))  # type: ignore[arg-type]
+    logger.info("  │ context_search: %s자", len(get_context_search(state)))  # type: ignore[arg-type]
+    logger.info("  │ context_dom   : %s자", len(get_context_dom(state)))  # type: ignore[arg-type]
     logger.info("  │ final_response: %s자", len(final_response))
     if error:
         logger.info("  │ error         : %s", error)
@@ -72,7 +79,7 @@ def log_workflow_end(state: dict[str, Any], *, latency_ms: int) -> None:
 
 
 def log_node_enter(node: str, *, state: ArchiverState | None = None) -> None:
-    route_label = resolve_route(state).value if state and state.get("route") else None
+    route_label = format_router_trace_label(state) if state else None
     log_event(
         "node.enter",
         node=node,
@@ -84,7 +91,7 @@ def log_node_enter(node: str, *, state: ArchiverState | None = None) -> None:
     if not state:
         return
 
-    route_label = resolve_route(state).value if state.get("route") else "(미분류)"
+    route_label = format_router_trace_label(state)
 
     if node == "router":
         logger.info("  └─ 유저 질문 라우팅 시작")
@@ -97,11 +104,11 @@ def log_node_enter(node: str, *, state: ArchiverState | None = None) -> None:
 
     elif node == "evaluator":
         logger.info(
-            "  └─ route=%s | rag=%s자 | search=%s자 | body=%s자",
+            "  └─ route=%s | rag=%s자 | search=%s자 | dom=%s자",
             route_label,
-            len(state.get("rag_data") or ""),
-            len(state.get("search_data") or ""),
-            len(state.get("context_body") or ""),
+            len(get_context_rag(state)),
+            len(get_context_search(state)),
+            len(get_context_dom(state)),
         )
 
     elif node == "respond":

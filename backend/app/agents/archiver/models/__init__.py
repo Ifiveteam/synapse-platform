@@ -1,24 +1,25 @@
-"""Archiver models — LangGraph State + Pydantic 도메인 (단일 진입점)."""
+"""Archiver models — LangGraph State + Pydantic 도메인 (Barrel / 단일 진입점).
 
-from app.agents.archiver.models.domain import (
+하위 모듈(`state`, `routing`, `evaluation`, `stream_events`, `context`)은 독립 파일로 유지한다.
+외부 코드는 반드시 `from app.agents.archiver.models import ...` 만 사용한다.
+"""
+
+from app.agents.archiver.core.constants import MAX_RETRIEVAL_ATTEMPTS, MAX_SEARCH_ATTEMPTS
+
+from .context import (
     NO_CONTEXT_BODY,
     NO_CONTEXT_TITLE,
     NO_CONTEXT_URL,
     NO_RAG_CONTEXT,
     OFF_TAB_BODY,
-    ArchiverRoute,
-    ArchiverStreamEvent,
-    CollectEngineName,
-    Evaluation,
-    EvaluatorAction,
-    RouterTargets,
-    StreamEventType,
-    derive_route_from_targets,
-    parse_archiver_route,
-    resolve_route,
 )
-from app.agents.archiver.models.state import (
-    ALL_COLLECT_ENGINES,
+from .evaluation import Evaluation
+from .routing import (
+    RouterTargets,
+    format_router_trace_label,
+    wants_page_context,
+)
+from .state import (
     COLLECT_NODE,
     RAG_NODE,
     SEARCH_NODE,
@@ -26,39 +27,43 @@ from app.agents.archiver.models.state import (
     get_context_dom,
     get_context_rag,
     get_context_search,
-    merge_executed_steps,
+    latest_user_message,
     normalize_target_engines,
+    recent_dialogue_snippet,
     remaining_engines,
 )
-from app.agents.archiver.core.constants import MAX_RETRIEVAL_ATTEMPTS, MAX_SEARCH_ATTEMPTS
+from .stream_events import ArchiverStreamEvent, StatusPhase, StreamEventType
 
 __all__ = [
-    "ALL_COLLECT_ENGINES",
-    "COLLECT_NODE",
-    "MAX_RETRIEVAL_ATTEMPTS",
-    "MAX_SEARCH_ATTEMPTS",
+    # context
     "NO_CONTEXT_BODY",
     "NO_CONTEXT_TITLE",
     "NO_CONTEXT_URL",
     "NO_RAG_CONTEXT",
     "OFF_TAB_BODY",
+    # state
+    "COLLECT_NODE",
     "RAG_NODE",
     "SEARCH_NODE",
-    "ArchiverRoute",
     "ArchiverState",
-    "ArchiverStreamEvent",
-    "CollectEngineName",
-    "Evaluation",
-    "EvaluatorAction",
-    "RouterTargets",
-    "StreamEventType",
-    "derive_route_from_targets",
     "get_context_dom",
     "get_context_rag",
     "get_context_search",
-    "merge_executed_steps",
+    "latest_user_message",
     "normalize_target_engines",
-    "parse_archiver_route",
+    "recent_dialogue_snippet",
     "remaining_engines",
-    "resolve_route",
+    # routing
+    "RouterTargets",
+    "format_router_trace_label",
+    "wants_page_context",
+    # evaluation
+    "Evaluation",
+    # stream_events
+    "ArchiverStreamEvent",
+    "StatusPhase",
+    "StreamEventType",
+    # constants (re-exported from core)
+    "MAX_RETRIEVAL_ATTEMPTS",
+    "MAX_SEARCH_ATTEMPTS",
 ]

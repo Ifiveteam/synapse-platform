@@ -74,3 +74,48 @@ def build_search_route_instruction(
 def build_general_route_instruction() -> str:
     """GENERAL 경로 — 일상 대화 및 스몰토크 전용 프롬프트 빌더."""
     return ARCHIVER_GENERAL_TEMPLATE
+
+
+def build_synthesis_route_instruction(
+    *,
+    context_title: str | None = None,
+    context_url: str | None = None,
+    context_dom: str | None = None,
+    context_rag: str | None = None,
+    context_search: str | None = None,
+) -> str:
+    """채워진 근거(dom·rag·search)를 종합하는 respond synthesis 프롬프트."""
+    sections: list[str] = [
+        "당신은 Synapse Archiver 에이전트입니다. 아래 **여러 채널**에서 수집한 정보를 종합해 한국어로 답하세요.",
+        f"[오늘 날짜] {format_archiver_current_date()}",
+        (
+            "[활성 탭] "
+            f"{context_title or NO_CONTEXT_TITLE} / {context_url or NO_CONTEXT_URL}"
+        ),
+    ]
+
+    dom = (context_dom or "").strip()
+    if dom:
+        sections.append(f"[현재 페이지 본문]\n{dom}")
+
+    rag = (context_rag or "").strip()
+    if rag:
+        sections.append(f"[과거 기억·스크랩 (RAG)]\n{rag}")
+
+    search = (context_search or "").strip()
+    if search:
+        sections.append(
+            f"[웹 검색 결과]\n{search}\n\n"
+            "외부 사실은 이 섹션만 근거로 사용하세요."
+        )
+
+    if not any((dom, rag, search)):
+        sections.append("(수집된 근거 없음 — 대화 맥락만으로 답하세요)")
+
+    sections.append(
+        "⚠️ [답변 규칙]\n"
+        "1. 각 섹션에 있는 사실만 근거로 사용하고 교차 검증해 종합하세요.\n"
+        "2. 없는 정보는 추측하지 마세요.\n"
+        "3. 수집 과정·도구는 언급하지 마세요."
+    )
+    return "\n\n".join(sections)

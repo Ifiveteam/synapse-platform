@@ -5,16 +5,25 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   fetchHistoryForContext,
-  type ArchiverChatMessage,
-} from '@/features/archiver/services/archiverApi'
-import { sendArchiverMessageWithDomFallback } from '@/features/archiver/services/archiverSend'
+  streamArchiverMessage,
+  type ArchiverStreamEventPayload,
+  type ArchiverStreamEventType,
+} from '@/features/archiver/services/archiverClient'
+import type {
+  ArchiverChatMessage,
+  TabContext,
+} from '@/features/archiver/models/types'
 import {
   queryActiveTabContext,
-  type TabContext,
-} from '@/features/archiver/services/tabContext'
+  queryActiveTabContextForSend,
+} from '@/features/archiver/services/queryTabContext'
 import { isExtensionContextValid } from '@/shared/utils/extensionContext'
 
-export type { TabContext, ArchiverChatMessage }
+export type {
+  ArchiverStreamEventPayload,
+  ArchiverStreamEventType,
+  ArchiverStreamStatus,
+} from '@/features/archiver/services/archiverClient'
 
 export function useArchiver() {
   const [currentContext, setCurrentContext] = useState<TabContext | null>(null)
@@ -78,14 +87,33 @@ export function useArchiver() {
   }, [currentContext, isStreaming])
 
   const streamMessage = useCallback(
-    async (message: string, onChunk: (displayText: string) => void): Promise<string> => {
+    async (
+      message: string,
+      onEvent: (event: ArchiverStreamEventType, payload: ArchiverStreamEventPayload) => void,
+    ): Promise<string> => {
       setIsStreaming(true)
       try {
-        const result = await sendArchiverMessageWithDomFallback({
+        const contextAtSend = await queryActiveTabContext()
+        setCurrentContext(contextAtSend)
+
+        let result = await streamArchiverMessage({
           message,
-          onChunk,
-          onContextChange: setCurrentContext,
+          context: contextAtSend,
+          onEvent,
         })
+
+        if (result.needsDom) {
+          const contextWithBody = await queryActiveTabContextForSend()
+          setCurrentContext(contextWithBody)
+
+          result = await streamArchiverMessage({
+            message,
+            context: contextWithBody,
+            domContinuation: true,
+            onEvent,
+          })
+        }
+
         return result.finalContent
       } finally {
         setIsStreaming(false)
