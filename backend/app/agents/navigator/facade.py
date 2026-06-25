@@ -1,7 +1,9 @@
-"""Navigator 에이전트 파사드 — 기능(ideal·guide)·graph 조율을 소유하는 진입점.
+"""Navigator 에이전트 파사드 — LLM 서브에이전트(propose·guide·youtube)와 챗 그래프를
+한 문으로 묶는 진입점.
 
 DB·HTTP는 모른다. plain 데이터(dict)를 받고 도메인 객체를 반환한다.
-service는 이 파사드만 호출하고, ideal·guide·graph를 직접 import하지 않는다.
+규칙 계산(extract_8axis·derive_8_from_13·compare 등)은 파사드를 거치지 않고
+service가 ideal·behavior_map을 직접 호출한다 — 파사드는 LLM/그래프 위임만 담당.
 """
 
 from __future__ import annotations
@@ -11,36 +13,39 @@ from collections.abc import AsyncIterator
 
 from langchain_core.messages import BaseMessage
 
-from app.agents.navigator.behavior_map import derive_8_from_13
 from app.agents.navigator.graph import build_navigator_graph
-from app.agents.navigator.ideal import (
-    clamp_scores,
-    extract_8axis,
-    persona_label_from_scores,
-    propose_ideals,
-)
-from app.agents.navigator.ideal import (
-    compare as compute_comparison,
-)
+from app.agents.navigator.ideal import propose_ideals
 from app.agents.navigator.schemas import (
     Guide,
     NavigatorStreamEvent,
+    PlaylistItem,
     ProposedIdeal,
-    RadarComparison,
 )
 from app.agents.navigator.state import NavigatorState
 from app.agents.navigator.sub_agent.guide import CatalogStore, run_guide
+from app.agents.navigator.sub_agent.youtube import (
+    PlaylistBuild,
+    PlaylistStore,
+    RefreshResult,
+    run_playlist,
+)
+from app.agents.navigator.sub_agent.youtube import (
+    edit_playlist as _edit_playlist,
+)
+from app.agents.navigator.sub_agent.youtube import (
+    refresh_item as _refresh_item,
+)
 
 _ALLOWED_EVENTS = {"status", "token", "ideal"}
 
 
 class NavigatorAgent:
-    """기능(ideal·guide)·graph(챗)를 조합해 에이전트 능력을 노출하는 파사드."""
+    """LLM 서브에이전트(propose·guide·youtube)와 챗 그래프를 묶어 노출하는 파사드."""
 
     def __init__(self) -> None:
         self._graph = build_navigator_graph()
 
-    # ── 단발성 능력 (tool 조합) ──────────────────────────────
+    # ── 단발성 LLM 능력 (서브에이전트 위임) ──────────────────
     async def propose(
         self,
         profile_21: dict[str, float],
@@ -48,28 +53,6 @@ class NavigatorAgent:
     ) -> list[ProposedIdeal]:
         """21축 → 반대·강점심화·균형 이상향 3종 (각 13축 설계 + 8축 파생)."""
         return await propose_ideals(profile_21, top_interests)
-
-    def current_axes(self, profile_21: dict[str, float]) -> dict[str, float]:
-        """21축에서 행동 8축만 추출."""
-        return extract_8axis(profile_21)
-
-    def derive_behavior(self, values13: dict[str, float]) -> dict[str, float]:
-        """이상향 13축 → 행동 8축 파생."""
-        return derive_8_from_13(values13)
-
-    def normalize_ideal(self, scores: dict[str, float]) -> dict[str, float]:
-        """8축 점수를 0~100으로 보정."""
-        return clamp_scores(scores)
-
-    def persona_label(self, scores8: dict[str, float]) -> str:
-        """상위 축 기반 규칙형 페르소나 명칭 (LLM 명칭 폴백용)."""
-        return persona_label_from_scores(scores8)
-
-    def compare(
-        self, profile_21: dict[str, float], ideal_8: dict[str, float]
-    ) -> RadarComparison:
-        """현재(8축) vs 이상향 gap."""
-        return compute_comparison(extract_8axis(profile_21), ideal_8)
 
     async def generate_guide(
         self,
@@ -89,6 +72,66 @@ class NavigatorAgent:
             ideal_8=ideal_8,
             ideal_type=ideal_type,
             reasoning=reasoning,
+        )
+
+    async def generate_playlist(
+        self,
+        *,
+        store: PlaylistStore | None,
+        user_id: uuid.UUID,
+        persona_label: str,
+        values13: dict[str, float],
+        ideal_type: str,
+        reasoning: str,
+    ) -> PlaylistBuild:
+        """YouTube 재생목록 서브에이전트에 위임 — 채널 발굴→RSS→큐레이션."""
+        return await run_playlist(
+            store=store,
+            user_id=user_id,
+            persona_label=persona_label,
+            values13=values13,
+            ideal_type=ideal_type,
+            reasoning=reasoning,
+        )
+
+    async def refresh_item(
+        self,
+        *,
+        store: PlaylistStore | None,
+        user_id: uuid.UUID,
+        items: list[PlaylistItem],
+        reservoir: list[PlaylistItem],
+        channel_ids: list[str],
+        target_video_id: str,
+    ) -> RefreshResult:
+        """재생목록 영상 1개 교체 (저수지 → 채널 re-RSS)."""
+        return await _refresh_item(
+            store=store,
+            user_id=user_id,
+            items=items,
+            reservoir=reservoir,
+            channel_ids=channel_ids,
+            target_video_id=target_video_id,
+        )
+
+    def edit_playlist(
+        self,
+        *,
+        store: PlaylistStore | None,
+        user_id: uuid.UUID,
+        items: list[PlaylistItem],
+        reservoir: list[PlaylistItem],
+        channels: list[dict],
+        message: str,
+    ) -> AsyncIterator[NavigatorStreamEvent]:
+        """채팅으로 재생목록 부분수정 (status + 최종 playlist 이벤트 스트림)."""
+        return _edit_playlist(
+            store=store,
+            user_id=user_id,
+            items=items,
+            reservoir=reservoir,
+            channels=channels,
+            message=message,
         )
 
     # ── 대화형 능력 (graph 실행) ─────────────────────────────

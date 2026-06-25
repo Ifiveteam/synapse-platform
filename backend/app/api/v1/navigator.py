@@ -25,7 +25,12 @@ from app.schemas.navigator import (
     GuideResponse,
     IdealResponse,
     NavigatorChatRequest,
+    PlaylistChatRequest,
+    PlaylistResponse,
+    PlaylistSummary,
     ProposalsResponse,
+    RefreshItemRequest,
+    RenamePlaylistRequest,
 )
 from app.services.navigator import NavigatorService
 
@@ -136,4 +141,106 @@ async def get_guide(
     """해당 이상향 기반 행동 가이드 (catalog RAG 그라운딩, 생성 결과 캐시)."""
     return await navigator_service.get_guide(
         user_id=user.id, ideal_id=ideal_id, refresh=refresh
+    )
+
+
+# ── 재생목록 (이상향 1개 : N개) ──────────────────────────────────
+@router.post("/ideal/{ideal_id}/playlists", response_model=PlaylistResponse)
+async def create_playlist(
+    ideal_id: uuid.UUID,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> PlaylistResponse:
+    """이상향+시청기록 근거로 새 재생목록 생성 (영상 10개 + 저수지)."""
+    return await navigator_service.create_playlist(user_id=user.id, ideal_id=ideal_id)
+
+
+@router.get("/ideal/{ideal_id}/playlists", response_model=list[PlaylistSummary])
+async def list_playlists(
+    ideal_id: uuid.UUID,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> list[PlaylistSummary]:
+    """해당 이상향의 재생목록 목록."""
+    return await navigator_service.list_playlists(user_id=user.id, ideal_id=ideal_id)
+
+
+@router.get("/playlists/{playlist_id}", response_model=PlaylistResponse)
+async def get_playlist(
+    playlist_id: uuid.UUID,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> PlaylistResponse:
+    """재생목록 단건."""
+    return await navigator_service.get_playlist(
+        user_id=user.id, playlist_id=playlist_id
+    )
+
+
+@router.patch("/playlists/{playlist_id}", response_model=PlaylistResponse)
+async def rename_playlist(
+    playlist_id: uuid.UUID,
+    body: RenamePlaylistRequest,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> PlaylistResponse:
+    """재생목록 제목 수정."""
+    return await navigator_service.rename_playlist(
+        user_id=user.id, playlist_id=playlist_id, title=body.title
+    )
+
+
+@router.delete("/playlists/{playlist_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_playlist(
+    playlist_id: uuid.UUID,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> None:
+    """재생목록 삭제."""
+    await navigator_service.delete_playlist(user_id=user.id, playlist_id=playlist_id)
+
+
+@router.post("/playlists/{playlist_id}/item/refresh", response_model=PlaylistResponse)
+async def refresh_playlist_item(
+    playlist_id: uuid.UUID,
+    body: RefreshItemRequest,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> PlaylistResponse:
+    """영상 1개를 새 후보로 교체 (저수지→채널 re-RSS)."""
+    return await navigator_service.refresh_item(
+        user_id=user.id, playlist_id=playlist_id, video_id=body.video_id
+    )
+
+
+@router.post("/playlists/{playlist_id}/regenerate", response_model=PlaylistResponse)
+async def regenerate_playlist(
+    playlist_id: uuid.UUID,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> PlaylistResponse:
+    """재생목록 전체 재생성 (채널 재발굴→큐레이션, 같은 행 갱신)."""
+    return await navigator_service.regenerate_playlist(
+        user_id=user.id, playlist_id=playlist_id
+    )
+
+
+@router.post("/playlists/{playlist_id}/chat")
+async def chat_edit_playlist(
+    playlist_id: uuid.UUID,
+    body: PlaylistChatRequest,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+):
+    """채팅으로 재생목록 부분수정 (SSE: status + 최종 playlist)."""
+    return StreamingResponse(
+        navigator_service.chat_edit(
+            user_id=user.id, playlist_id=playlist_id, message=body.message
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )

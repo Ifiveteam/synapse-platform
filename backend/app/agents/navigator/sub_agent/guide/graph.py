@@ -7,7 +7,7 @@ from typing import Literal
 
 from langgraph.graph import END, START, StateGraph
 
-from app.agents.navigator.ideal import compare, extract_8axis
+from app.agents.navigator.axes import compare, extract_8axis
 from app.agents.navigator.schemas import Guide, RadarComparison
 from app.agents.navigator.sub_agent.guide.constants import WEAK_AXES_TOP_K
 from app.agents.navigator.sub_agent.guide.nodes import evaluate, generate, retrieve

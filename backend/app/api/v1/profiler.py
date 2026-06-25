@@ -99,12 +99,12 @@ async def compare_my_analyses(
             detail="from and to must be different snapshots",
         )
 
-    from app.agents.profiler.sub_agent.compare import (
-        compare_state_to_api_payload,
-        run_compare,
-    )
+    from app.agents.profiler.facade import get_profiler_agent
+    from app.agents.profiler.sub_agent.compare import compare_state_to_api_payload
 
-    agent_result = await run_compare(str(user.id), from_snapshot, to_snapshot)
+    agent_result = await get_profiler_agent().compare(
+        str(user.id), from_snapshot, to_snapshot
+    )
     result = compare_state_to_api_payload(agent_result)
     if result is None:
         raise HTTPException(
@@ -138,11 +138,11 @@ _video_summary_status: dict[str, dict] = {}
 async def _run_video_summary_task(
     task_id: str, user_id: uuid.UUID, limit: int | None
 ) -> None:
-    from app.agents.profiler.sub_agent import run_video_summary
+    from app.agents.profiler.facade import get_profiler_agent
 
     _video_summary_status[task_id] = {"status": "running", "user_id": str(user_id)}
     try:
-        result = await run_video_summary(user_id, limit)
+        result = await get_profiler_agent().summarize_videos(user_id, limit)
         _video_summary_status[task_id] = {
             "status": "completed",
             "user_id": str(user_id),

@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from app.agents.profiler.axis_labels import HABIT_LABELS_KO, SCORE_LABELS_KO
-from app.agents.profiler.sub_agent.compare.prompt import COMPARE_HUMAN, COMPARE_SYSTEM
+from app.agents.profiler.sub_agent.compare.prompts import COMPARE_HUMAN, COMPARE_SYSTEM
 from app.agents.profiler.sub_agent.compare.state import CompareState
 from app.schemas.profiler.llm.compare import CompareNarrativeOutput
 

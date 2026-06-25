@@ -9,7 +9,7 @@ from collections import Counter
 from typing import Any
 
 from app.agents.profiler.habit_metrics import habit_metrics_from_catalog_stats
-from app.agents.profiler.prompt import (
+from app.agents.profiler.prompts import (
     BEHAVIOR_SPIDER_HUMAN,
     BEHAVIOR_SPIDER_SYSTEM,
     PROFILE_INSIGHT_HUMAN,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import AsyncIterator
 
@@ -9,7 +10,13 @@ from fastapi import Depends, HTTPException, status
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.navigator.base import NavigatorAgent, get_navigator_agent
+from app.agents.navigator.axes import (
+    clamp_scores,
+    compare,
+    extract_8axis,
+    persona_label_from_scores,
+)
+from app.agents.navigator.behavior_map import derive_8_from_13
 from app.agents.navigator.constants import (
     BEHAVIOR_AXES,
     MAX_HISTORY_MESSAGES,
@@ -17,7 +24,9 @@ from app.agents.navigator.constants import (
     TOP_INTERESTS_LIMIT,
     VALUES_TEMPERAMENT_AXES,
 )
-from app.agents.navigator.streaming import format_stream_event
+from app.agents.navigator.facade import NavigatorAgent, get_navigator_agent
+from app.agents.navigator.schemas import PlaylistItem
+from app.agents.navigator.streaming import format_sse_event, format_stream_event
 from app.core.database.session import get_db
 from app.models.user_ideal_persona import UserIdealPersona
 from app.repositories.indexer_repository import (
@@ -41,6 +50,9 @@ from app.schemas.navigator import (
     GuideResponse,
     IdealResponse,
     NavigatorChatRequest,
+    PlaylistItemResponse,
+    PlaylistResponse,
+    PlaylistSummary,
     ProposalItem,
     ProposalsResponse,
 )
@@ -50,6 +62,7 @@ _PROFILE_404 = "Profile not found. Run POST /profiler/run first."
 _IDEAL_404 = (
     "Ideal persona not found. Confirm an ideal via POST /navigator/ideal first."
 )
+_PLAYLIST_404 = "Playlist not found."
 
 
 def should_persist_assistant_log(content: str) -> bool:
@@ -85,6 +98,36 @@ def _ideal_to_response(persona: UserIdealPersona) -> IdealResponse:
     )
 
 
+def _playlist_to_response(row) -> PlaylistResponse:
+    items = [
+        PlaylistItemResponse(
+            **it,
+            url=f"https://www.youtube.com/watch?v={it.get('video_id', '')}",
+        )
+        for it in (row.items_json or [])
+    ]
+    return PlaylistResponse(
+        id=str(row.id),
+        ideal_id=str(row.ideal_id),
+        title=row.title or "",
+        summary=row.summary or "",
+        items=items,
+        youtube_playlist_id=row.youtube_playlist_id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _playlist_summary(row) -> PlaylistSummary:
+    return PlaylistSummary(
+        id=str(row.id),
+        title=row.title or "",
+        item_count=len(row.items_json or []),
+        youtube_playlist_id=row.youtube_playlist_id,
+        created_at=row.created_at,
+    )
+
+
 class NavigatorService:
     def __init__(
         self,
@@ -107,7 +150,7 @@ class NavigatorService:
                 status_code=status.HTTP_404_NOT_FOUND, detail=_PROFILE_404
             )
         profile_21 = history_scores_dict(row)
-        current_8axis = self.agent.current_axes(profile_21)
+        current_8axis = extract_8axis(profile_21)
         top_interests = {
             "categories": await fetch_top_categories(
                 self.db, user_id, limit=TOP_INTERESTS_LIMIT
@@ -151,7 +194,7 @@ class NavigatorService:
                 ideal_type=p.ideal_type.value,
                 scores=AxisScores8(**p.scores8),
                 values_temperament=AxisScores13(**p.values13),
-                persona_label=p.persona_label or self.agent.persona_label(p.scores8),
+                persona_label=p.persona_label or persona_label_from_scores(p.scores8),
                 reasoning=p.reasoning,
             )
             for p in proposals
@@ -201,9 +244,7 @@ class NavigatorService:
                 if ideal_type is None:
                     ideal_type, _ = decode_description(persona.description)
 
-        working_ideal = (
-            self.agent.derive_behavior(working_values) if working_values else None
-        )
+        working_ideal = derive_8_from_13(working_values) if working_values else None
 
         token_chunks: list[str] = []
         async for event in self.agent.chat_stream(
@@ -254,12 +295,12 @@ class NavigatorService:
         # 13축이 오면 그게 설계 원본 → 8축은 거기서 파생(일관성 보장). 없으면 보낸 8축 사용.
         if request.values_temperament is not None:
             values13 = request.values_temperament.model_dump()
-            scores8 = self.agent.derive_behavior(values13)
+            scores8 = derive_8_from_13(values13)
         else:
             values13 = None
-            scores8 = self.agent.normalize_ideal(request.scores.model_dump())
+            scores8 = clamp_scores(request.scores.model_dump())
 
-        persona_label = request.persona_label or self.agent.persona_label(scores8)
+        persona_label = request.persona_label or persona_label_from_scores(scores8)
         persona = await self.repo.create_ideal(
             user_id=user_id,
             scores8=scores8,
@@ -314,7 +355,7 @@ class NavigatorService:
             user_id, persona.source_profile_history_id
         )
         ideal_8 = _persona_scores(persona)
-        comparison = self.agent.compare(profile_21, ideal_8)
+        comparison = compare(current_8axis, ideal_8)
         # 13축: 현재=스냅샷에서 추출, 이상향=저장값(없으면 null)
         current_vt = _vt_or_none(
             {axis: profile_21.get(axis, 0.0) for axis in VALUES_TEMPERAMENT_AXES}
@@ -392,6 +433,187 @@ class NavigatorService:
             generated_at=saved.guide_generated_at if saved else None,
             stale=False,
         )
+
+    # ── 재생목록 (navigator_playlist, 이상향 1개 : N개) ──────────────
+    async def create_playlist(
+        self, *, user_id: uuid.UUID, ideal_id: uuid.UUID
+    ) -> PlaylistResponse:
+        """이상향 페르소나+시청기록 근거로 새 재생목록을 생성·저장한다."""
+        persona = await self._ideal_or_404(user_id, ideal_id)
+        persona_label = persona.persona_label or "추천 재생목록"
+        values13 = persona.values_temperament or {}
+        ideal_type, reasoning = decode_description(persona.description)
+
+        build = await self.agent.generate_playlist(
+            store=self.repo,
+            user_id=user_id,
+            persona_label=persona_label,
+            values13=values13,
+            ideal_type=ideal_type,
+            reasoning=reasoning,
+        )
+
+        existing = await self.repo.list_playlists(user_id=user_id, ideal_id=ideal_id)
+        title = f"{persona_label} #{len(existing) + 1}"
+        row = await self.repo.create_playlist(
+            user_id=user_id,
+            ideal_id=ideal_id,
+            title=title,
+            summary=build.playlist.summary,
+            items_json=[it.model_dump() for it in build.playlist.items],
+            channels_json=[
+                {"channel_id": c.channel_id, "title": c.title} for c in build.channels
+            ],
+            reservoir_json=[it.model_dump() for it in build.reservoir],
+        )
+        return _playlist_to_response(row)
+
+    async def list_playlists(
+        self, *, user_id: uuid.UUID, ideal_id: uuid.UUID
+    ) -> list[PlaylistSummary]:
+        await self._ideal_or_404(user_id, ideal_id)
+        rows = await self.repo.list_playlists(user_id=user_id, ideal_id=ideal_id)
+        return [_playlist_summary(r) for r in rows]
+
+    async def get_playlist(
+        self, *, user_id: uuid.UUID, playlist_id: uuid.UUID
+    ) -> PlaylistResponse:
+        row = await self.repo.get_playlist(user_id=user_id, playlist_id=playlist_id)
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=_PLAYLIST_404
+            )
+        return _playlist_to_response(row)
+
+    async def rename_playlist(
+        self, *, user_id: uuid.UUID, playlist_id: uuid.UUID, title: str
+    ) -> PlaylistResponse:
+        row = await self.repo.rename_playlist(
+            user_id=user_id, playlist_id=playlist_id, title=title
+        )
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=_PLAYLIST_404
+            )
+        return _playlist_to_response(row)
+
+    async def delete_playlist(
+        self, *, user_id: uuid.UUID, playlist_id: uuid.UUID
+    ) -> None:
+        ok = await self.repo.delete_playlist(user_id=user_id, playlist_id=playlist_id)
+        if not ok:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=_PLAYLIST_404
+            )
+
+    async def refresh_item(
+        self, *, user_id: uuid.UUID, playlist_id: uuid.UUID, video_id: str
+    ) -> PlaylistResponse:
+        """재생목록 영상 1개를 새 후보로 교체 (저수지→채널 re-RSS)."""
+        row = await self.repo.get_playlist(user_id=user_id, playlist_id=playlist_id)
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=_PLAYLIST_404
+            )
+        items = [PlaylistItem(**it) for it in (row.items_json or [])]
+        reservoir = [PlaylistItem(**it) for it in (row.reservoir_json or [])]
+        channel_ids = [
+            c["channel_id"] for c in (row.channels_json or []) if c.get("channel_id")
+        ]
+        result = await self.agent.refresh_item(
+            store=self.repo,
+            user_id=user_id,
+            items=items,
+            reservoir=reservoir,
+            channel_ids=channel_ids,
+            target_video_id=video_id,
+        )
+        if result.new_item is None:
+            return _playlist_to_response(row)  # 교체 후보 없음 → 현재 유지
+        saved = await self.repo.update_playlist(
+            user_id=user_id,
+            playlist_id=playlist_id,
+            items_json=[i.model_dump() for i in result.items],
+            reservoir_json=[i.model_dump() for i in result.reservoir],
+        )
+        return _playlist_to_response(saved or row)
+
+    async def regenerate_playlist(
+        self, *, user_id: uuid.UUID, playlist_id: uuid.UUID
+    ) -> PlaylistResponse:
+        """재생목록을 통째로 재생성(채널 재발굴→큐레이션) 후 같은 행에 갱신."""
+        row = await self.repo.get_playlist(user_id=user_id, playlist_id=playlist_id)
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=_PLAYLIST_404
+            )
+        persona = await self._ideal_or_404(user_id, row.ideal_id)
+        persona_label = persona.persona_label or "추천 재생목록"
+        values13 = persona.values_temperament or {}
+        ideal_type, reasoning = decode_description(persona.description)
+
+        build = await self.agent.generate_playlist(
+            store=self.repo,
+            user_id=user_id,
+            persona_label=persona_label,
+            values13=values13,
+            ideal_type=ideal_type,
+            reasoning=reasoning,
+        )
+        # 재생성 결과가 비면 기존 재생목록을 덮어쓰지 않는다 (날아가는 것 방지)
+        if not build.playlist.items:
+            return _playlist_to_response(row)
+        saved = await self.repo.update_playlist(
+            user_id=user_id,
+            playlist_id=playlist_id,
+            items_json=[it.model_dump() for it in build.playlist.items],
+            channels_json=[
+                {"channel_id": c.channel_id, "title": c.title} for c in build.channels
+            ],
+            reservoir_json=[it.model_dump() for it in build.reservoir],
+            summary=build.playlist.summary,
+        )
+        return _playlist_to_response(saved or row)
+
+    async def chat_edit(
+        self, *, user_id: uuid.UUID, playlist_id: uuid.UUID, message: str
+    ) -> AsyncIterator[str]:
+        """채팅으로 재생목록 부분수정 (SSE: status 진행 + 최종 playlist 갱신)."""
+        row = await self.repo.get_playlist(user_id=user_id, playlist_id=playlist_id)
+        if row is None:
+            yield format_sse_event(
+                event="status", content="재생목록을 찾을 수 없습니다."
+            )
+            return
+
+        items = [PlaylistItem(**it) for it in (row.items_json or [])]
+        reservoir = [PlaylistItem(**it) for it in (row.reservoir_json or [])]
+        channels = list(row.channels_json or [])
+
+        final_payload: dict | None = None
+        async for ev in self.agent.edit_playlist(
+            store=self.repo,
+            user_id=user_id,
+            items=items,
+            reservoir=reservoir,
+            channels=channels,
+            message=message,
+        ):
+            if ev.event == "playlist":
+                final_payload = json.loads(ev.content)
+                continue
+            yield format_stream_event(ev)
+
+        if final_payload is not None:
+            saved = await self.repo.update_playlist(
+                user_id=user_id,
+                playlist_id=playlist_id,
+                items_json=final_payload["items"],
+                reservoir_json=final_payload["reservoir"],
+                channels_json=final_payload["channels"],
+            )
+            resp = _playlist_to_response(saved or row)
+            yield format_sse_event(event="playlist", content=resp.model_dump_json())
 
 
 def _history_to_messages(history: list) -> list[BaseMessage]:

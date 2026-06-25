@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.agents.navigator.sub_agent.guide.store import CatalogHit
+from app.agents.navigator.sub_agent.guide.schemas import CatalogHit
 from app.agents.profiler.axis_labels import SCORE_LABELS_KO
 
 

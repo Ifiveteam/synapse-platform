@@ -10,6 +10,7 @@
 """
 
 import json
+import logging
 import re
 import zipfile
 from datetime import datetime, timezone
@@ -18,6 +19,8 @@ from datetime import datetime, timezone
 from app.agents.shared.analysis_window import (  # noqa: F401
     WATCH_CATALOG_WINDOW_DAYS,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # 도메인 상수
@@ -82,15 +85,15 @@ def parse_takeout_zip(zip_path: str) -> list[dict]:
 
     with zipfile.ZipFile(zip_path, "r") as z:
         all_names = z.namelist()
-        print(f"[ZIP] 파일 목록 ({len(all_names)}개): {all_names[:20]}")
+        logger.debug(f"[ZIP] 파일 목록 ({len(all_names)}개): {all_names[:20]}")
         for name in all_names:
             if any(target in name for target in target_names):
-                print(f"[ZIP] 시청 기록 발견: {name}")
+                logger.info(f"[ZIP] 시청 기록 발견: {name}")
                 with z.open(name) as f:
                     data = json.load(f)
-                    print(f"[ZIP] 항목 수: {len(data)}")
+                    logger.info(f"[ZIP] 항목 수: {len(data)}")
                     return data
-    print(f"[ZIP] 시청 기록 파일 없음. 전체 목록: {all_names}")
+    logger.warning(f"[ZIP] 시청 기록 파일 없음. 전체 목록: {all_names}")
     return []
 
 
@@ -122,6 +125,21 @@ def normalize_timestamp(time_str: str) -> str:
         return time_str
 
 
+def detect_platform(item: dict) -> str:
+    """Takeout 항목의 products/header에서 플랫폼을 식별한다 (없으면 youtube).
+
+    예: products=["YouTube"] / header="YouTube" → "youtube".
+    멀티 플랫폼 확장 대비 — 파일이 알려주는 출처를 그대로 따른다.
+    """
+    products = item.get("products")
+    if isinstance(products, list) and products and products[0]:
+        return str(products[0]).strip().lower().replace(" ", "_")
+    header = item.get("header")
+    if header:
+        return str(header).strip().lower().replace(" ", "_")
+    return "youtube"
+
+
 def preprocess(data: list[dict]) -> list[dict]:
     """Takeout raw → 인덱서 최소 행 (광고·비-YouTube URL 제외)."""
     cleaned = []
@@ -145,6 +163,7 @@ def preprocess(data: list[dict]) -> list[dict]:
                 "channel_url": channel_url,
                 "url": url,
                 "watched_at": watched_at,
+                "platform": detect_platform(item),
             }
         )
     return cleaned
@@ -201,15 +220,19 @@ def is_shorts(url: str, duration_sec: int | None) -> bool:
 
 
 def build_catalog_embedding_text(item: dict) -> str:
-    """catalog 임베딩용 평문 — 제목·카테고리·태그·설명(앞 300자).
+    """catalog 임베딩용 평문 — 제목·채널·카테고리·태그·설명(앞 300자).
 
-    재생목록/유사 영상 추천용. 채널명은 넣지 않음.
+    재생목록 추천 + 성향/가이드 매칭 양쪽에 쓰여 채널명도 의미 신호로 포함한다.
     """
     parts: list[str] = []
 
     title = (item.get("title") or "").strip()
     if title:
         parts.append(f"제목: {title}")
+
+    channel = (item.get("channel") or "").strip()
+    if channel and channel.lower() != "unknown":
+        parts.append(f"채널: {channel}")
 
     category = youtube_category_label(item.get("youtube_category_id"))
     if category:

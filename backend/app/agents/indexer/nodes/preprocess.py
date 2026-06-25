@@ -5,12 +5,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from app.agents.indexer.state import IndexerState
-from app.agents.indexer.tool import (
+from app.agents.indexer.utils import (
     WATCH_CATALOG_WINDOW_DAYS,
     parse_takeout_json,
     parse_takeout_zip,
 )
-from app.agents.indexer.tool import (
+from app.agents.indexer.utils import (
     preprocess as filter_takeout_rows,
 )
 
@@ -32,15 +32,19 @@ def parse_takeout_file(path: str) -> list[dict]:
 
 
 def dedupe_by_url(items: list[dict]) -> list[dict]:
-    """URL당 최신 watched_at 1건."""
+    """URL당 1건으로 합치되, 반복 시청 횟수를 watch_count로 집계 (최신 watched_at 유지)."""
     by_url: dict[str, dict] = {}
     for item in items:
         url = item.get("url")
         if not url:
             continue
         existing = by_url.get(url)
-        if not existing or item.get("watched_at", "") > existing.get("watched_at", ""):
-            by_url[url] = item
+        if existing is None:
+            by_url[url] = {**item, "watch_count": 1}
+        else:
+            existing["watch_count"] += 1
+            if item.get("watched_at", "") > existing.get("watched_at", ""):
+                existing["watched_at"] = item["watched_at"]
     return list(by_url.values())
 
 
@@ -72,18 +76,20 @@ def apply_watch_window(
 
 
 def run_preprocess(json_path: str) -> dict:
-    """parse → filter → dedupe → 시청 윈도우. DB 저장 전 in-memory."""
+    """parse → filter → 시청 윈도우 → dedupe(+watch_count). DB 저장 전 in-memory.
+
+    윈도우를 dedupe보다 먼저 적용해, watch_count가 "윈도우 내 반복 시청"을 세도록 한다.
+    """
     raw_data = parse_takeout_file(json_path)
-    cleaned = filter_takeout_rows(raw_data)
-    for row in cleaned:
-        row["platform"] = "youtube"
-    deduped = dedupe_by_url(cleaned)
-    windowed, analysis_start, analysis_end = apply_watch_window(deduped)
+    cleaned = filter_takeout_rows(raw_data)  # platform은 filter 단계에서 파일 기반 태깅
+    windowed_events, analysis_start, analysis_end = apply_watch_window(cleaned)
+    deduped = dedupe_by_url(windowed_events)
+    deduped.sort(key=lambda x: x.get("watched_at", ""), reverse=True)
 
     return {
         "raw_data": raw_data,
-        "cleaned_data": windowed,
-        "filtered_count": len(windowed),
+        "cleaned_data": deduped,
+        "filtered_count": len(deduped),
         "analysis_start": analysis_start,
         "analysis_end": analysis_end,
     }

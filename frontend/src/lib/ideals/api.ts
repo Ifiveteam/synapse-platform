@@ -142,6 +142,128 @@ export async function getCurrentAxes(
   return Object.fromEntries(BEHAVIOR_KEYS.map((k) => [k, s[k] ?? 0]));
 }
 
+// ── 재생목록 ───────────────────────────────────────────────────────
+export interface PlaylistItemResponse {
+  video_id: string;
+  title: string;
+  channel: string;
+  channel_id: string;
+  thumbnail_url: string;
+  url: string;
+  reason: string;
+}
+export interface PlaylistResponse {
+  id: string;
+  ideal_id: string;
+  title: string;
+  summary: string;
+  items: PlaylistItemResponse[];
+  youtube_playlist_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface PlaylistSummary {
+  id: string;
+  title: string;
+  item_count: number;
+  youtube_playlist_id: string | null;
+  created_at: string;
+}
+
+export const createPlaylist = (idealId: string) =>
+  apiFetchAuth<PlaylistResponse>(`${P}/ideal/${idealId}/playlists`, {
+    method: "POST",
+  });
+
+export const listPlaylists = (idealId: string) =>
+  apiFetchAuth<PlaylistSummary[]>(`${P}/ideal/${idealId}/playlists`);
+
+export const getPlaylist = (playlistId: string) =>
+  apiFetchAuth<PlaylistResponse>(`${P}/playlists/${playlistId}`);
+
+export const renamePlaylist = (playlistId: string, title: string) =>
+  apiFetchAuth<PlaylistResponse>(`${P}/playlists/${playlistId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  });
+
+export const deletePlaylist = (playlistId: string) =>
+  apiFetchAuth<void>(`${P}/playlists/${playlistId}`, { method: "DELETE" });
+
+export const refreshPlaylistItem = (playlistId: string, videoId: string) =>
+  apiFetchAuth<PlaylistResponse>(`${P}/playlists/${playlistId}/item/refresh`, {
+    method: "POST",
+    body: JSON.stringify({ video_id: videoId }),
+  });
+
+export const regeneratePlaylist = (playlistId: string) =>
+  apiFetchAuth<PlaylistResponse>(`${P}/playlists/${playlistId}/regenerate`, {
+    method: "POST",
+  });
+
+export interface PlaylistChatHandlers {
+  onStatus?: (content: string) => void;
+  onPlaylist?: (playlist: PlaylistResponse) => void;
+}
+
+export async function streamPlaylistChat(
+  playlistId: string,
+  message: string,
+  handlers: PlaylistChatHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  const token = useAuthStore.getState().token;
+  const res = await fetch(`${API_BASE_URL}${P}/playlists/${playlistId}/chat`, {
+    method: "POST",
+    credentials: "include",
+    signal,
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ message }),
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`playlist chat stream failed (${res.status})`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let event = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const raw of lines) {
+      const line = raw.replace(/\r$/, "");
+      if (line.startsWith("event:")) {
+        event = line.slice(6).trim();
+      } else if (line.startsWith("data:")) {
+        const payload = line.slice(5).trim();
+        let content = "";
+        try {
+          content = (JSON.parse(payload) as { content?: string }).content ?? "";
+        } catch {
+          content = payload;
+        }
+        if (event === "status") handlers.onStatus?.(content);
+        else if (event === "playlist") {
+          try {
+            handlers.onPlaylist?.(JSON.parse(content) as PlaylistResponse);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    }
+  }
+}
+
 // ── 챗 SSE ───────────────────────────────────────────────────────
 export interface IdealEvent {
   behavior: AxisScores8;

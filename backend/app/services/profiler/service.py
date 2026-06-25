@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import Any
 
-from app.agents.profiler.graph import run_profiler_async
+from app.agents.profiler.facade import get_profiler_agent
 from app.models.user_profile_history import UserProfileHistory
 from app.schemas.profiler import JobStatus
 from app.services.notification import NotificationPayload
@@ -67,6 +67,7 @@ class ProfilerService:
     def __init__(self) -> None:
         self._jobs: dict[str, ProfilerJob] = {}
         self._lock = Lock()
+        self.agent = get_profiler_agent()
 
     def create_job(
         self,
@@ -176,7 +177,7 @@ class ProfilerService:
             analysis_source_id = job.analysis_source_id
 
         try:
-            final = await run_profiler_async(user_id, notify_email)
+            final = await self.agent.run_profile(user_id, notify_email)
             profile = await self.fetch_profile_async(user_id)
             notification = final.get("notification")
             if profile and analysis_source_id:

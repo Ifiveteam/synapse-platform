@@ -10,7 +10,7 @@ from langchain_core.messages import AIMessage
 from langgraph.config import get_stream_writer
 
 from app.agents.navigator.constants import CHAT_TEMPERATURE, STREAM_ERROR_MESSAGE
-from app.agents.navigator.gemini import GEMINI_MODEL, get_client
+from app.agents.navigator.llm import GEMINI_MODEL, get_client
 from app.agents.navigator.nodes._common import to_gemini_contents
 from app.agents.navigator.prompts.chat import build_chat_system_prompt
 from app.agents.navigator.state import NavigatorState

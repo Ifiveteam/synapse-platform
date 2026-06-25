@@ -13,7 +13,7 @@ load_backend_env()
 from langchain_core.messages import HumanMessage  # noqa: E402
 
 from app.agents.navigator import get_navigator_agent  # noqa: E402
-from app.agents.navigator.ideal import extract_8axis  # noqa: E402
+from app.agents.navigator.axes import extract_8axis  # noqa: E402
 from app.agents.navigator.sub_agent.guide.store import CatalogHit  # noqa: E402
 
 

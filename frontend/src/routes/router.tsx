@@ -3,7 +3,6 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import { ShellLayout } from "@/components/shell/ShellLayout";
 import { AgentDetailPage } from "@/pages/agents/AgentDetailPage";
 import { IndexerPage } from "@/pages/agents/IndexerPage";
-import { NavigatorPage } from "@/pages/agents/NavigatorPage";
 import { ProfilerPage } from "@/pages/agents/ProfilerPage";
 import { TrendPostDetailPage } from "@/pages/agents/aggregator/TrendPostDetailPage";
 import { TrendPostsPage } from "@/pages/agents/aggregator/TrendPostsPage";
@@ -15,6 +14,7 @@ import { DownloadPage } from "@/pages/DownloadPage";
 import { IdealDetailPage } from "@/pages/IdealDetailPage";
 import { IdealManagementPage } from "@/pages/IdealManagementPage";
 import { IdealSetupPage } from "@/pages/IdealSetupPage";
+import { PlaylistPage } from "@/pages/PlaylistPage";
 import { MyAnalysesPage } from "@/pages/MyAnalysesPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ScrapDetailPage } from "@/pages/ScrapDetailPage";
@@ -37,6 +37,7 @@ export const router = createBrowserRouter([
       { path: ROUTES.idealManagement, element: <IdealManagementPage /> },
       { path: ROUTES.idealSetup, element: <IdealSetupPage /> },
       { path: "/me/ideals/:id", element: <IdealDetailPage /> },
+      { path: "/me/playlists", element: <PlaylistPage /> },
       { path: ROUTES.trends, element: <TrendDetailPage /> },
       { path: ROUTES.scraps, element: <ScrapPage /> },
       { path: "/me/scraps/:id", element: <ScrapDetailPage /> },
@@ -47,7 +48,6 @@ export const router = createBrowserRouter([
       { path: ROUTES.upload, element: <UploadPage /> },
       { path: ROUTES.setup, element: <SetupPage /> },
       { path: ROUTES.profiler, element: <ProfilerPage /> },
-      { path: ROUTES.navigator, element: <NavigatorPage /> },
       { path: ROUTES.indexer, element: <IndexerPage /> },
       { path: "/agents/:slug", element: <AgentDetailPage /> },
       { path: "/agents/:slug/posts", element: <TrendPostsPage /> },

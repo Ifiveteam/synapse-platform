@@ -16,7 +16,7 @@ from app.agents.navigator.constants import (
     VALUES_TEMPERAMENT_AXES,
 )
 
-StreamEventType = Literal["status", "token", "ideal"]
+StreamEventType = Literal["status", "token", "ideal", "playlist"]
 
 
 class IdealType(StrEnum):
@@ -134,6 +134,33 @@ class GuideStep(BaseModel):
 class Guide(BaseModel):
     summary: str = Field(description="가이드 총평 (한국어)")
     steps: list[GuideStep] = Field(default_factory=list)
+
+
+# ── YouTube 재생목록 (PLAN_youtube_playlist.md) ──────────────────
+
+
+class PlaylistItem(BaseModel):
+    """재생목록 영상 1개. video_id는 코드(search/RSS)가 소유한 실재값."""
+
+    video_id: str
+    title: str
+    channel: str = ""
+    channel_id: str = ""
+    thumbnail_url: str = ""
+    reason: str = Field(default="", description="이 영상이 이상향에 맞는 한 줄 이유")
+
+    @property
+    def url(self) -> str:
+        return f"https://www.youtube.com/watch?v={self.video_id}"
+
+
+class Playlist(BaseModel):
+    summary: str = Field(default="", description="재생목록 총평 (한국어)")
+    items: list[PlaylistItem] = Field(default_factory=list)
+
+
+# youtube 노드 전용 Structured Output(QuerySpec·ChannelPick·PlaylistCuration·EditSpec)은
+# sub_agent/youtube/schemas.py 로 이동.
 
 
 @dataclass(frozen=True, slots=True)
