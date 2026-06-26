@@ -76,11 +76,35 @@ def build_extension_login_url(redirect_uri: str) -> str:
     return google_oauth.build_authorize_url(state=state)
 
 
+def redirect_oauth_failure(error: str, state: str | None) -> RedirectResponse:
+    """Google OAuth 거부·누락 시 익스텐션 또는 웹 프론트로 error query redirect."""
+    if state:
+        try:
+            payload = decode_oauth_state(state)
+            if payload.get("flow") == "extension":
+                redirect_uri = payload.get("redirect_uri", "")
+                if is_allowed_extension_redirect_uri(redirect_uri):
+                    return RedirectResponse(
+                        append_query_param(redirect_uri, "error", error)
+                    )
+        except (ValueError, json.JSONDecodeError):
+            pass
+
+    return RedirectResponse(
+        append_query_param(f"{frontend_url()}/upload", "error", error)
+    )
+
+
 async def handle_oauth_callback(
-    code: str,
+    *,
+    code: str | None,
+    error: str | None,
     state: str | None,
     session: AsyncSession,
 ) -> RedirectResponse:
+    if error or not code:
+        return redirect_oauth_failure(error or "missing_code", state)
+
     tokens = await google_oauth.exchange_code_for_tokens(code)
     if "access_token" not in tokens:
         raise HTTPException(status_code=400, detail="Google 토큰 발급 실패")

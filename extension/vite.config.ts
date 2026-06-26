@@ -6,7 +6,10 @@ import { crx } from '@crxjs/vite-plugin'
 import path from 'node:path'
 import manifest from './manifest'
 
-const SYNAPSE_BOOT_KEY = '__synapseBootContentScript'
+const SYNAPSE_ARCHIVER_BOOT_KEY = '__synapseBootArchiverContent'
+const SYNAPSE_TRACKING_BOOT_KEY = '__synapseBootTrackingContent'
+
+const CONTENT_BOOT_KEYS = [SYNAPSE_ARCHIVER_BOOT_KEY, SYNAPSE_TRACKING_BOOT_KEY] as const
 
 /** Rolldown이 content 엔트리의 onExecute export를 제거할 때 CRXJS 로더가 동작하도록 보완 */
 function preserveContentOnExecute(): Plugin {
@@ -16,7 +19,8 @@ function preserveContentOnExecute(): Plugin {
     generateBundle(_options, bundle) {
       for (const chunk of Object.values(bundle)) {
         if (chunk.type !== 'chunk') continue
-        if (!chunk.facadeModuleId?.replace(/\\/g, '/').includes('entries/content')) {
+        const facade = chunk.facadeModuleId?.replace(/\\/g, '/')
+        if (!facade?.includes('entries/content-')) {
           continue
         }
         if (chunk.code.includes('export function onExecute')) continue
@@ -31,7 +35,13 @@ function preserveContentOnExecute(): Plugin {
           continue
         }
 
-        chunk.code += `\nexport function onExecute(){globalThis.${SYNAPSE_BOOT_KEY}?.()}`
+        const fallbackKey = facade.includes('content-archiver')
+          ? SYNAPSE_ARCHIVER_BOOT_KEY
+          : SYNAPSE_TRACKING_BOOT_KEY
+        if (!CONTENT_BOOT_KEYS.includes(fallbackKey as (typeof CONTENT_BOOT_KEYS)[number])) {
+          continue
+        }
+        chunk.code += `\nexport function onExecute(){globalThis.${fallbackKey}?.()}`
       }
     },
   }
@@ -60,7 +70,6 @@ export default defineConfig({
     // Shadcn UI 및 각 기능(features/) 도메인 간 교차 임포트 시 가독성과 유지보수성을 극대화하기 위한 절대경로 설정
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@synapse/shared': path.resolve(__dirname, '../shared'),
     },
   },
 

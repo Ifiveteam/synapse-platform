@@ -15,8 +15,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "paths": {
-      "@/*": ["./src/*"],
-      "@synapse/shared/*": ["../shared/*"]
+      "@/*": ["./src/*"]
     },
 
     /* Linting */

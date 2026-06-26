@@ -48,7 +48,7 @@ function HorizontalBarChart({ items, title }: { items: RankItem[]; title: string
             axisLine={false}
           />
           <Tooltip
-            formatter={(v) => [`${v}개`, "시청"]}
+            formatter={(v) => [`${Number(v ?? 0)}개`, "시청"]}
             contentStyle={{ fontSize: 12, borderRadius: 8 }}
           />
           <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={20}>

@@ -10,18 +10,18 @@ from langchain_core.messages import AIMessage
 from langgraph.config import get_stream_writer
 
 from app.agents.archiver.core.constants import (
-    RESPOND_DEFAULT_TEMPERATURE,
-    RESPOND_TEMPERATURES,
+    RESPOND_CHITCHAT_TEMPERATURE,
+    RESPOND_FACTUAL_TEMPERATURE,
     STREAM_ERROR_MESSAGE,
 )
-from app.agents.archiver.core.gemini import GEMINI_MODEL, get_client
+from app.agents.shared.gemini import GEMINI_MODEL, get_client
 from app.agents.archiver.protocols.stream_status import MSG_RESPOND_GENERATING, status_event
 from app.agents.archiver.steps.respond_context import (
     build_gemini_contents,
     resolve_system_instruction,
 )
 from app.agents.archiver.trace import log_node_enter, log_respond_result
-from app.agents.archiver.models import ArchiverState, resolve_route
+from app.agents.archiver.models import ArchiverState, format_router_trace_label
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +29,17 @@ logger = logging.getLogger(__name__)
 async def respond(state: ArchiverState) -> dict[str, Any]:
     """최종 답변을 Gemini 스트리밍으로 생성하고 custom stream 이벤트를 방출한다."""
     log_node_enter("respond", state=state)
-    route = resolve_route(state)
-    route_value = route.value
+    trace_label = format_router_trace_label(state)
     system_instruction, tools = resolve_system_instruction(state)
-    temperature = RESPOND_TEMPERATURES.get(route.value, RESPOND_DEFAULT_TEMPERATURE)
+    temperature = (
+        RESPOND_CHITCHAT_TEMPERATURE
+        if state.get("is_general")
+        else RESPOND_FACTUAL_TEMPERATURE
+    )
     writer = get_stream_writer()
     gemini_contents = build_gemini_contents(state.get("messages", []))
 
-    writer(status_event(MSG_RESPOND_GENERATING))
+    writer(status_event(MSG_RESPOND_GENERATING, phase="respond"))
 
     chunks: list[str] = []
 
@@ -55,10 +58,10 @@ async def respond(state: ArchiverState) -> dict[str, Any]:
                 chunks.append(chunk.text)
                 writer({"event": "token", "content": chunk.text})
     except Exception:
-        logger.exception("Archiver respond stream failed route=%s", route)
+        logger.exception("Archiver respond stream failed label=%s", trace_label)
         writer({"event": "token", "content": STREAM_ERROR_MESSAGE})
         log_respond_result(
-            route=route_value,
+            route=trace_label,
             response_chars=len(STREAM_ERROR_MESSAGE),
             temperature=temperature,
             has_error=True,
@@ -72,7 +75,7 @@ async def respond(state: ArchiverState) -> dict[str, Any]:
 
     final_response = "".join(chunks)
     log_respond_result(
-        route=route_value,
+        route=trace_label,
         response_chars=len(final_response),
         temperature=temperature,
         has_error=False,

@@ -12,7 +12,7 @@ from app.agents.archiver.core.constants import ARCHIVER_STORE_KEY, RAG_SEARCH_LI
 
 
 class PastKnowledgeHit(BaseModel):
-    """RAG 검색 1건 — Repository ↔ rag_node 계약."""
+    """과거 기억 검색 1건 — Repository ↔ rag_node 계약."""
 
     role: str
     content: str
