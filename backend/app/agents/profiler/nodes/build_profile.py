@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import uuid
 from collections import Counter
@@ -17,6 +18,7 @@ from app.agents.profiler.prompts import (
     VALUES_TEMPERAMENT_HUMAN,
     VALUES_TEMPERAMENT_SYSTEM,
 )
+from app.agents.profiler.semantics import compute_semantic_evidence
 from app.agents.profiler.state import ProfilerState
 from app.agents.shared.analysis_window import WATCH_CATALOG_WINDOW_DAYS
 from app.schemas.profiler import (
@@ -25,6 +27,8 @@ from app.schemas.profiler import (
     ProfileScoresOutput,
     ValuesTemperamentOutput,
 )
+
+logger = logging.getLogger(__name__)
 
 _EDU_CATEGORIES = {"27", "28"}
 _ENTERTAINMENT_CATEGORIES = {"1", "17", "23", "24"}
@@ -54,6 +58,7 @@ _LABELS_KO = {
 
 
 _SAMPLE_LIMIT = 30
+_SEMANTIC_BLEND = 0.35  # catalog 근거 vs 영상 의미라벨 근거 결합 비중
 _EVIDENCE_SATURATION_K = 2.8
 _LLM_VT_BLEND = 0.8
 _LLM_BEHAVIOR_BLEND = 0.8
@@ -107,26 +112,30 @@ def _rule_scores_from_stats(stats: dict[str, Any]) -> dict[str, float]:
 
 
 def _build_catalog_stats(rows) -> dict[str, Any]:
-    category = Counter()
-    channel = Counter()
-    shorts = 0
+    """watch_count(반복시청) 가중 통계. 비율·집중도는 시청량 가중, 다양성은 distinct."""
+    category: Counter = Counter()
+    channel: Counter = Counter()
+    shorts_w = 0  # 숏츠 가중합
+    weighted_total = 0  # Σ watch_count
     for row in rows:
+        wc = int(getattr(row, "watch_count", 1) or 1)
+        weighted_total += wc
         if row.is_shorts:
-            shorts += 1
-        category[row.youtube_category_id or "unknown"] += 1
-        channel[row.channel] += 1
-    total = len(rows) or 1
+            shorts_w += wc
+        category[row.youtube_category_id or "unknown"] += wc
+        channel[row.channel] += wc
+    view_count = len(rows)
+    denom = weighted_total or 1
     category_stats = dict(category.most_common(20))
     return {
-        "total": len(rows),
-        "shorts_count": shorts,
-        "long_count": len(rows) - shorts,
-        "shorts_ratio": round(shorts / total, 3),
-        "long_ratio": round((len(rows) - shorts) / total, 3),
-        "unique_channels": len(channel),
-        "category_stats": category_stats,
+        "total": view_count,  # 영상 건수 (표시·로깅·탐색깊이)
+        "weighted_total": weighted_total,  # 시청량 합 (비율·집중도 분모)
+        "shorts_ratio": round(shorts_w / denom, 3),
+        "long_ratio": round((weighted_total - shorts_w) / denom, 3),
+        "unique_channels": len(channel),  # distinct (가중 무관)
+        "category_stats": category_stats,  # 가중 카운트
         "category_ratios": {
-            cat: round(count / total, 3) for cat, count in category_stats.items()
+            cat: round(count / denom, 3) for cat, count in category_stats.items()
         },
         "channel_top5": [
             {"channel": name, "count": count} for name, count in channel.most_common(5)
@@ -153,7 +162,7 @@ def _axis_evidence_strength(stats: dict[str, Any]) -> dict[str, float]:
     entertain_w = _category_weight(stats, _ENTERTAINMENT_CATEGORIES)
     spread = 1.0 - concentration
 
-    return {
+    catalog_ev = {
         "self_direction": min(1.0, diversity * 0.55 + spread * 0.45),
         "stimulation": min(1.0, shorts_ratio * 0.55 + entertain_w * 0.45),
         "achievement": min(1.0, edu_w * 0.6 + long_ratio * 0.25),
@@ -170,6 +179,17 @@ def _axis_evidence_strength(stats: dict[str, Any]) -> dict[str, float]:
         "persistence": min(1.0, edu_w * 0.55 + long_ratio * 0.35),
         "self_transcendence": min(1.0, news_w * 0.5 + entertain_w * 0.15),
     }
+
+    # 영상 의미라벨 근거(0~1)와 결합 — 자막 기반 의미를 결정적 채점에 반영
+    semantic = stats.get("semantic_evidence") or {}
+    if semantic:
+        for axis in catalog_ev:
+            catalog_ev[axis] = min(
+                1.0,
+                catalog_ev[axis] * (1 - _SEMANTIC_BLEND)
+                + float(semantic.get(axis, 0.0)) * _SEMANTIC_BLEND,
+            )
+    return catalog_ev
 
 
 def rule_based_values_temperament(stats: dict[str, Any]) -> ValuesTemperamentOutput:
@@ -469,6 +489,17 @@ def _select_analysis_samples(
     return [_catalog_sample_dict(row, by_catalog.get(row.id)) for row in picked]
 
 
+def _aggregate_semantic_evidence(rows, analyses) -> dict[str, float]:
+    """영상 의미라벨(tone/intent/value) 빈도 → 13축 근거. watch_count로 가중."""
+    wc_by_catalog = {row.id: int(getattr(row, "watch_count", 1) or 1) for row in rows}
+    label_weights: Counter = Counter()
+    for a in analyses:
+        weight = wc_by_catalog.get(a.catalog_id, 1)
+        for label in (a.tones or []) + (a.intents or []) + (a.value_signals or []):
+            label_weights[label] += weight
+    return compute_semantic_evidence(label_weights)
+
+
 async def _load_context(
     user_id: uuid.UUID,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -486,6 +517,8 @@ async def _load_context(
         stats = _build_catalog_stats(rows)
         analyses = await fetch_video_analyses_for_user(session, user_id, limit=50)
 
+    # 영상 의미라벨 근거를 stats에 실어 _axis_evidence_strength가 결합하게 함
+    stats["semantic_evidence"] = _aggregate_semantic_evidence(rows, analyses)
     samples = _select_analysis_samples(rows, analyses)
     return stats, samples
 
@@ -498,7 +531,7 @@ async def _llm_values_temperament(
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        from app.agents.aggregator.llm.gemini import invoke_gemini_structured
+        from app.agents.profiler.llm import invoke_gemini_structured
 
         human = VALUES_TEMPERAMENT_HUMAN.format(
             user_id=user_id,
@@ -513,6 +546,7 @@ async def _llm_values_temperament(
             ValuesTemperamentOutput,
         )
     except Exception:
+        logger.warning("values/temperament LLM 실패 → rule 폴백", exc_info=True)
         return None
 
 
@@ -524,7 +558,7 @@ async def _llm_behavior_spider(
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        from app.agents.aggregator.llm.gemini import invoke_gemini_structured
+        from app.agents.profiler.llm import invoke_gemini_structured
 
         human = BEHAVIOR_SPIDER_HUMAN.format(
             user_id=user_id,
@@ -539,6 +573,7 @@ async def _llm_behavior_spider(
             BehaviorSpiderOutput,
         )
     except Exception:
+        logger.warning("behavior LLM 실패 → rule 폴백", exc_info=True)
         return None
 
 
@@ -581,7 +616,7 @@ async def _llm_insight(
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        from app.agents.aggregator.llm.gemini import invoke_gemini_structured
+        from app.agents.profiler.llm import invoke_gemini_structured
 
         human = PROFILE_INSIGHT_HUMAN.format(
             user_id=user_id,
@@ -596,6 +631,7 @@ async def _llm_insight(
             ProfileInsightOutput,
         )
     except Exception:
+        logger.warning("insight LLM 실패 → 템플릿 폴백", exc_info=True)
         return None
 
 

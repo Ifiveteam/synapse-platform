@@ -60,7 +60,7 @@ async def _llm_compare_narrative(
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        from app.agents.aggregator.llm.gemini import invoke_gemini_structured
+        from app.agents.profiler.llm import invoke_gemini_structured
 
         from_snap = diff.get("from_snapshot") or {}
         to_snap = diff.get("to_snapshot") or {}
