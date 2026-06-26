@@ -34,37 +34,6 @@ def extract_8axis(profile_21: dict[str, float]) -> dict[str, float]:
     return {axis: float(profile_21.get(axis, 0.0)) for axis in BEHAVIOR_AXES}
 
 
-# 페르소나 폴백 — LLM 명칭이 없을 때(챗 맞춤 확정 등) 상위 축으로 생성.
-_PERSONA_ADJ: dict[str, str] = {
-    "exploration": "호기심 많은",
-    "analytical": "분석적인",
-    "creativity": "창의적인",
-    "execution": "실행하는",
-    "achievement_drive": "성취 지향",
-    "autonomy": "자기주도적인",
-    "sociality": "사교적인",
-    "sensitivity": "감수성 높은",
-}
-_PERSONA_NOUN: dict[str, str] = {
-    "exploration": "탐색가",
-    "analytical": "분석가",
-    "creativity": "창작 소비자",
-    "execution": "실천가",
-    "achievement_drive": "성장 추구자",
-    "autonomy": "큐레이터",
-    "sociality": "관람자",
-    "sensitivity": "감성 소비자",
-}
-
-
-def persona_label_from_scores(scores8: dict[str, float]) -> str:
-    """상위 행동 축 기반 규칙형 페르소나 명칭 (LLM 명칭 폴백)."""
-    if not scores8:
-        return "균형형 소비자"
-    top = max(BEHAVIOR_AXES, key=lambda a: float(scores8.get(a, 0.0)))
-    return f"{_PERSONA_ADJ.get(top, '균형적인')} {_PERSONA_NOUN.get(top, '소비자')}"
-
-
 def compare(
     current_8: dict[str, float],
     ideal_8: dict[str, float],

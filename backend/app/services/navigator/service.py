@@ -14,7 +14,6 @@ from app.agents.navigator.axes import (
     clamp_scores,
     compare,
     extract_8axis,
-    persona_label_from_scores,
 )
 from app.agents.navigator.behavior_map import derive_8_from_13
 from app.agents.navigator.constants import (
@@ -27,6 +26,7 @@ from app.agents.navigator.constants import (
 from app.agents.navigator.facade import NavigatorAgent, get_navigator_agent
 from app.agents.navigator.schemas import PlaylistItem
 from app.agents.navigator.streaming import format_sse_event, format_stream_event
+from app.agents.shared.persona import persona_from_scores
 from app.core.database.session import get_db
 from app.models.user_ideal_persona import UserIdealPersona
 from app.repositories.indexer_repository import (
@@ -194,7 +194,7 @@ class NavigatorService:
                 ideal_type=p.ideal_type.value,
                 scores=AxisScores8(**p.scores8),
                 values_temperament=AxisScores13(**p.values13),
-                persona_label=p.persona_label or persona_label_from_scores(p.scores8),
+                persona_label=persona_from_scores(p.values13, p.scores8),
                 reasoning=p.reasoning,
             )
             for p in proposals
@@ -300,7 +300,7 @@ class NavigatorService:
             values13 = None
             scores8 = clamp_scores(request.scores.model_dump())
 
-        persona_label = request.persona_label or persona_label_from_scores(scores8)
+        persona_label = persona_from_scores(values13 or {}, scores8)
         persona = await self.repo.create_ideal(
             user_id=user_id,
             scores8=scores8,
