@@ -31,7 +31,6 @@ SHORTS_MAX_DURATION_SEC = 180  # 3분 — is_shorts() 판별 기준 (URL /shorts
 YOUTUBE_THUMBNAIL_URL = "https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
 
 # catalog embedding_text
-_DESCRIPTION_EMBED_MAX = 300
 _TAGS_EMBED_MAX = 10
 # YouTube categoryId → 한글 (embedding_text용, DB 미저장)
 _YOUTUBE_CATEGORY_LABELS: dict[str, str] = {
@@ -220,9 +219,10 @@ def is_shorts(url: str, duration_sec: int | None) -> bool:
 
 
 def build_catalog_embedding_text(item: dict) -> str:
-    """catalog 임베딩용 평문 — 제목·채널·카테고리·태그·설명(앞 300자).
+    """catalog 임베딩용 평문 — 제목·채널·카테고리·태그.
 
-    재생목록 추천 + 성향/가이드 매칭 양쪽에 쓰여 채널명도 의미 신호로 포함한다.
+    설명(description)은 해시태그·링크·홍보·제목반복 등 노이즈가 많아 제외한다.
+    깊은 의미는 video_analysis(자막 요약) 임베딩이 별도로 담당.
     """
     parts: list[str] = []
 
@@ -243,10 +243,6 @@ def build_catalog_embedding_text(item: dict) -> str:
         tag_line = ", ".join(str(t).strip() for t in tags[:_TAGS_EMBED_MAX] if t)
         if tag_line:
             parts.append(f"태그: {tag_line}")
-
-    description = (item.get("description") or "").strip()
-    if description:
-        parts.append(f"설명: {description[:_DESCRIPTION_EMBED_MAX]}")
 
     if parts:
         return "\n".join(parts)

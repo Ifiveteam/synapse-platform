@@ -21,6 +21,7 @@ from app.agents.profiler.prompts import (
 from app.agents.profiler.semantics import compute_semantic_evidence
 from app.agents.profiler.state import ProfilerState
 from app.agents.shared.analysis_window import WATCH_CATALOG_WINDOW_DAYS
+from app.agents.shared.persona import persona_from_scores
 from app.schemas.profiler import (
     BehaviorSpiderOutput,
     ProfileInsightOutput,
@@ -197,18 +198,6 @@ def rule_based_values_temperament(stats: dict[str, Any]) -> ValuesTemperamentOut
     return ValuesTemperamentOutput(**_rule_scores_from_stats(stats))
 
 
-_BEHAVIOR_SOURCE_KEYS: dict[str, tuple[str, ...]] = {
-    "exploration": ("novelty_seeking", "self_direction", "stimulation"),
-    "analytical": ("achievement", "universalism", "persistence"),
-    "creativity": ("self_direction", "stimulation", "hedonism"),
-    "execution": ("persistence", "achievement"),
-    "achievement_drive": ("achievement", "persistence", "power"),
-    "autonomy": ("self_direction", "novelty_seeking", "conformity"),
-    "sociality": ("benevolence", "universalism", "hedonism"),
-    "sensitivity": ("self_transcendence", "hedonism", "stimulation"),
-}
-
-
 def _blend_values_temperament(
     llm: ValuesTemperamentOutput,
     rule: ValuesTemperamentOutput,
@@ -374,33 +363,12 @@ def rule_based_scores(stats: dict[str, Any]) -> ProfileScoresOutput:
     return merge_profile_scores(vt, behavior)
 
 
-_PERSONA_ADJ: dict[str, str] = {
-    "exploration": "호기심 많은",
-    "analytical": "분석적인",
-    "creativity": "창의적인",
-    "execution": "실행적인",
-    "achievement_drive": "성취 지향",
-    "autonomy": "자기주도적인",
-    "sociality": "사교적인",
-    "sensitivity": "감수성 높은",
-}
-
-_PERSONA_NOUN: dict[str, str] = {
-    "exploration": "탐색가",
-    "analytical": "분석가",
-    "creativity": "창작 소비자",
-    "execution": "실천가",
-    "achievement_drive": "성장 추구자",
-    "autonomy": "큐레이터",
-    "sociality": "관람자",
-    "sensitivity": "감성 소비자",
-}
-
-
-def _template_persona_label(top_behavior_key: str) -> str:
-    adj = _PERSONA_ADJ.get(top_behavior_key, "균형적인")
-    noun = _PERSONA_NOUN.get(top_behavior_key, "소비자")
-    return f"{adj} {noun}"
+def _persona(scores: ProfileScoresOutput) -> str:
+    """21축 → '형용사 명사' 페르소나 (가치관13→형용사, 행동8→명사). 규칙 결정적."""
+    sd = scores.model_dump()
+    values13 = {k: float(sd[k]) for k in _VALUES_TEMPERAMENT_KEYS}
+    behavior8 = {k: float(sd[k]) for k in _BEHAVIOR_KEYS}
+    return persona_from_scores(values13, behavior8)
 
 
 def _template_insight(
@@ -415,9 +383,7 @@ def _template_insight(
     traits = [_LABELS_KO[key] for key, _ in top]
     total = stats.get("total") or 0
     shorts_ratio = stats.get("shorts_ratio") or 0.0
-    persona = _template_persona_label(top[0][0])
-    if shorts_ratio > 0.5 and top[0][0] != "exploration":
-        persona = "숏폼 중심 큐레이터"
+    persona = _persona(scores)
 
     summary = (
         f"최근 {total}건의 시청 기록을 바탕으로, "
@@ -690,6 +656,9 @@ async def build_profile_node(state: ProfilerState) -> dict[str, Any]:
             log.append("build_profile: insight template")
         else:
             log.append("build_profile: insight gemini")
+
+    # 페르소나는 항상 규칙(축 기반)으로 — LLM/템플릿 작명 대체, 결정적·일관
+    insight.persona_label = _persona(scores)
 
     supporting = {
         "catalog_stats": stats,
