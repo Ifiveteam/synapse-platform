@@ -52,7 +52,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/synapse
       FRONTEND_BASE_URL: https://ifive.site
-      GOOGLE_REDIRECT_URI: https://ifive.site/api/v1/auth/callback
+      # GOOGLE_REDIRECT_URI 는 .env(GitHub Secrets)에서 주입 — cd.yml 참조
       COOKIE_SECURE: "true"
     expose:
       - "8000"

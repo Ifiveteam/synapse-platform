@@ -73,6 +73,7 @@ jobs:
             GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+            GOOGLE_REDIRECT_URI=${{ secrets.GOOGLE_REDIRECT_URI }}
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             RESEND_FROM_EMAIL=${{ secrets.RESEND_FROM_EMAIL }}
             NAVER_CLIENT_ID=${{ secrets.NAVER_CLIENT_ID }}
