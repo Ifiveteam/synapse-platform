@@ -2,7 +2,7 @@
  * Synapse 웹(프론트) ↔ 익스텐션 인증 브릿지.
  * 웹이 1회용 code만 전달하고, 익스텐션이 백엔드와 직접 토큰 교환한다.
  */
-import { exchangeExtensionCode } from '@/shared/api/extensionAuth'
+import { exchangeExtensionCode } from '@/features/auth/services/extensionAuth'
 import { terminateAuthSession } from '@/shared/auth/sessionLifecycle'
 import { storeAuthSession } from '@/shared/auth/sessionStorage'
 import {

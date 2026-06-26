@@ -1,4 +1,4 @@
-"""Archiver agent business logic ? ??/DB ???, LangGraph? ?? ??."""
+"""Archiver agent business logic — 세션/DB I/O, LangGraph 실행 위임."""
 
 from __future__ import annotations
 
@@ -27,18 +27,18 @@ from app.schemas.archiver import (
 
 
 def join_assistant_tokens(chunks: list[str]) -> str:
-    """??? token ??? ??? assistant ?? ???? ???."""
+    """스트림 token 청크 목록을 assistant 최종 본문 문자열로 합친다."""
     return "".join(chunks)
 
 
 def should_persist_assistant_log(content: str) -> bool:
-    """assistant role ??? DB? ???? ????."""
+    """assistant role 로그를 DB에 저장할지 판단한다."""
     normalized = content.strip()
     return bool(normalized) and not normalized.startswith(STREAM_ERROR_PREFIX)
 
 
 def collect_token_chunks(stream_events: list[ArchiverStreamEvent]) -> list[str]:
-    """ArchiverStreamEvent ???? token ??? content? ????."""
+    """ArchiverStreamEvent 목록에서 token 이벤트 content만 추출한다."""
     return [event.content for event in stream_events if event.event == "token"]
 
 
@@ -57,7 +57,7 @@ class ArchiverService:
         *,
         user_id: uuid.UUID,
     ) -> AsyncIterator[str]:
-        """????? ?? ? LangGraph State? ????? ???? ?? ??."""
+        """세션·로그 조립 후 LangGraph State를 초기화하여 그래프에 실행 위임."""
         context_title = (
             request.context.title if request.context else NO_CONTEXT_TITLE
         )
@@ -125,7 +125,7 @@ class ArchiverService:
         *,
         user_id: uuid.UUID,
     ) -> list[ArchiverSessionSummary]:
-        """??? ?? ???? ?? ???? ????."""
+        """유저의 활성 Archiver 세션 목록을 반환한다."""
         return await self.repo.get_user_sessions(user_id=user_id)
 
     async def get_session_history(
@@ -134,7 +134,7 @@ class ArchiverService:
         *,
         user_id: uuid.UUID,
     ) -> list[ArchiverChatMessage]:
-        """?? ??? ?? ??? ???? (?? ???)."""
+        """한 세션의 대화 히스토리를 반환한다 (유저 스코프)."""
         return await self.repo.get_chat_history(
             session_id=session_id,
             user_id=user_id,

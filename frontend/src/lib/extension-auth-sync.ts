@@ -1,5 +1,5 @@
 import { issueExtensionAuthCode } from "@/api/auth";
-import { SYNAPSE_WEB_MESSAGE_SOURCE } from "@synapse/shared/auth-protocol";
+import { SYNAPSE_WEB_MESSAGE_SOURCE } from "@/lib/auth-protocol";
 
 /**
  * 웹 로그인 세션 → 1회용 code → 익스텐션이 백엔드와 직접 토큰 교환.

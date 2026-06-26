@@ -1,8 +1,5 @@
-// 🔥 WARNING: BACKEND SSOT SYNC REQUIRED (constants.py / context_body_quality.py)
-/**
- * 본문 품질 휴리스틱은 backend `app/agents/archiver/context_body_quality.py` 와
- * 동일한 규칙을 유지해야 합니다. 백엔드 로직 변경 시 여기도 함께 수정하세요.
- */
+// [SSOT_MANUAL_SYNC] 본문 품질 휴리스틱 — limits.ts 상수를 import합니다.
+// 규칙 본문은 backend `app/agents/archiver/utils/context_body_quality.py` 와 수동 동기화하세요.
 
 import {
   MIN_CONTEXT_BODY_QUALITY,
@@ -22,7 +19,7 @@ function looksLikeCssSelector(line: string): boolean {
   return /^[\w-]+\s*\{/.test(stripped)
 }
 
-export function isNoiseLine(line: string): boolean {
+function isNoiseLine(line: string): boolean {
   const stripped = line.trim()
   if (stripped.length < 2) return false
 
@@ -38,7 +35,7 @@ export function isNoiseLine(line: string): boolean {
   return codeChars / nonWs > 0.15
 }
 
-export function filterNoiseLines(text: string): string {
+function filterNoiseLines(text: string): string {
   return text
     .split('\n')
     .map((line) => line.trim())
@@ -95,7 +92,7 @@ export function scoreContextBodyQuality(text: string): number {
   return Math.min(1, Math.max(0, base + lineDensity * 0.15))
 }
 
-export function isMeaningfulContextBody(text: string): boolean {
+function isMeaningfulContextBody(text: string): boolean {
   const normalized = text.trim()
   if (normalized.length < MIN_TAB_CONTEXT_BODY_CHARS) return false
   if (scoreLineDensity(normalized) < 0.2) return false

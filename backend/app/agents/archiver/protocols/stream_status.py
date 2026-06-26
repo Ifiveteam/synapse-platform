@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from app.agents.archiver.models.state import COLLECT_NODE, RAG_NODE, SEARCH_NODE
+from typing import Any
+
+from app.agents.archiver.models import COLLECT_NODE, RAG_NODE, SEARCH_NODE, StatusPhase
+from app.agents.archiver.models.state import normalize_target_engines
 
 # ── Router / 병렬 시작 ────────────────────────────────────────────
 
@@ -38,7 +41,6 @@ MSG_DOM_SCRAPING = (
 )
 MSG_DOM_THIN_REVIEW = "📄 화면에서 읽어 온 내용을 더 꼼꼼히 살펴보고 있어요..."
 
-# need_dom (클라이언트 DOM 선행 수집)
 MSG_NEED_DOM = "📄 현재 열려 있는 탭의 화면 정보를 안전하게 읽어오는 중입니다..."
 
 # ── RAG / rag_node ────────────────────────────────────────────────
@@ -80,14 +82,33 @@ def _normalize_sse_text(text: str) -> str:
     return f"{stripped}\n\n"
 
 
-def status_event(content: str) -> dict[str, str]:
-    """LangGraph stream writer용 status 이벤트 dict."""
-    return {"event": "status", "content": _normalize_sse_text(content)}
+def status_event(
+    content: str,
+    *,
+    phase: StatusPhase | None = None,
+    engines: list[str] | None = None,
+) -> dict[str, Any]:
+    """LangGraph stream writer용 status 이벤트 dict (content 하위호환 + 구조화 필드)."""
+    payload: dict[str, Any] = {
+        "event": "status",
+        "content": _normalize_sse_text(content),
+        "message": content.strip(),
+    }
+    if phase is not None:
+        payload["phase"] = phase
+    if engines:
+        payload["engines"] = normalize_target_engines(engines)
+    return payload
 
 
-def need_dom_event() -> dict[str, str]:
+def need_dom_event() -> dict[str, Any]:
     """need_dom SSE 이벤트 dict."""
-    return {"event": "need_dom", "content": _normalize_sse_text(MSG_NEED_DOM)}
+    return {
+        "event": "need_dom",
+        "content": _normalize_sse_text(MSG_NEED_DOM),
+        "message": MSG_NEED_DOM.strip(),
+        "phase": "need_dom",
+    }
 
 
 def router_parallel_message(targets: list[str]) -> str:
@@ -124,7 +145,7 @@ def evaluator_message(evaluation: object) -> str:
     if evaluation.is_sufficient:
         return MSG_EVALUATOR_SUFFICIENT
 
-    if evaluation.normalized_action() != "none":
+    if evaluation.recommended_action != "none":
         return MSG_EVALUATOR_SUPPLEMENTING
 
     return MSG_EVALUATOR_BEST_EFFORT

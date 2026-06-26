@@ -11,32 +11,29 @@ from app.agents.archiver.core.constants import (
     MAX_RETRIEVAL_ATTEMPTS,
     MAX_SEARCH_ATTEMPTS,
 )
-from app.agents.archiver.core.gemini import invoke_structured_safe
+from app.agents.shared.gemini import invoke_structured_safe
 from app.agents.archiver.prompts.evaluator_prompt import (
     ACTION_ENGINE_MAP,
     build_evaluator_prompt,
 )
 from app.agents.archiver.protocols.stream_status import evaluator_message, status_event
 from app.agents.archiver.models import (
-    normalize_target_engines,
-    remaining_engines,
-)
-from app.agents.archiver.steps._common import latest_user_message
-from app.agents.archiver.trace import log_evaluation_result, log_node_enter
-from app.agents.archiver.models import (
     ArchiverState,
     Evaluation,
     get_context_dom,
     get_context_rag,
     get_context_search,
-    resolve_route,
+    latest_user_message,
+    normalize_target_engines,
+    remaining_engines,
 )
+from app.agents.archiver.trace import log_evaluation_result, log_node_enter
 
 
 def _sanitize_evaluation(evaluation: Evaluation, state: ArchiverState) -> Evaluation:
     """LLM이 이미 실행된 엔진을 추천한 경우 pending 기준으로 교정한다."""
     pending = remaining_engines(state)
-    action = evaluation.normalized_action()
+    action = evaluation.recommended_action
 
     if evaluation.is_sufficient:
         if action != "none":
@@ -73,12 +70,10 @@ def _sanitize_evaluation(evaluation: Evaluation, state: ArchiverState) -> Evalua
 async def _evaluate_with_llm(state: ArchiverState) -> tuple[Evaluation, str]:
     """수집 근거를 Gemini Structured Output으로 채점한다 (evaluate 전용)."""
     user_message = latest_user_message(state)
-    route = resolve_route(state)
     executed = list(state.get("executed_steps") or [])
     pending = remaining_engines(state)
 
     system_instruction, user_content = build_evaluator_prompt(
-        route=route,
         user_message=user_message,
         context_title=state.get("context_title", ""),
         context_url=state.get("context_url", ""),
@@ -114,7 +109,7 @@ async def evaluate(state: ArchiverState) -> dict[str, Any]:
     log_evaluation_result(evaluation=evaluation, source=source)
 
     writer = get_stream_writer()
-    writer(status_event(evaluator_message(evaluation)))
+    writer(status_event(evaluator_message(evaluation), phase="evaluator"))
 
     return {
         "evaluation_result": evaluation.to_state_dict(),

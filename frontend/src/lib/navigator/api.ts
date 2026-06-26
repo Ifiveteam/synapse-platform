@@ -9,7 +9,11 @@ import type {
   Guide,
   Quest,
 } from "./types";
-import type { ProfilerResult } from "@/api/types/profiler";
+import {
+  SYNAPSE_AXIS_KEYS,
+  type DbProfileResponse,
+  type ProfilerResult,
+} from "@/api/types/profiler";
 import { API_BASE_URL } from "@/lib/env";
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -224,6 +228,30 @@ export function toProfilerData(result: ProfilerResult): ProfilerData {
     layer_b:        result.layer_b,
     top5_interests: result.top5_interests.map((i) => i.label),
     summary:        result.summary,
+  };
+}
+
+/** DB 스냅샷 프로필 → Navigator 입력 형식 (Profiler store `DbProfileResponse`) */
+export function dbProfileToProfilerData(profile: DbProfileResponse): ProfilerData {
+  const layer_a = {
+    user_id: profile.user_id,
+    ...Object.fromEntries(
+      SYNAPSE_AXIS_KEYS.map((key) => [key, Math.round((profile.scores[key] ?? 0) * 100)]),
+    ),
+  } as ProfilerData["layer_a"];
+
+  return {
+    user_id: profile.user_id,
+    computed_at: profile.snapshot_date,
+    layer_a,
+    layer_b: {
+      search_active_ratio: 0,
+      viewing_concentration: 0,
+      taste_diversity_index: 0,
+      exploration_depth: 0,
+    },
+    top5_interests: profile.top_categories.slice(0, 5).map((item) => item.category_id),
+    summary: profile.summary_text,
   };
 }
 

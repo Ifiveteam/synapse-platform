@@ -2,6 +2,28 @@
 
 from __future__ import annotations
 
+# ┌───────────────────────────────────────────────────────────────── [SSOT_SYNC] ─┐
+# │ 이 파일의 아래 상수는 익스텐션과 수동 동기화가 필요합니다.                      │
+# │ ↔ extension/src/features/archiver/utils/limits.ts                            │
+# │                                                                              │
+# │ 전체 검색: [SSOT_SYNC]                                                       │
+# │                                                                              │
+# │ 매핑 (값·단위 반드시 일치):                                                   │
+# │   MAX_BODY_LENGTH              ↔ MAX_BODY_LENGTH / MAX_TAB_CONTEXT_BODY_CHARS │
+# │   QUALITY_THRESHOLD (0–100)    ↔ QUALITY_THRESHOLD (0–100)                   │
+# │   MIN_CONTEXT_BODY_QUALITY     ↔ MIN_CONTEXT_BODY_QUALITY (0.0–1.0)          │
+# │   DOM_STABILITY_TIMEOUT_MS     ↔ DOM_STABILITY_TIMEOUT_MS (ms)               │
+# └──────────────────────────────────────────────────────────────────────────────┘
+
+# ── [SSOT_SYNC] 익스텐션 동기화 상수 ────────────────────────────────────────────
+MAX_BODY_LENGTH = 5_000
+MAX_CONTEXT_BODY_CHARS = MAX_BODY_LENGTH
+
+QUALITY_THRESHOLD = 35  # 0–100 척도; 본문 품질 채점 커트라인
+MIN_CONTEXT_BODY_QUALITY = QUALITY_THRESHOLD / 100
+
+DOM_STABILITY_TIMEOUT_MS = 500  # DOM mutation 안정화 quiet 대기 (ms)
+
 # LangGraph evaluator 루프 한도
 MAX_SEARCH_ATTEMPTS = 2
 MAX_RETRIEVAL_ATTEMPTS = 2
@@ -12,10 +34,6 @@ RAG_SEARCH_LIMIT = 3
 # multi-turn 대화 (user+assistant 메시지 쌍 상한)
 MAX_HISTORY_MESSAGES = 20
 
-# Gemini
-GEMINI_MODEL = "gemini-2.5-flash"
-GEMINI_API_KEY_ENV_VARS = ("GOOGLE_API_KEY", "GEMINI_API_KEY")
-
 # Router(classify) — 최저 레이턴시 전용 (구조화 분류만 수행)
 CLASSIFY_MODEL = "gemini-2.5-flash"
 CLASSIFY_TEMPERATURE = 0.0
@@ -25,22 +43,15 @@ CLASSIFY_MAX_OUTPUT_TOKENS = 128
 EVALUATE_TEMPERATURE = 0.0
 SEARCH_TEMPERATURE = 0.2
 
-# respond route별 생성 온도 (ArchiverRoute.value 키)
-RESPOND_TEMPERATURES: dict[str, float] = {
-    "BASIC": 0.2,
-    "RAG": 0.3,
-    "SEARCH": 0.5,
-    "GENERAL": 0.7,
-}
-RESPOND_DEFAULT_TEMPERATURE = 0.4
+# respond 생성 온도 — chitchat(is_general) vs factual(근거 기반)
+RESPOND_CHITCHAT_TEMPERATURE = 0.8
+RESPOND_FACTUAL_TEMPERATURE = 0.4
 
 # Trace 미리보기
 TRACE_PREVIEW_CHARS = 400
 
-# 활성 탭 본문 스크래핑
-MAX_CONTEXT_BODY_CHARS = 5_000
+# 활성 탭 본문 스크래핑 ([SSOT_SYNC] MAX_BODY_LENGTH·QUALITY_THRESHOLD 참조)
 MIN_CLIENT_CONTEXT_BODY_CHARS = 80
-MIN_CONTEXT_BODY_QUALITY = 0.35
 THIN_CONTEXT_BODY_CHARS = 500
 
 # LangGraph RunnableConfig store 키
