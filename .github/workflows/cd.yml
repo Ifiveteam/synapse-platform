@@ -32,7 +32,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Frontend 이미지 빌드 & 푸시 (context=루트, shared 포함)
+      - name: Frontend 이미지 빌드 & 푸시 (context=루트)
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -73,6 +73,7 @@ jobs:
             GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+            GOOGLE_REDIRECT_URI=${{ secrets.GOOGLE_REDIRECT_URI }}
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             RESEND_FROM_EMAIL=${{ secrets.RESEND_FROM_EMAIL }}
             NAVER_CLIENT_ID=${{ secrets.NAVER_CLIENT_ID }}
@@ -83,6 +84,11 @@ jobs:
             # 최신 이미지 pull & 재시작
             docker compose pull
             docker compose up -d --remove-orphans
-            docker image prune -f
+
+            # 배포 후 안 쓰는 옛 이미지·빌드캐시 정리 (디스크 풀 방지)
+            # ⚠️ -af = 컨테이너가 안 쓰는 모든 이미지 제거 (현재 실행 중 이미지는 보호됨)
+            #    볼륨(pgdata 등)은 건드리지 않음
+            docker image prune -af
+            docker builder prune -af
 
             echo "✅ 배포 완료: ${{ github.sha }}"
