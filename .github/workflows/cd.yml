@@ -84,6 +84,11 @@ jobs:
             # 최신 이미지 pull & 재시작
             docker compose pull
             docker compose up -d --remove-orphans
-            docker image prune -f
+
+            # 배포 후 안 쓰는 옛 이미지·빌드캐시 정리 (디스크 풀 방지)
+            # ⚠️ -af = 컨테이너가 안 쓰는 모든 이미지 제거 (현재 실행 중 이미지는 보호됨)
+            #    볼륨(pgdata 등)은 건드리지 않음
+            docker image prune -af
+            docker builder prune -af
 
             echo "✅ 배포 완료: ${{ github.sha }}"
