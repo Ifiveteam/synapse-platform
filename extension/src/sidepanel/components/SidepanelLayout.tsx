@@ -30,9 +30,11 @@ function SidepanelContent() {
           </ChatProvider>
         </AuthGate>
       ) : (
-        <main className="min-h-0 flex-1 w-full overflow-y-auto px-4 py-4">
-          <ScrapView />
-        </main>
+        <AuthGate>
+          <main className="min-h-0 flex-1 w-full overflow-y-auto px-4 py-4">
+            <ScrapView />
+          </main>
+        </AuthGate>
       )}
     </div>
   )

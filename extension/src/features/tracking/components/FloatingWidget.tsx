@@ -3,11 +3,14 @@
  * 트래킹 토글·스크랩 트리거·사이드패널 열기를 호스트 페이지와 격리된 UI로 제공한다.
  */
 import { useState } from 'react'
+import { createScrap } from '@/features/scrap/services/createScrap'
 import { useTracking } from '@/features/tracking/hooks/useTracking'
 import { isExtensionContextValid } from '@/shared/utils/extensionContext'
 
 export function FloatingWidget() {
   const [isHovered, setIsHovered] = useState(false)
+  const [isScraping, setIsScraping] = useState(false)
+  const [scrapFeedback, setScrapFeedback] = useState<'success' | 'error' | null>(null)
   const { isTracking, toggleTracking } = useTracking()
 
   /** 메인 버튼 클릭 → Background가 chrome.sidePanel.open() 동기 실행 (닫기는 Chrome API 미지원) */
@@ -19,9 +22,26 @@ export function FloatingWidget() {
     })
   }
 
-  /** 스크랩 액션 — 다음 레이어에서 storage/API 훅과 연결 */
+  /** 현재 페이지 본문을 수집해 백엔드 Scrap 파이프라인으로 전송 */
   const handleScrapPage = () => {
-    console.log('[Synapse FAB] 현재 페이지 스크랩 트리거')
+    if (isScraping || !isExtensionContextValid()) return
+
+    setIsScraping(true)
+    setScrapFeedback(null)
+
+    void createScrap({ source_type: 'web' })
+      .then(() => {
+        setScrapFeedback('success')
+        window.setTimeout(() => setScrapFeedback(null), 2000)
+      })
+      .catch((error) => {
+        console.error('[Synapse FAB] 스크랩 실패:', error)
+        setScrapFeedback('error')
+        window.setTimeout(() => setScrapFeedback(null), 3000)
+      })
+      .finally(() => {
+        setIsScraping(false)
+      })
   }
 
   return (
@@ -41,10 +61,25 @@ export function FloatingWidget() {
         <button
           type="button"
           onClick={handleScrapPage}
-          className="flex size-10 items-center justify-center rounded-full border border-slate-100 bg-white text-slate-700 shadow-lg transition-colors hover:bg-slate-50"
-          aria-label="현재 페이지 맥락 스크랩"
+          disabled={isScraping}
+          className={`flex size-10 items-center justify-center rounded-full border shadow-lg transition-colors ${
+            scrapFeedback === 'success'
+              ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+              : scrapFeedback === 'error'
+                ? 'border-rose-500 bg-rose-50 text-rose-700'
+                : 'border-slate-100 bg-white text-slate-700 hover:bg-slate-50'
+          } disabled:cursor-not-allowed disabled:opacity-60`}
+          aria-label={
+            isScraping
+              ? '페이지 스크랩 처리 중'
+              : scrapFeedback === 'success'
+                ? '스크랩 저장 완료'
+                : scrapFeedback === 'error'
+                  ? '스크랩 저장 실패'
+                  : '현재 페이지 맥락 스크랩'
+          }
         >
-          📌
+          {isScraping ? '…' : scrapFeedback === 'success' ? '✓' : '📌'}
         </button>
 
         <button

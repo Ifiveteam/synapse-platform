@@ -6,9 +6,6 @@ export const STORAGE_KEYS = {
   /** FAB·사이드패널 트래킹 스위치 ON/OFF — Background 엔진 가동 트리거 */
   TRACKING_STATUS: 'synapse_tracking_status',
 
-  /** 유저가 패키징한 컨텍스트 스크랩 목록 (로컬 캐시) */
-  SCRAP_LIST: 'synapse_scrap_list',
-
   /** backend JWT access token — Archiver 등 인증 API 호출용 (프론트 로그인과 동기화) */
   ACCESS_TOKEN: 'synapse_access_token',
 

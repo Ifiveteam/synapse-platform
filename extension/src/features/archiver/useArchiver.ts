@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import {
-  fetchHistoryForContext,
+  resolveArchiverSessionForContext,
   streamArchiverMessage,
   type ArchiverStreamEventPayload,
   type ArchiverStreamEventType,
@@ -27,8 +27,10 @@ export type {
 
 export function useArchiver() {
   const [currentContext, setCurrentContext] = useState<TabContext | null>(null)
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [serverHistory, setServerHistory] = useState<ArchiverChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
+  const [isSessionLoading, setIsSessionLoading] = useState(false)
 
   useEffect(() => {
     if (!isExtensionContextValid() || !chrome.tabs) return
@@ -63,22 +65,39 @@ export function useArchiver() {
   useEffect(() => {
     if (isStreaming) return
 
-    if (!currentContext) {
-      setServerHistory([])
-      return
-    }
-
     let cancelled = false
 
-    void fetchHistoryForContext(currentContext)
-      .then((history) => {
+    if (!currentContext) {
+      void Promise.resolve().then(() => {
         if (cancelled) return
+        setCurrentSessionId(null)
+        setServerHistory([])
+        setIsSessionLoading(false)
+      })
+      return () => {
+        cancelled = true
+      }
+    }
+
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+      setIsSessionLoading(true)
+    })
+
+    void resolveArchiverSessionForContext(currentContext)
+      .then(({ sessionId, history }) => {
+        if (cancelled) return
+        setCurrentSessionId(sessionId)
         setServerHistory(history)
       })
       .catch((error) => {
         if (cancelled) return
         console.error('[Synapse Archiver] 히스토리 로드 실패:', error)
+        setCurrentSessionId(null)
         setServerHistory([])
+      })
+      .finally(() => {
+        if (!cancelled) setIsSessionLoading(false)
       })
 
     return () => {
@@ -124,8 +143,10 @@ export function useArchiver() {
 
   return {
     currentContext,
+    currentSessionId,
     serverHistory,
     isStreaming,
+    isSessionLoading,
     streamMessage,
   }
 }
