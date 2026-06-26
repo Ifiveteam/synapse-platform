@@ -14,7 +14,7 @@ from langgraph.types import Send
 
 from app.agents.archiver.branches import needs_dom_collection, route_after_router
 from app.agents.archiver.engine import ArchiverEngine, build_archiver_engine
-from app.agents.archiver.models import COLLECT_NODE, RouterTargets, SEARCH_NODE
+from app.agents.archiver.models import COLLECT_NODE, SEARCH_NODE, RouterTargets
 from app.agents.archiver.protocols.stream_status import MSG_ROUTER_GENERAL
 from app.agents.archiver.steps.classify import _resolve_router_targets
 from app.agents.archiver.steps.respond_context import resolve_system_instruction
@@ -41,7 +41,9 @@ def run_scenario_tests() -> list[str]:
         _resolve_router_targets("안녕하세요")
     )
     _assert(
-        greeting_targets == [] and greeting_general and greeting_detail == "preflight:greeting",
+        greeting_targets == []
+        and greeting_general
+        and greeting_detail == "preflight:greeting",
         "scenario1: greeting preflight -> GENERAL",
         errors,
     )
@@ -101,7 +103,9 @@ def run_scenario_tests() -> list[str]:
             "context_search": "web search snippet",
         }
     )
-    _assert(parallel_tools is None, "scenario3: parallel evidence skips search tool", errors)
+    _assert(
+        parallel_tools is None, "scenario3: parallel evidence skips search tool", errors
+    )
     _assert(
         "visible page excerpt" in parallel_instruction
         and "web search snippet" in parallel_instruction,
@@ -141,7 +145,9 @@ async def _run_engine_scenarios(errors: list[str]) -> None:
 
     collect_calls = {"n": 0}
 
-    async def _mock_collect_node(state: dict[str, Any], config: Any = None) -> dict[str, Any]:
+    async def _mock_collect_node(
+        state: dict[str, Any], config: Any = None
+    ) -> dict[str, Any]:
         collect_calls["n"] += 1
         writer = get_stream_writer()
         writer({"event": "status", "content": "[mock] collect_node\n\n"})
@@ -252,8 +258,14 @@ async def _run_engine_scenarios(errors: list[str]) -> None:
         for p in patches_turn2:
             p.stop()
 
-    _assert(collect_calls["n"] >= 1, "scenario2-runtime: turn2 runs collect_node", errors)
-    _assert(tokens_turn2 == ["mock-answer"], "scenario2-runtime: turn2 reaches respond", errors)
+    _assert(
+        collect_calls["n"] >= 1, "scenario2-runtime: turn2 runs collect_node", errors
+    )
+    _assert(
+        tokens_turn2 == ["mock-answer"],
+        "scenario2-runtime: turn2 reaches respond",
+        errors,
+    )
 
     # scenario4 runtime: follow-up GENERAL → respond only
     followup_state = ArchiverEngine.build_initial_state(
@@ -302,7 +314,9 @@ async def _run_engine_scenarios(errors: list[str]) -> None:
         "scenario4-runtime: GENERAL status emitted",
         errors,
     )
-    _assert(tokens == ["mock-answer"], "scenario4-runtime: respond token emitted", errors)
+    _assert(
+        tokens == ["mock-answer"], "scenario4-runtime: respond token emitted", errors
+    )
 
     # scenario4 classify path: dialogue follow-up can resolve to GENERAL without engines
     with patch(

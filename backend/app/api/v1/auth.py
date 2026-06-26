@@ -125,7 +125,6 @@ async def delete_me(
 ) -> None:
     await session.delete(user)
     await session.commit()
-    cookie = request.cookies.get(token_service.REFRESH_COOKIE_NAME)
     token_service.clear_refresh_cookie(response)
 
 

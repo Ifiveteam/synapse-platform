@@ -11,15 +11,16 @@ from unittest.mock import patch
 from langchain_core.messages import HumanMessage
 from langgraph.config import get_stream_writer
 
-from app.agents.archiver.engine import ArchiverEngine, build_archiver_engine
-from app.agents.archiver.models import COLLECT_NODE, RAG_NODE, SEARCH_NODE
 from app.agents.archiver.core.store import PastKnowledgeHit
-from app.agents.archiver.models import Evaluation
+from app.agents.archiver.engine import ArchiverEngine, build_archiver_engine
+from app.agents.archiver.models import COLLECT_NODE, RAG_NODE, SEARCH_NODE, Evaluation
 from app.agents.archiver.protocols.stream_status import MSG_ROUTER_GENERAL
 
 
 class _FakeStore:
-    async def search_past_knowledge(self, *args: Any, **kwargs: Any) -> list[PastKnowledgeHit]:
+    async def search_past_knowledge(
+        self, *args: Any, **kwargs: Any
+    ) -> list[PastKnowledgeHit]:
         return [
             PastKnowledgeHit(
                 role="user",
@@ -142,7 +143,9 @@ async def main() -> int:
         writer({"event": "status", "content": "[mock] evaluator ok\n\n"})
         return {"evaluation_result": ev.to_state_dict(), "current_step": "evaluator"}
 
-    async def _mock_rag_node(state: dict[str, Any], config: Any = None) -> dict[str, Any]:
+    async def _mock_rag_node(
+        state: dict[str, Any], config: Any = None
+    ) -> dict[str, Any]:
         writer = get_stream_writer()
         writer({"event": "status", "content": "[mock] rag_node\n\n"})
         return {
@@ -170,7 +173,9 @@ async def main() -> int:
     async def _mock_search_node(state: dict[str, Any]) -> dict[str, Any]:
         search_calls["n"] += 1
         writer = get_stream_writer()
-        writer({"event": "status", "content": f"[mock] search #{search_calls['n']}\n\n"})
+        writer(
+            {"event": "status", "content": f"[mock] search #{search_calls['n']}\n\n"}
+        )
         return {
             "context_search": f"result-{search_calls['n']}",
             "search_attempts": search_calls["n"],
@@ -193,7 +198,9 @@ async def main() -> int:
         errors.append("SEARCH: token missing")
 
     # collect_node (BASIC) path
-    async def _mock_collect_node(state: dict[str, Any], config: Any = None) -> dict[str, Any]:
+    async def _mock_collect_node(
+        state: dict[str, Any], config: Any = None
+    ) -> dict[str, Any]:
         writer = get_stream_writer()
         writer({"event": "status", "content": "[mock] collect_node\n\n"})
         return {

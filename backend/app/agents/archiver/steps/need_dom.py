@@ -19,9 +19,9 @@ from typing import Any
 
 from langgraph.config import get_stream_writer
 
+from app.agents.archiver.models import ArchiverState
 from app.agents.archiver.protocols.stream_status import need_dom_event
 from app.agents.archiver.trace import log_node_enter
-from app.agents.archiver.models import ArchiverState
 
 
 async def need_dom(state: ArchiverState) -> dict[str, Any]:

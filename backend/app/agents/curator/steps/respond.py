@@ -9,7 +9,11 @@ from google.genai import types
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.config import get_stream_writer
 
-from app.agents.curator.constants import GEMINI_MODEL, RESPOND_MESSAGE_WINDOW, STREAM_ERROR_MESSAGE
+from app.agents.curator.constants import (
+    GEMINI_MODEL,
+    RESPOND_MESSAGE_WINDOW,
+    STREAM_ERROR_MESSAGE,
+)
 from app.agents.curator.gemini import get_client
 from app.agents.curator.types import CuratorRoute, CuratorState
 

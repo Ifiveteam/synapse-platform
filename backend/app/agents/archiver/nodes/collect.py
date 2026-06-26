@@ -6,11 +6,6 @@ from typing import Any
 
 from langgraph.config import get_stream_writer
 
-from app.agents.archiver.utils.context_refine import (
-    clean_context_title,
-    clean_context_url,
-    is_thin_context_body,
-)
 from app.agents.archiver.models import COLLECT_NODE, ArchiverState, get_context_dom
 from app.agents.archiver.nodes.utils.scraper import (
     is_scrapable_url,
@@ -25,6 +20,11 @@ from app.agents.archiver.protocols.stream_status import (
     status_event,
 )
 from app.agents.archiver.trace import log_collect_result, log_node_enter
+from app.agents.archiver.utils.context_refine import (
+    clean_context_title,
+    clean_context_url,
+    is_thin_context_body,
+)
 
 
 async def collect_node(state: ArchiverState) -> dict[str, Any]:

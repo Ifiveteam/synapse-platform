@@ -9,29 +9,31 @@ from google.genai import types
 from langgraph.config import get_stream_writer
 
 from app.agents.archiver.core.constants import SEARCH_TEMPERATURE
-from app.agents.archiver.utils.context_refine import (
-    clean_context_title,
-    clean_context_url,
-    is_thin_context_body,
+from app.agents.archiver.core.tools import GOOGLE_SEARCH_TOOL
+from app.agents.archiver.models import (
+    SEARCH_NODE,
+    ArchiverState,
+    Evaluation,
+    get_context_dom,
+    get_context_search,
+    latest_user_message,
+    wants_page_context,
 )
-from app.agents.shared.gemini import GEMINI_MODEL, get_client
-from app.agents.archiver.prompts import build_search_collect_instruction
-from app.agents.archiver.utils.search_query import build_search_user_content
-from app.agents.archiver.models import ArchiverState, SEARCH_NODE, latest_user_message
 from app.agents.archiver.nodes.utils.scraper import is_usable_context_body
+from app.agents.archiver.prompts import build_search_collect_instruction
 from app.agents.archiver.protocols.stream_status import (
     MSG_SEARCH_DEFAULT,
     MSG_SEARCH_TITLE_BASED,
     status_event,
 )
-from app.agents.archiver.core.tools import GOOGLE_SEARCH_TOOL
 from app.agents.archiver.trace import log_node_enter, log_search_payload
-from app.agents.archiver.models import (
-    Evaluation,
-    get_context_dom,
-    get_context_search,
-    wants_page_context,
+from app.agents.archiver.utils.context_refine import (
+    clean_context_title,
+    clean_context_url,
+    is_thin_context_body,
 )
+from app.agents.archiver.utils.search_query import build_search_user_content
+from app.agents.shared.gemini import GEMINI_MODEL, get_client
 
 logger = logging.getLogger(__name__)
 

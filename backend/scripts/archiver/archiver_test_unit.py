@@ -10,32 +10,27 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Send
 
 from app.agents.archiver.branches import route_after_evaluator, route_after_router
-from app.agents.archiver.steps.classify import normalize_router_decision
-from app.agents.archiver.prompts.router_prompt import build_router_prompt
-from app.agents.archiver.utils.router_heuristics import (
-    is_greeting_preflight,
-    needs_dialogue_context,
-    resolve_router_dialogue_context,
+from app.agents.archiver.core.constants import (
+    STREAM_ERROR_MESSAGE,
+    STREAM_ERROR_PREFIX,
 )
 from app.agents.archiver.models import (
     COLLECT_NODE,
     RAG_NODE,
     SEARCH_NODE,
-    normalize_target_engines,
-)
-from app.agents.archiver.core.constants import (
-    MAX_RETRIEVAL_ATTEMPTS,
-    MAX_SEARCH_ATTEMPTS,
-    STREAM_ERROR_MESSAGE,
-    STREAM_ERROR_PREFIX,
-)
-from app.agents.archiver.models import (
     Evaluation,
     RouterTargets,
     format_router_trace_label,
     get_context_dom,
     get_context_rag,
     get_context_search,
+)
+from app.agents.archiver.prompts.router_prompt import build_router_prompt
+from app.agents.archiver.steps.classify import normalize_router_decision
+from app.agents.archiver.utils.router_heuristics import (
+    is_greeting_preflight,
+    needs_dialogue_context,
+    resolve_router_dialogue_context,
 )
 
 
@@ -127,7 +122,11 @@ def run_unit_tests() -> list[str]:
         search_verdict="not_run",
     )
     roundtrip = Evaluation.from_state({"evaluation_result": ev.to_state_dict()})
-    _assert(roundtrip is not None and roundtrip.recommended_action == "search", "from_state: roundtrip", errors)
+    _assert(
+        roundtrip is not None and roundtrip.recommended_action == "search",
+        "from_state: roundtrip",
+        errors,
+    )
 
     from app.agents.archiver.nodes.utils.scraper import (
         is_usable_context_body,
@@ -153,8 +152,6 @@ def run_unit_tests() -> list[str]:
     from app.agents.archiver.utils.context_refine import (
         clean_context_title,
         clean_context_url,
-        extract_url_search_hint,
-        is_thin_context_body,
     )
     from app.agents.archiver.utils.search_query import build_search_user_content
 
@@ -214,7 +211,8 @@ def run_unit_tests() -> list[str]:
             errors,
         )
         _assert(
-            route_after_evaluator(_eval_state(sufficient=True, action="none")) == "respond",
+            route_after_evaluator(_eval_state(sufficient=True, action="none"))
+            == "respond",
             "evaluator: sufficient -> respond",
             errors,
         )
@@ -235,7 +233,9 @@ def run_unit_tests() -> list[str]:
         )
 
     _assert(is_greeting_preflight("ㅎㅇ"), "router_heuristics: greeting ㅎㅇ", errors)
-    _assert(is_greeting_preflight("고마워!"), "router_heuristics: greeting thanks", errors)
+    _assert(
+        is_greeting_preflight("고마워!"), "router_heuristics: greeting thanks", errors
+    )
     _assert(
         not is_greeting_preflight(""),
         "router_heuristics: empty is not greeting pattern",
@@ -284,7 +284,8 @@ def run_unit_tests() -> list[str]:
         "context_url": "https://example.com",
     }
     _assert(
-        resolve_router_dialogue_context(single_turn_state, "오늘 서울 날씨 알려줘") is None,
+        resolve_router_dialogue_context(single_turn_state, "오늘 서울 날씨 알려줘")
+        is None,
         "router_heuristics: resolve skips single-turn explicit query",
         errors,
     )

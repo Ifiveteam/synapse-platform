@@ -6,10 +6,6 @@ from google.genai import types
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from app.agents.archiver.core.tools import GOOGLE_SEARCH_TOOL
-from app.agents.archiver.prompts import (
-    build_general_route_instruction,
-    build_synthesis_route_instruction,
-)
 from app.agents.archiver.models import (
     SEARCH_NODE,
     ArchiverState,
@@ -18,9 +14,15 @@ from app.agents.archiver.models import (
     get_context_search,
     normalize_target_engines,
 )
+from app.agents.archiver.prompts import (
+    build_general_route_instruction,
+    build_synthesis_route_instruction,
+)
 
 
-def _has_collected_evidence(*, context_dom: str, context_rag: str, context_search: str) -> bool:
+def _has_collected_evidence(
+    *, context_dom: str, context_rag: str, context_search: str
+) -> bool:
     return any(value.strip() for value in (context_dom, context_rag, context_search))
 
 
