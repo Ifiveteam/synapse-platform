@@ -12,8 +12,9 @@ from app.agents.navigator.sub_agent.guide.constants import (
     CATALOG_SEARCH_LIMIT,
     axis_query,
 )
+from app.agents.navigator.sub_agent.guide.schemas import CatalogHit
 from app.agents.navigator.sub_agent.guide.state import GuideState
-from app.agents.navigator.sub_agent.guide.store import CatalogHit, get_store
+from app.agents.navigator.sub_agent.guide.store import get_store
 from app.agents.shared.embedding import embed_texts
 
 logger = logging.getLogger(__name__)

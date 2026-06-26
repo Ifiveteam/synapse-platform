@@ -8,10 +8,10 @@ from typing import Any
 
 from langgraph.config import get_stream_writer
 
+from app.agents.navigator.axes import clamp_values_13
 from app.agents.navigator.behavior_map import derive_8_from_13
 from app.agents.navigator.constants import INTERPRET_TEMPERATURE
-from app.agents.navigator.gemini import invoke_structured_safe
-from app.agents.navigator.ideal import clamp_values_13
+from app.agents.navigator.llm import invoke_structured_safe
 from app.agents.navigator.nodes._common import latest_user_message
 from app.agents.navigator.prompts.chat import build_interpret_prompt
 from app.agents.navigator.schemas import IdealAdjustment

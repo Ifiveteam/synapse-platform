@@ -2,6 +2,7 @@
 
 from app.models.chat import AIChatLog
 from app.models.extension_auth_code import ExtensionAuthCode
+from app.models.navigator_playlist import NavigatorPlaylist
 from app.models.navigator_proposal_cache import NavigatorProposalCache
 from app.models.user import User
 from app.models.user_analysis_source import UserAnalysisSource
@@ -14,6 +15,7 @@ from app.models.video_analysis import VideoAnalysis
 __all__ = [
     "AIChatLog",
     "ExtensionAuthCode",
+    "NavigatorPlaylist",
     "NavigatorProposalCache",
     "User",
     "UserAnalysisSource",

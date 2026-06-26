@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { Plus, Target } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { ListVideo, Plus, Target } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ function IdealCard({
   item: IdealResponse;
   onApply: (id: string) => void;
 }) {
+  const navigate = useNavigate();
   return (
     <Link
       to={ROUTES.idealDetail(item.id)}
@@ -51,23 +52,37 @@ function IdealCard({
             </p>
           </div>
 
-          {item.is_active ? (
-            <Badge variant="indigo" className="shrink-0 rounded-full">
-              적용 중
-            </Badge>
-          ) : (
+          <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                onApply(item.id);
+                navigate(ROUTES.playlistsForIdeal(item.id));
               }}
-              className="border-primary text-primary hover:bg-primary/5 shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors"
+              className="border-border text-muted-foreground hover:text-primary hover:border-primary/40 inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors"
             >
-              적용
+              <ListVideo size={13} />
+              재생목록
             </button>
-          )}
+            {item.is_active ? (
+              <Badge variant="indigo" className="rounded-full">
+                적용 중
+              </Badge>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onApply(item.id);
+                }}
+                className="border-primary text-primary hover:bg-primary/5 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors"
+              >
+                적용
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </Link>
@@ -178,12 +193,20 @@ export function IdealManagementPage() {
     <div className="mx-auto flex min-h-full max-w-3xl flex-col px-6 py-8">
       <div className="mb-6 flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold tracking-tight">이상향 관리</h1>
-        <Button size="sm" className="shrink-0 gap-1.5" asChild>
-          <Link to={ROUTES.idealSetup}>
-            <Plus size={16} />
-            새로 추가
-          </Link>
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button size="sm" variant="outline" className="gap-1.5" asChild>
+            <Link to={ROUTES.playlists}>
+              <ListVideo size={16} />
+              재생목록
+            </Link>
+          </Button>
+          <Button size="sm" className="gap-1.5" asChild>
+            <Link to={ROUTES.idealSetup}>
+              <Plus size={16} />
+              새로 추가
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <Tabs

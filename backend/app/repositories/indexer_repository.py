@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,6 +52,7 @@ def catalog_row_values(user_id: uuid.UUID, item: dict) -> dict:
         "title": item.get("title"),
         "url": item.get("url"),
         "watched_at": watched_at,
+        "watch_count": item.get("watch_count") or 1,
         "youtube_category_id": category_id,
         "duration_sec": duration,
         "is_shorts": item.get("is_shorts"),
@@ -69,6 +70,7 @@ _UPSERT_COLUMNS = (
     "channel_url",
     "title",
     "watched_at",
+    "watch_count",
     "youtube_category_id",
     "duration_sec",
     "is_shorts",
@@ -97,6 +99,52 @@ async def upsert_catalog_records(
             set_={col: getattr(insert_stmt.excluded, col) for col in _UPSERT_COLUMNS},
         )
         await session.execute(stmt)
+        count += 1
+    return count
+
+
+async def fetch_indexed_urls(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+) -> set[str]:
+    """이미 임베딩까지 완료된 url 집합 (증분 인덱싱 skip 대상).
+
+    embedding이 NULL인 행(과거 키 부재로 미완성)은 제외 → 자동 백필 대상이 된다.
+    """
+    rows = await session.execute(
+        select(UserWatchCatalog.url).where(
+            UserWatchCatalog.user_id == user_id,
+            UserWatchCatalog.embedding.isnot(None),
+        )
+    )
+    return {row[0] for row in rows.all()}
+
+
+async def update_watch_meta(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    items: list[dict],
+) -> int:
+    """기존 영상의 watched_at·watch_count만 갱신 (enrich·임베딩 미터치).
+
+    재시청·반복시청이 롤링 윈도우/선호 강도에 반영되도록 한다.
+    """
+    count = 0
+    for item in items:
+        url = item.get("url")
+        if not url:
+            continue
+        await session.execute(
+            update(UserWatchCatalog)
+            .where(
+                UserWatchCatalog.user_id == user_id,
+                UserWatchCatalog.url == url,
+            )
+            .values(
+                watched_at=parse_watched_at(item.get("watched_at")),
+                watch_count=item.get("watch_count") or 1,
+            )
+        )
         count += 1
     return count
 

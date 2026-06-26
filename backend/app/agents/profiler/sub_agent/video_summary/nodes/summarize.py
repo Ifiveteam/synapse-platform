@@ -23,8 +23,8 @@ def _embedding_text(a: AnalyzedVideo) -> str:
 async def node_summarize(state: VideoSummaryState) -> VideoSummaryState:
     """영상별 Gemini 의미분석. 동시성 제한, 1건 실패는 스킵하고 배치는 계속."""
     try:
-        from app.agents.aggregator.llm.gemini import invoke_gemini_structured
-        from app.agents.profiler.sub_agent.video_summary.prompt import (
+        from app.agents.profiler.llm import invoke_gemini_structured
+        from app.agents.profiler.sub_agent.video_summary.prompts import (
             build_messages,
             has_min_content,
         )

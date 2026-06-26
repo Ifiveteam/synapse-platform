@@ -6,16 +6,14 @@ import uuid
 from typing import Protocol, runtime_checkable
 
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel
 
-
-class CatalogHit(BaseModel):
-    """축별 RAG로 찾은 실제 시청 영상 근거."""
-
-    title: str
-    channel: str
-    category_id: str | None = None
-    similarity: float = 0.0
+from app.agents.navigator.sub_agent._shared import (
+    build_run_config as _build_run_config,
+)
+from app.agents.navigator.sub_agent._shared import (
+    get_store as _get_store,
+)
+from app.agents.navigator.sub_agent.guide.schemas import CatalogHit
 
 
 @runtime_checkable
@@ -30,14 +28,12 @@ class CatalogStore(Protocol):
     ) -> list[CatalogHit]: ...
 
 
-GUIDE_STORE_KEY = "guide_catalog_store"
+_GUIDE_STORE_KEY = "guide_catalog_store"
 
 
 def build_run_config(store: CatalogStore | None) -> RunnableConfig:
-    return {"configurable": {GUIDE_STORE_KEY: store}}
+    return _build_run_config(_GUIDE_STORE_KEY, store)
 
 
 def get_store(config: RunnableConfig | None) -> CatalogStore | None:
-    if not config:
-        return None
-    return config.get("configurable", {}).get(GUIDE_STORE_KEY)
+    return _get_store(_GUIDE_STORE_KEY, config)

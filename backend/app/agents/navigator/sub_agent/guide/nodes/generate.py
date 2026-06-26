@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.agents.navigator.gemini import invoke_structured_safe
+from app.agents.navigator.llm import invoke_structured_safe
 from app.agents.navigator.schemas import Guide
 from app.agents.navigator.sub_agent.guide.prompts import (
     build_fallback_prompt,

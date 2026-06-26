@@ -6,7 +6,7 @@ import uuid
 from typing import NotRequired, TypedDict
 
 from app.agents.navigator.schemas import Guide
-from app.agents.navigator.sub_agent.guide.store import CatalogHit
+from app.agents.navigator.sub_agent.guide.schemas import CatalogHit
 
 
 class GuideState(TypedDict):

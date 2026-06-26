@@ -13,6 +13,8 @@ export const ROUTES = {
   idealManagement: "/me/ideals",
   idealSetup: "/me/ideals/new",
   idealDetail: (id: string) => `/me/ideals/${id}`,
+  playlists: "/me/playlists",
+  playlistsForIdeal: (id: string) => `/me/playlists?ideal=${id}`,
   trends: "/trends",
   scraps: "/me/scraps",
   scrapDetail: (id: string) => `/me/scraps/${id}`,

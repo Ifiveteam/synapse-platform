@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from app.agents.profiler.axis_labels import HABIT_LABELS_KO, SCORE_LABELS_KO
-from app.agents.profiler.sub_agent.compare.prompt import COMPARE_HUMAN, COMPARE_SYSTEM
+from app.agents.profiler.sub_agent.compare.prompts import COMPARE_HUMAN, COMPARE_SYSTEM
 from app.agents.profiler.sub_agent.compare.state import CompareState
 from app.schemas.profiler.llm.compare import CompareNarrativeOutput
 
@@ -60,7 +60,7 @@ async def _llm_compare_narrative(
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        from app.agents.aggregator.llm.gemini import invoke_gemini_structured
+        from app.agents.profiler.llm import invoke_gemini_structured
 
         from_snap = diff.get("from_snapshot") or {}
         to_snap = diff.get("to_snapshot") or {}

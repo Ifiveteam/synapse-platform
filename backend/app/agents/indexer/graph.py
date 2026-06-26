@@ -1,6 +1,7 @@
 from langgraph.graph import END, StateGraph
 
 from app.agents.indexer.nodes import (
+    node_diff,
     node_embed,
     node_enrich,
     node_preprocess,
@@ -16,6 +17,7 @@ def should_continue(state: IndexerState) -> str:
 builder = StateGraph(IndexerState)
 
 builder.add_node("preprocess", node_preprocess)
+builder.add_node("diff", node_diff)
 builder.add_node("enrich", node_enrich)
 builder.add_node("embed", node_embed)
 builder.add_node("save_catalog", node_save_catalog)
@@ -23,7 +25,10 @@ builder.add_node("save_catalog", node_save_catalog)
 builder.set_entry_point("preprocess")
 
 builder.add_conditional_edges(
-    "preprocess", should_continue, {"continue": "enrich", "end": END}
+    "preprocess", should_continue, {"continue": "diff", "end": END}
+)
+builder.add_conditional_edges(
+    "diff", should_continue, {"continue": "enrich", "end": END}
 )
 builder.add_conditional_edges(
     "enrich", should_continue, {"continue": "embed", "end": END}

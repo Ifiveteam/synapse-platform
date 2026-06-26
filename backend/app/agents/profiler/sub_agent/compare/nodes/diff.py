@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.agents.profiler.sub_agent.compare.state import CompareState
-from app.agents.profiler.sub_agent.compare.tool import compare_profile_snapshots
+from app.agents.profiler.sub_agent.compare.utils import compare_profile_snapshots
 
 
 async def node_diff(state: CompareState) -> dict:

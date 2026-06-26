@@ -51,6 +51,9 @@ class UserWatchCatalog(Base):
     watched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+    watch_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("1")
+    )  # 분석 윈도우 내 반복 시청 횟수 (선호 강도)
 
     youtube_category_id: Mapped[str | None] = mapped_column(String(10), nullable=True)
     duration_sec: Mapped[int | None] = mapped_column(Integer, nullable=True)

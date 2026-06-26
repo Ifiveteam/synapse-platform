@@ -9,16 +9,23 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.indexer.utils import extract_video_id
 from app.agents.navigator.constants import (
     BEHAVIOR_AXES,
     DESCRIPTION_SEP,
     NAVIGATOR_AGENT_TYPE,
 )
 from app.agents.navigator.sub_agent.guide.store import CatalogHit
+from app.agents.navigator.sub_agent.youtube.store import WatchGrounding
 from app.models.chat import AIChatLog
+from app.models.navigator_playlist import NavigatorPlaylist
 from app.models.navigator_proposal_cache import NavigatorProposalCache
 from app.models.user_ideal_persona import UserIdealPersona
 from app.models.user_watch_catalog import UserWatchCatalog
+from app.repositories.indexer_repository import (
+    fetch_top_categories,
+    fetch_top_channels,
+)
 from app.schemas.navigator import NavigatorChatMessage
 
 
@@ -186,6 +193,138 @@ class NavigatorRepository:
         await self.db.commit()
         await self.db.refresh(target)
         return target
+
+    # ── 재생목록 서브에이전트 Store (PlaylistStore 구현) ──────────────
+    async def fetch_watch_grounding(self, user_id: uuid.UUID) -> WatchGrounding:
+        """추천 근거: 상위 카테고리·채널 + 대표 시청영상 제목."""
+        categories = await fetch_top_categories(self.db, user_id, limit=6)
+        channels = await fetch_top_channels(self.db, user_id, limit=8)
+        rows = await self.db.execute(
+            select(UserWatchCatalog.title)
+            .where(
+                UserWatchCatalog.user_id == user_id,
+                UserWatchCatalog.title.isnot(None),
+            )
+            .order_by(UserWatchCatalog.watched_at.desc())
+            .limit(12)
+        )
+        sample_titles = [t for (t,) in rows.all() if t]
+        return WatchGrounding(
+            categories=[str(c["category_id"]) for c in categories],
+            channels=[str(c["channel"]) for c in channels],
+            sample_titles=sample_titles,
+        )
+
+    async def fetch_watched_video_ids(self, user_id: uuid.UUID) -> set[str]:
+        """이미 본 영상 video_id 집합 (watched 디덥)."""
+        rows = await self.db.execute(
+            select(UserWatchCatalog.url).where(UserWatchCatalog.user_id == user_id)
+        )
+        out: set[str] = set()
+        for (url,) in rows.all():
+            vid = extract_video_id(url or "")
+            if vid:
+                out.add(vid)
+        return out
+
+    # ── navigator_playlist CRUD (이상향 1개 : 재생목록 N개) ──────────
+    async def create_playlist(
+        self,
+        *,
+        user_id: uuid.UUID,
+        ideal_id: uuid.UUID,
+        title: str | None,
+        summary: str | None,
+        items_json: list,
+        channels_json: list,
+        reservoir_json: list,
+    ) -> NavigatorPlaylist:
+        row = NavigatorPlaylist(
+            user_id=user_id,
+            ideal_id=ideal_id,
+            title=title,
+            summary=summary,
+            items_json=items_json,
+            channels_json=channels_json,
+            reservoir_json=reservoir_json,
+        )
+        self.db.add(row)
+        await self.db.commit()
+        await self.db.refresh(row)
+        return row
+
+    async def list_playlists(
+        self, *, user_id: uuid.UUID, ideal_id: uuid.UUID
+    ) -> list[NavigatorPlaylist]:
+        result = await self.db.execute(
+            select(NavigatorPlaylist)
+            .where(
+                NavigatorPlaylist.user_id == user_id,
+                NavigatorPlaylist.ideal_id == ideal_id,
+            )
+            .order_by(NavigatorPlaylist.created_at.desc())
+        )
+        return list(result.scalars().all())
+
+    async def get_playlist(
+        self, *, user_id: uuid.UUID, playlist_id: uuid.UUID
+    ) -> NavigatorPlaylist | None:
+        result = await self.db.execute(
+            select(NavigatorPlaylist).where(
+                NavigatorPlaylist.id == playlist_id,
+                NavigatorPlaylist.user_id == user_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def update_playlist(
+        self,
+        *,
+        user_id: uuid.UUID,
+        playlist_id: uuid.UUID,
+        items_json: list | None = None,
+        channels_json: list | None = None,
+        reservoir_json: list | None = None,
+        summary: str | None = None,
+        youtube_playlist_id: str | None = None,
+    ) -> NavigatorPlaylist | None:
+        row = await self.get_playlist(user_id=user_id, playlist_id=playlist_id)
+        if row is None:
+            return None
+        if items_json is not None:
+            row.items_json = items_json
+        if channels_json is not None:
+            row.channels_json = channels_json
+        if reservoir_json is not None:
+            row.reservoir_json = reservoir_json
+        if summary is not None:
+            row.summary = summary
+        if youtube_playlist_id is not None:
+            row.youtube_playlist_id = youtube_playlist_id
+        await self.db.commit()
+        await self.db.refresh(row)
+        return row
+
+    async def rename_playlist(
+        self, *, user_id: uuid.UUID, playlist_id: uuid.UUID, title: str
+    ) -> NavigatorPlaylist | None:
+        row = await self.get_playlist(user_id=user_id, playlist_id=playlist_id)
+        if row is None:
+            return None
+        row.title = title
+        await self.db.commit()
+        await self.db.refresh(row)
+        return row
+
+    async def delete_playlist(
+        self, *, user_id: uuid.UUID, playlist_id: uuid.UUID
+    ) -> bool:
+        row = await self.get_playlist(user_id=user_id, playlist_id=playlist_id)
+        if row is None:
+            return False
+        await self.db.delete(row)
+        await self.db.commit()
+        return True
 
     # ── 채팅 로그 (ai_chat_logs, agent_type=NAVIGATOR) ──────────────
     async def resolve_session_id(self, *, user_id: uuid.UUID) -> str:

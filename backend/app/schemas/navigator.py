@@ -120,3 +120,56 @@ class NavigatorChatMessage(BaseModel):
     role: str
     content: str
     created_at: datetime
+
+
+# ── 재생목록 (PLAN_youtube_playlist.md) ──────────────────────────
+
+
+class PlaylistItemResponse(BaseModel):
+    video_id: str
+    title: str
+    channel: str = ""
+    channel_id: str = ""
+    thumbnail_url: str = ""
+    url: str
+    reason: str = ""
+
+
+class PlaylistResponse(BaseModel):
+    id: str
+    ideal_id: str
+    title: str = ""
+    summary: str = ""
+    items: list[PlaylistItemResponse]
+    youtube_playlist_id: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PlaylistSummary(BaseModel):
+    """목록용 경량 응답."""
+
+    id: str
+    title: str = ""
+    item_count: int = 0
+    youtube_playlist_id: str | None = None
+    created_at: datetime
+
+
+class RenamePlaylistRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
+class RefreshItemRequest(BaseModel):
+    video_id: str = Field(min_length=1, description="교체할 현재 영상 video_id")
+
+
+class PlaylistChatRequest(BaseModel):
+    message: str = Field(min_length=1, description="재생목록 수정 요청 (자연어)")
+
+
+class SavePlaylistResponse(BaseModel):
+    youtube_playlist_id: str
+    playlist_url: str
+    added_count: int
+    needs_reconsent: bool = False

@@ -8,7 +8,9 @@ from app.agents.profiler.sub_agent.video_summary.state import (
     CatalogInput,
     VideoSummaryState,
 )
-from app.agents.profiler.sub_agent.video_summary.tool import fetch_youtube_transcript
+from app.agents.profiler.sub_agent.video_summary.transcript import (
+    fetch_youtube_transcript,
+)
 
 _CONCURRENCY = 4
 
