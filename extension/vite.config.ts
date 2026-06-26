@@ -63,7 +63,7 @@ export default defineConfig({
 
   // Vite 8 + CRXJS dev: WebSocket/HMR 토큰 검사 완화
   legacy: {
-    skipWebSocketTokenCheck: true,
+    skipTokenCheck: true,
   },
 
   resolve: {

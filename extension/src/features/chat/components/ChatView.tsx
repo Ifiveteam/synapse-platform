@@ -1,6 +1,5 @@
 /**
  * AI 채팅 타임라인 — 활성 탭 맥락 배너와 SSE 스트리밍 대화 UI.
- * 전송 로직은 useChat 훅에 두어 하단 ChatInput과 브릿지 연결한다.
  */
 import { Card, CardContent } from '@/components/ui/card'
 import { ChatMarkdown } from '@/features/chat/components/ChatMarkdown'
@@ -18,6 +17,11 @@ function resolveHostname(url: string) {
 export function ChatView() {
   const { messages, currentContext, currentStatus, isGenerating, scrollAnchorRef } =
     useChatContext()
+
+  const lastAssistantIndex = messages.reduce(
+    (found, msg, index) => (msg.role === 'assistant' ? index : found),
+    -1,
+  )
 
   return (
     <div className="flex min-h-full flex-col gap-4">
@@ -54,8 +58,19 @@ export function ChatView() {
           </div>
         ) : (
           messages.map((msg, index) => {
+            if (msg.role === 'system') {
+              return (
+                <div key={msg.id} className="flex w-full justify-center px-2">
+                  <p className="max-w-[90%] rounded-full bg-slate-100 px-3 py-1.5 text-center text-[10px] leading-relaxed text-slate-600">
+                    {msg.content}
+                  </p>
+                </div>
+              )
+            }
+
             const isLastAssistantStreaming =
               isGenerating && index === messages.length - 1 && msg.role === 'assistant'
+            const isLastAssistant = index === lastAssistantIndex && msg.role === 'assistant'
 
             return (
               <div
@@ -83,6 +98,12 @@ export function ChatView() {
                     )}
                   </div>
                 )}
+
+                {isLastAssistant && msg.content.length > 0 && !isGenerating ? (
+                  <span className="px-1 text-[9px] text-slate-400">
+                    이 답변을 스크랩하려면 하단 📌 버튼을 누르세요
+                  </span>
+                ) : null}
 
                 <span className="px-1 text-[10px] text-slate-400">{msg.timestamp}</span>
               </div>

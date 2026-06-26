@@ -1,22 +1,29 @@
 /**
  * Synapse 컨텍스트 보관함 메인 뷰 컴포넌트
- * 수집된 지식 스크랩 카드를 시간 역순으로 정렬하여 ScrapCard 리스트로 렌더링합니다.
  */
 import { useScrap } from '../hooks/useScrap'
 import { ScrapCard } from './ScrapCard'
 
 export function ScrapView() {
-  const { scrapList, isLoading, deleteScrap } = useScrap()
+  const { scrapList, isLoading, error, deleteScrap } = useScrap()
 
-  // scrapedAt 기준 최신순 — storage 배열 순서에 의존하지 않음
   const sortedScrapList = [...scrapList].sort(
-    (a, b) => new Date(b.scrapedAt).getTime() - new Date(a.scrapedAt).getTime(),
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   )
 
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center text-xs text-slate-400">
         보관함 데이터를 동기화 중입니다...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <p className="text-xs font-semibold text-rose-500">보관함을 불러오지 못했습니다</p>
+        <p className="mt-1 max-w-[220px] text-[10px] leading-relaxed text-slate-400">{error}</p>
       </div>
     )
   }
@@ -33,7 +40,7 @@ export function ScrapView() {
         </div>
       ) : (
         sortedScrapList.map((item) => (
-          <ScrapCard key={item.id} item={item} onDelete={deleteScrap} />
+          <ScrapCard key={item.id} item={item} onDelete={(id) => void deleteScrap(id)} />
         ))
       )}
     </div>
