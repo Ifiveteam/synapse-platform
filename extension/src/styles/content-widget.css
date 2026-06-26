@@ -1,0 +1,10 @@
+/**
+ * Content Script(FAB) 전용 경량 스타일.
+ * globals.css(shadcn·폰트)와 분리해 Shadow DOM 인라인 주입 안정성을 높인다.
+ */
+@import 'tailwindcss';
+@source "../features/tracking/components/**/*.tsx";
+
+#synapse-app-within-shadow {
+  font-family: system-ui, -apple-system, sans-serif;
+}

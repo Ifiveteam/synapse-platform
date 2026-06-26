@@ -1,0 +1,914 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { useAuthStore } from "@/stores/auth";
+import { uploadLocalStorage } from "@/lib/upload-local-storage";
+import { API_BASE_URL } from "@/lib/env";
+import { youtubeCategoryLabel } from "@/lib/youtube-categories";
+
+const API = `${API_BASE_URL}/api/v1`;
+
+interface AnalysisStats {
+  saved: number;
+  raw_count: number;
+  filtered_count: number;
+  cleaned_count: number;
+  shorts_count: number;
+  category_stats: Record<string, number>;
+}
+
+type Tab = "upload" | "drive" | "guide";
+type UploadStatus = "idle" | "uploading" | "polling" | "success" | "error";
+
+function loadPersistedTasks(): Record<string, { taskId: string; status: string }> {
+  try {
+    return JSON.parse(localStorage.getItem(uploadLocalStorage.driveTasks) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function savePersistedTasks(tasks: Record<string, { taskId: string; status: string }>) {
+  localStorage.setItem(uploadLocalStorage.driveTasks, JSON.stringify(tasks));
+}
+
+async function buildStatsFromIndexer(token: string): Promise<AnalysisStats | null> {
+  try {
+    const res = await fetch(`${API}/indexer/videos`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const videos = (await res.json()) as Array<{
+      is_shorts?: boolean;
+      youtube_category_id?: string;
+    }>;
+    if (videos.length === 0) return null;
+    const category_stats: Record<string, number> = {};
+    let shorts_count = 0;
+    for (const v of videos) {
+      if (v.is_shorts) shorts_count += 1;
+      const cat = v.youtube_category_id || "unknown";
+      category_stats[cat] = (category_stats[cat] || 0) + 1;
+    }
+    const saved = videos.length;
+    return {
+      saved,
+      raw_count: saved,
+      filtered_count: saved,
+      cleaned_count: saved,
+      shorts_count,
+      category_stats,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function loadAnalyzedFiles(): Record<string, AnalysisStats> {
+  try {
+    return JSON.parse(localStorage.getItem(uploadLocalStorage.driveAnalyzed) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function AnalysisSummary({ stats }: { stats: AnalysisStats }) {
+  const noiseRemoved = stats.raw_count - (stats.filtered_count ?? stats.cleaned_count);
+  const longCount = stats.cleaned_count - stats.shorts_count;
+  const categoryTotal = Object.values(stats.category_stats).reduce((sum, n) => sum + n, 0);
+  const topCategories = Object.entries(stats.category_stats)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  return (
+    <div className="space-y-4 rounded-2xl border border-violet-100 bg-violet-50 p-5">
+      <p className="text-sm font-semibold text-violet-800">분석 완료</p>
+      <div className="grid grid-cols-4 gap-3">
+        {[
+          { label: "파싱", value: stats.raw_count, sub: "원본 항목", color: "text-gray-700" },
+          { label: "노이즈 제거", value: noiseRemoved, sub: "광고·삭제됨", color: "text-orange-600" },
+          { label: "분류 완료", value: stats.cleaned_count, sub: "2개월 시청 기록", color: "text-violet-700" },
+          { label: "숏츠", value: stats.shorts_count, sub: `롱폼 ${longCount.toLocaleString()}건`, color: "text-red-500" },
+        ].map((item) => (
+          <div key={item.label} className="rounded-xl border border-gray-100 bg-white px-3 py-3 text-center">
+            <p className={`text-xl font-bold ${item.color}`}>{item.value.toLocaleString()}</p>
+            <p className="mt-0.5 text-xs font-medium text-gray-500">{item.label}</p>
+            <p className="text-[10px] text-gray-400">{item.sub}</p>
+          </div>
+        ))}
+      </div>
+      {topCategories.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-medium text-gray-500">
+            카테고리 분류 (상위 5 · 합계 {categoryTotal.toLocaleString()}건)
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {topCategories.map(([cat, count]) => (
+              <span
+                key={cat}
+                className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs text-violet-700"
+              >
+                {youtubeCategoryLabel(cat)} <span className="font-semibold">{count}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="text-xs text-gray-400">
+        catalog 저장 <span className="font-semibold text-gray-600">{stats.saved}</span>건
+        {categoryTotal !== stats.cleaned_count && stats.cleaned_count > 0 ? (
+          <span className="text-orange-600"> · 분류 합계 불일치</span>
+        ) : null}
+      </p>
+    </div>
+  );
+}
+
+function authHeaders(): HeadersInit {
+  const token = useAuthStore.getState().token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function DirectUploadTab({
+  onSuccess,
+  selectFileLabel,
+}: {
+  onSuccess: () => void;
+  selectFileLabel: string;
+}) {
+  const [status, setStatus] = useState<UploadStatus>("idle");
+  const [message, setMessage] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(uploadLocalStorage.directUploadTask);
+    if (!saved) return;
+    const { taskId } = JSON.parse(saved);
+    setStatus("polling");
+    setMessage("분석 중... (수분 소요)");
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const r = await fetch(`${API}/indexer/analyze/${taskId}`);
+        const d = await r.json();
+        if (d.status === "success") {
+          clearInterval(pollingRef.current!);
+          localStorage.removeItem(uploadLocalStorage.directUploadTask);
+          setStatus("success");
+          setMessage(`완료! ${d.processed}개 영상 저장됨`);
+          onSuccess();
+        } else if (d.status === "error") {
+          clearInterval(pollingRef.current!);
+          localStorage.removeItem(uploadLocalStorage.directUploadTask);
+          setStatus("error");
+          setMessage(d.message || "분석 중 오류 발생");
+        }
+      } catch {
+        /* 일시적 오류 무시 */
+      }
+    }, 3000);
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [onSuccess]);
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      if (!file.name.endsWith(".zip") && !file.name.endsWith(".json")) {
+        setStatus("error");
+        setMessage("ZIP 또는 JSON 파일만 업로드 가능합니다.");
+        return;
+      }
+
+      setStatus("uploading");
+      setMessage("업로드 중...");
+
+      const form = new FormData();
+      form.append("file", file);
+
+      try {
+        const res = await fetch(`${API}/indexer/analyze`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: form,
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(
+            typeof body.detail === "string" ? body.detail : "업로드에 실패했습니다.",
+          );
+        }
+        const data = await res.json();
+        const taskId = data.task_id;
+
+        localStorage.setItem(
+          uploadLocalStorage.directUploadTask,
+          JSON.stringify({ taskId }),
+        );
+        setStatus("polling");
+        setMessage("분석 중... (수분 소요)");
+
+        if (pollingRef.current) clearInterval(pollingRef.current);
+        pollingRef.current = setInterval(async () => {
+          try {
+            const r = await fetch(`${API}/indexer/analyze/${taskId}`);
+            const d = await r.json();
+            if (d.status === "success") {
+              clearInterval(pollingRef.current!);
+              localStorage.removeItem(uploadLocalStorage.directUploadTask);
+              setStatus("success");
+              setMessage(`완료! ${d.processed}개 영상 저장됨`);
+              onSuccess();
+            } else if (d.status === "error") {
+              clearInterval(pollingRef.current!);
+              localStorage.removeItem(uploadLocalStorage.directUploadTask);
+              setStatus("error");
+              setMessage(d.message || "분석 중 오류 발생");
+            }
+          } catch {
+            /* 일시적 오류 무시 */
+          }
+        }, 3000);
+      } catch (err) {
+        setStatus("error");
+        setMessage(err instanceof Error ? err.message : "업로드 실패. 서버가 실행 중인지 확인하세요.");
+      }
+    },
+    [onSuccess],
+  );
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    },
+    [handleFile],
+  );
+
+  return (
+    <div className="p-6">
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".zip,.json"
+        className="hidden"
+        onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+      />
+
+      {status === "idle" || status === "error" ? (
+        <>
+          <div
+            onDrop={onDrop}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onClick={() => inputRef.current?.click()}
+            className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed py-14 transition-colors ${
+              dragOver
+                ? "border-violet-400 bg-violet-50"
+                : "border-gray-200 hover:border-violet-300 hover:bg-gray-50"
+            }`}
+          >
+            <div className="text-4xl text-gray-300">📁</div>
+            <p className="text-sm font-medium text-gray-600">
+              Takeout ZIP을 여기에 끌어다 놓으세요
+            </p>
+            <p className="text-xs text-gray-400">
+              모든 동영상과 파일 권장 · 최대 500MB
+            </p>
+            <button
+              type="button"
+              className="mt-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-700"
+            >
+              {selectFileLabel}
+            </button>
+          </div>
+          {status === "error" && (
+            <p className="mt-3 text-center text-sm text-red-600">{message}</p>
+          )}
+        </>
+      ) : (
+        <div className="flex flex-col items-center justify-center gap-4 py-14">
+          {status === "success" ? (
+            <>
+              <div className="text-4xl">✅</div>
+              <p className="text-sm font-semibold text-emerald-700">{message}</p>
+              <button
+                type="button"
+                onClick={() => setStatus("idle")}
+                className="text-xs text-gray-400 underline"
+              >
+                다시 업로드
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
+              <p className="text-sm text-gray-500">{message}</p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GuideTab() {
+  return (
+    <div className="space-y-6 p-6">
+      <div>
+        <p className="mb-1 text-sm font-semibold text-gray-800">Google Takeout이란?</p>
+        <p className="text-xs leading-relaxed text-gray-500">
+          구글이 제공하는 데이터보내기 서비스입니다. YouTube 시청 기록을 ZIP 파일로보내
+          Synapse에 연결하면 시청 패턴을 분석할 수 있습니다.
+        </p>
+      </div>
+      <div className="space-y-3">
+        {[
+          {
+            num: 1,
+            title: "takeout.google.com 접속",
+            desc: "구글 계정으로 로그인 후 Takeout 페이지로 이동합니다.",
+            url: "https://takeout.google.com",
+          },
+          {
+            num: 2,
+            title: "YouTube만 선택",
+            desc: '"모두 선택 해제" 버튼을 누른 뒤 YouTube 항목만 체크하세요.',
+          },
+          {
+            num: 3,
+            title: "보내기 방법 → Google Drive",
+            desc: '"다음 단계"에서 대상을 "Drive에 추가"로 설정하세요.',
+          },
+          {
+            num: 4,
+            title: "보내기 요청",
+            desc: "요청 완료 후 구글이 처리하는 데 수 분~수 시간이 걸립니다. Drive에 파일이 생기면 감지되며, 직접 분석 시작을 눌러 주세요.",
+          },
+        ].map((s) => (
+          <div key={s.num} className="flex gap-4 rounded-xl border border-gray-100 bg-gray-50 p-4">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100 text-xs font-bold text-violet-700">
+              {s.num}
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-gray-800">{s.title}</p>
+              <p className="mt-0.5 text-xs text-gray-500">{s.desc}</p>
+              {s.url && (
+                <a
+                  href={s.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-block text-xs text-violet-600 underline"
+                >
+                  {s.url} →
+                </a>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-700">
+       보내기 완료까지 최대 수 시간 걸릴 수 있어요. Drive 탭에서 30초마다 파일을
+        확인하고, 감지되면 분석 시작을 눌러 주세요.
+      </div>
+    </div>
+  );
+}
+
+type DriveStatus =
+  | "idle"
+  | "searching"
+  | "detected"
+  | "downloading"
+  | "processing"
+  | "success"
+  | "error"
+  | "waiting";
+
+interface DriveFile {
+  id: string;
+  name: string;
+  modifiedTime?: string;
+}
+
+function DriveTab({
+  onSuccess,
+  resetKey,
+  showGuideHint,
+}: {
+  onSuccess: () => void;
+  resetKey: number;
+  showGuideHint: boolean;
+}) {
+  const [status, setStatus] = useState<DriveStatus>("idle");
+  const [stats, setStats] = useState<AnalysisStats | null>(() => {
+    const analyzed = loadAnalyzedFiles();
+    const keys = Object.keys(analyzed);
+    return keys.length > 0 ? analyzed[keys[keys.length - 1]] : null;
+  });
+  const [errorMsg, setErrorMsg] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [detectedFiles, setDetectedFiles] = useState<DriveFile[]>([]);
+  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState(30);
+  const token = useAuthStore((s) => s.token);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startPolling = useCallback(
+    (taskId: string, fileId: string) => {
+      if (!taskId) {
+        setStatus("error");
+        setErrorMsg("분석 작업 정보가 없습니다. 다시 시도해 주세요.");
+        savePersistedTasks({});
+        return;
+      }
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      pollingRef.current = setInterval(async () => {
+        try {
+          const r = await fetch(`${API}/takeout/status/${taskId}`);
+          const d = await r.json();
+          if (d.status === "downloading") setStatus("downloading");
+          if (d.status === "processing") setStatus("processing");
+          if (d.status === "success" || d.status === "error" || d.status === "not_found") {
+            clearInterval(pollingRef.current!);
+            pollingRef.current = null;
+            savePersistedTasks({});
+            if (d.status === "not_found") {
+              setStatus("error");
+              setErrorMsg("서버가 재시작되어 분석이 중단됐습니다. 재분석을 눌러주세요.");
+              return;
+            }
+            if (d.status === "success") {
+              const newStats: AnalysisStats = {
+                saved: d.saved ?? 0,
+                raw_count: d.raw_count ?? 0,
+                filtered_count: d.filtered_count ?? 0,
+                cleaned_count: d.cleaned_count ?? 0,
+                shorts_count: d.shorts_count ?? 0,
+                category_stats: d.category_stats ?? {},
+              };
+              const analyzed = loadAnalyzedFiles();
+              analyzed[fileId] = newStats;
+              localStorage.setItem(
+                uploadLocalStorage.driveAnalyzed,
+                JSON.stringify(analyzed),
+              );
+              setStats(newStats);
+              setStatus("success");
+              onSuccess();
+            } else {
+              setStatus("error");
+              setErrorMsg(d.message || "분석 중 오류가 발생했습니다");
+            }
+          }
+        } catch {
+          /* 일시적 오류 무시 */
+        }
+      }, 3000);
+    },
+    [onSuccess],
+  );
+
+  const scanDrive = useCallback(async () => {
+    if (!token) return;
+
+    setStatus("searching");
+    try {
+      const res = await fetch(`${API}/takeout/drive/files`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Drive 목록 조회 실패");
+      const data = await res.json();
+      const files: DriveFile[] = data.files || [];
+
+      if (files.length === 0) {
+        setDetectedFiles([]);
+        setSelectedFileId(null);
+        setStatus("waiting");
+        return;
+      }
+
+      const sorted = [...files].sort((a, b) =>
+        (b.modifiedTime || "").localeCompare(a.modifiedTime || ""),
+      );
+      setDetectedFiles(sorted);
+      setSelectedFileId(sorted[0].id);
+      setFileName(sorted[0].name);
+      setStatus("detected");
+    } catch {
+      setStatus("error");
+      setErrorMsg("Drive에서 Takeout 파일을 확인하지 못했습니다");
+    }
+  }, [token]);
+
+  const startAnalysis = useCallback(
+    async (file: DriveFile) => {
+      if (!token) return;
+
+      setFileName(file.name);
+      setSelectedFileId(file.id);
+      setStatus("downloading");
+      setErrorMsg("");
+
+      try {
+        const res = await fetch(`${API}/takeout/drive/trigger/${file.id}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("분석 시작 실패");
+        const data = await res.json();
+
+        if (data.status === "already_completed") {
+          savePersistedTasks({});
+          const fromIndexer = await buildStatsFromIndexer(token);
+          if (fromIndexer) {
+            const analyzed = loadAnalyzedFiles();
+            analyzed[file.id] = fromIndexer;
+            localStorage.setItem(
+              uploadLocalStorage.driveAnalyzed,
+              JSON.stringify(analyzed),
+            );
+            setStats(fromIndexer);
+            setStatus("success");
+            onSuccess();
+          } else {
+            setStatus("error");
+            setErrorMsg(
+              "이미 분석된 파일입니다. 좌측 메뉴에서 분석 결과를 확인해 주세요.",
+            );
+          }
+          return;
+        }
+
+        if (data.status === "already_running") {
+          setStatus("error");
+          setErrorMsg("이미 분석이 진행 중입니다. 잠시 후 다시 확인해 주세요.");
+          return;
+        }
+
+        if (data.status !== "started" || !data.task_id) {
+          throw new Error("분석을 시작하지 못했습니다");
+        }
+
+        const persisted = loadPersistedTasks();
+        persisted[file.id] = { taskId: data.task_id, status: "downloading" };
+        savePersistedTasks(persisted);
+
+        startPolling(data.task_id, file.id);
+      } catch {
+        setStatus("error");
+        setErrorMsg("분석을 시작하지 못했습니다. 다시 시도해 주세요.");
+      }
+    },
+    [token, startPolling],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncWithServer = async (): Promise<"restored" | "empty" | "ok"> => {
+      if (!token) return "ok";
+      try {
+        const res = await fetch(`${API}/indexer/videos`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return "ok";
+        const videos = (await res.json()) as unknown[];
+        if (videos.length === 0) {
+          localStorage.removeItem(uploadLocalStorage.driveAnalyzed);
+          localStorage.removeItem(uploadLocalStorage.driveTasks);
+          if (!cancelled) {
+            setStats(null);
+          }
+          return "empty";
+        }
+        if (!cancelled && Object.keys(loadAnalyzedFiles()).length === 0) {
+          const fromIndexer = await buildStatsFromIndexer(token);
+          if (fromIndexer) {
+            localStorage.setItem(
+              uploadLocalStorage.driveAnalyzed,
+              JSON.stringify({ catalog: fromIndexer }),
+            );
+            setStats(fromIndexer);
+            setStatus("success");
+            return "restored";
+          }
+        }
+      } catch {
+        return "ok";
+      }
+      return "ok";
+    };
+
+    void (async () => {
+      const syncResult = await syncWithServer();
+      if (cancelled) return;
+      if (syncResult === "restored") return;
+
+      const analyzed = loadAnalyzedFiles();
+      const persisted = loadPersistedTasks();
+      const inProgress = Object.entries(persisted).find(
+        ([, v]) =>
+          v.status !== "success" &&
+          v.status !== "error" &&
+          typeof v.taskId === "string" &&
+          v.taskId.length > 0,
+      );
+
+      if (inProgress) {
+        const [fileId, { taskId, status: s }] = inProgress;
+        setStatus(s as "downloading" | "processing");
+        startPolling(taskId, fileId);
+        return;
+      }
+
+      if (Object.keys(persisted).length > 0) {
+        savePersistedTasks({});
+      }
+
+      if (Object.keys(analyzed).length > 0) {
+        const lastStats = Object.values(analyzed).at(-1)!;
+        setStats(lastStats);
+        setStatus("success");
+        return;
+      }
+
+      void scanDrive();
+    })();
+
+    return () => {
+      cancelled = true;
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [resetKey, scanDrive, startPolling, token]);
+
+  useEffect(() => {
+    if (status !== "waiting") return;
+    const poll = setInterval(() => void scanDrive(), 30000);
+    const tick = setInterval(() => setCountdown((c) => (c <= 1 ? 30 : c - 1)), 1000);
+    return () => {
+      clearInterval(poll);
+      clearInterval(tick);
+    };
+  }, [status, scanDrive]);
+
+  const handleReanalyze = useCallback(() => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingRef.current = null;
+    localStorage.removeItem(uploadLocalStorage.driveAnalyzed);
+    localStorage.removeItem(uploadLocalStorage.driveTasks);
+    setStats(null);
+    setErrorMsg("");
+    setStatus("searching");
+    void scanDrive();
+  }, [scanDrive]);
+
+  const selectedFile =
+    detectedFiles.find((f) => f.id === selectedFileId) ?? detectedFiles[0] ?? null;
+
+  if (!token) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-14 text-center">
+        <p className="text-sm text-gray-500">Google 계정 연동이 필요합니다</p>
+        <a
+          href={`${API}/auth/login`}
+          className="rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-700"
+        >
+          Google 로그인
+        </a>
+      </div>
+    );
+  }
+
+  if (status === "searching") {
+    return (
+      <div className="flex flex-col items-center gap-3 py-14">
+        <div className="h-7 w-7 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
+        <p className="text-sm text-gray-500">Drive에서 Takeout 파일 탐색 중...</p>
+      </div>
+    );
+  }
+
+  if (status === "waiting") {
+    return (
+      <div className="flex flex-col items-center gap-3 py-14 text-center">
+        <div className="h-7 w-7 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
+        <p className="text-sm text-gray-500">Drive에서 Takeout 파일을 기다리는 중...</p>
+        <p className="text-xs text-gray-400">아직 ZIP이 보이지 않으면 Takeout보내기가 끝날 때까지 기다려 주세요.</p>
+        <div className="flex items-center gap-2 text-xs text-gray-400">
+          <span>{countdown}초 후 자동 재확인</span>
+          <span>·</span>
+          <button type="button" onClick={() => void scanDrive()} className="text-violet-600 underline">
+            지금 확인
+          </button>
+        </div>
+        {showGuideHint && (
+          <p className="text-xs text-gray-400">
+            가이드는 <span className="font-medium text-gray-500">? 가이드</span> 탭을 확인하세요
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (status === "detected" && detectedFiles.length > 0) {
+    return (
+      <div className="space-y-4 p-6">
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-4">
+          <p className="text-sm font-semibold text-emerald-800">Takeout 파일 감지됨</p>
+          <p className="mt-1 text-xs text-emerald-700">
+            분석을 시작하면 Drive에서 다운로드한 뒤 시청 기록을 catalog에 저장합니다.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          {detectedFiles.map((file) => (
+            <label
+              key={file.id}
+              className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
+                selectedFileId === file.id
+                  ? "border-violet-300 bg-violet-50 ring-1 ring-violet-200"
+                  : "border-gray-100 bg-gray-50 hover:bg-gray-100"
+              }`}
+            >
+              <input
+                type="radio"
+                name="takeout-file"
+                checked={selectedFileId === file.id}
+                onChange={() => {
+                  setSelectedFileId(file.id);
+                  setFileName(file.name);
+                }}
+                className="text-violet-600"
+              />
+              <span className="text-lg">🗜</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-gray-800">
+                  {file.name}
+                </span>
+                {file.modifiedTime && (
+                  <span className="text-xs text-gray-400">
+                    수정: {new Date(file.modifiedTime).toLocaleString("ko-KR")}
+                  </span>
+                )}
+              </span>
+            </label>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={!selectedFile}
+            onClick={() => selectedFile && void startAnalysis(selectedFile)}
+            className="rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-50"
+          >
+            분석 시작
+          </button>
+          <button
+            type="button"
+            onClick={() => void scanDrive()}
+            className="text-xs text-gray-400 underline hover:text-gray-600"
+          >
+            다시 확인
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "downloading" || status === "processing") {
+    return (
+      <div className="flex flex-col items-center gap-3 py-14 text-center">
+        <div className="h-7 w-7 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
+        <p className="text-sm font-medium text-gray-700">
+          {status === "downloading" ? "파일 다운로드 중..." : "분석 중..."}
+        </p>
+        {fileName && <p className="text-xs text-gray-400">{fileName}</p>}
+        <p className="text-xs text-gray-400">페이지를 벗어나도 계속 진행됩니다</p>
+      </div>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <div className="flex flex-col items-center gap-3 py-14 text-center">
+        <p className="text-sm text-red-500">{errorMsg}</p>
+        <button type="button" onClick={handleReanalyze} className="text-xs text-violet-600 underline">
+          다시 시도
+        </button>
+      </div>
+    );
+  }
+
+  if (status === "success" && stats) {
+    return (
+      <div className="space-y-4 p-6">
+        <AnalysisSummary stats={stats} />
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={handleReanalyze}
+            className="text-xs text-gray-400 underline hover:text-gray-600"
+          >
+            재분석
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-3 py-14">
+      <div className="h-7 w-7 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
+      <p className="text-sm text-gray-400">연결 중...</p>
+    </div>
+  );
+}
+
+export interface UploadPanelProps {
+  onSuccess?: () => void;
+  showGuideTab?: boolean;
+  uploadTabLabel?: string;
+  driveTabLabel?: string;
+  selectFileLabel?: string;
+  className?: string;
+}
+
+export function UploadPanel({
+  onSuccess,
+  showGuideTab = false,
+  uploadTabLabel = "파일 직접 업로드",
+  driveTabLabel = "Drive 연동",
+  selectFileLabel = "파일 직접 선택",
+  className,
+}: UploadPanelProps) {
+  const [tab, setTab] = useState<Tab>("upload");
+
+  const handleSuccess = () => {
+    onSuccess?.();
+  };
+
+  const tabs = [
+    { id: "upload" as const, icon: "📁", label: uploadTabLabel },
+    { id: "drive" as const, icon: "☁", label: driveTabLabel },
+    ...(showGuideTab ? [{ id: "guide" as const, icon: "?", label: "가이드" }] : []),
+  ];
+
+  return (
+    <div className={className ?? "rounded-2xl border border-border bg-card shadow-sm"}>
+      <div className="border-b border-border px-6 pt-5 pb-0">
+        <div className="flex gap-0">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1.5 border-b-2 px-4 pb-3 text-sm font-medium transition-colors ${
+                tab === t.id
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <span
+                className={
+                  t.id === "guide"
+                    ? "flex h-4 w-4 items-center justify-center rounded-full border border-current text-[10px] font-bold"
+                    : ""
+                }
+              >
+                {t.icon}
+              </span>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === "upload" && (
+        <DirectUploadTab onSuccess={handleSuccess} selectFileLabel={selectFileLabel} />
+      )}
+      {tab === "drive" && (
+        <DriveTab
+          resetKey={0}
+          onSuccess={handleSuccess}
+          showGuideHint={showGuideTab}
+        />
+      )}
+      {tab === "guide" && showGuideTab && <GuideTab />}
+    </div>
+  );
+}
+
+export function resetDriveUploadState() {
+  localStorage.removeItem(uploadLocalStorage.driveStatsLegacy);
+  localStorage.removeItem(uploadLocalStorage.driveTasks);
+  localStorage.removeItem(uploadLocalStorage.driveAnalyzed);
+}

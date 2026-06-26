@@ -2,31 +2,54 @@
   "name": "synapse-frontend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0",
+    "pnpm": ">=9"
+  },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint ."
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",
+    "@tosspayments/tosspayments-sdk": "^2.7.1",
+    "@types/d3-force": "^3.0.10",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "d3-force": "^3.0.0",
     "lucide-react": "^0.511.0",
-    "next": "15.5.18",
     "react": "19.2.6",
     "react-dom": "19.2.6",
+    "react-force-graph-2d": "^1.29.1",
+    "react-force-graph-3d": "^1.29.1",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.17.0",
+    "recharts": "^3.8.1",
+    "remark-gfm": "^4.0.1",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.0",
+    "three": "^0.184.0",
     "zustand": "^5.0.5"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.8",
+    "@eslint/js": "^9.39.4",
+    "@tailwindcss/vite": "^4.3.1",
     "@types/node": "^22.15.29",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
+    "@types/three": "^0.184.1",
+    "@vitejs/plugin-react": "^6.0.2",
     "eslint": "^9.28.0",
-    "eslint-config-next": "15.5.18",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.2.0",
     "tailwindcss": "^4.1.8",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.33.0",
+    "vite": "^8.0.16"
   }
 }

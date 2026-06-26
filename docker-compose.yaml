@@ -1,0 +1,110 @@
+# ─────────────────────────────────────────────────────────
+# Synapse — 배포용 compose (EC2, ifive.site)
+#
+#   nginx(frontend) ─80/443─ 인터넷
+#        ├ /      → SPA
+#        └ /api/  → backend:8000 → db(pgvector)
+#   migrate: alembic upgrade head (단일 baseline)
+#   certbot: Let's Encrypt 인증서 발급/자동갱신
+#
+# 이미지는 Docker Hub에서 pull. 시크릿은 같은 폴더의 .env(런타임)에서.
+# 변수: DOCKER_HUB_USERNAME, IMAGE_TAG, POSTGRES_PASSWORD + 앱 시크릿
+# ─────────────────────────────────────────────────────────
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: synapse-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 필요}
+      POSTGRES_DB: synapse
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d synapse"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [synapse-net]
+    # ⚠️ 포트 호스트 미노출 (내부 네트워크 전용)
+
+  migrate:
+    image: ${DOCKER_HUB_USERNAME}/synapse-backend:${IMAGE_TAG:-latest}
+    container_name: synapse-migrate
+    restart: "no"
+    entrypoint: ["uv", "run", "alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/synapse
+    networks: [synapse-net]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend:
+    image: ${DOCKER_HUB_USERNAME}/synapse-backend:${IMAGE_TAG:-latest}
+    container_name: synapse-backend
+    restart: unless-stopped
+    env_file:
+      - .env                      # 앱 시크릿 런타임 주입 (OPENAI_API_KEY 등)
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/synapse
+      FRONTEND_BASE_URL: https://ifive.site
+      COOKIE_SECURE: "true"
+    expose:
+      - "8000"
+    networks: [synapse-net]
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    image: ${DOCKER_HUB_USERNAME}/synapse-frontend:${IMAGE_TAG:-latest}
+    container_name: synapse-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - certbot-etc:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+    # 인증서 갱신 반영 위해 6시간마다 nginx reload
+    command: >
+      /bin/sh -c '(while :; do sleep 6h; nginx -s reload; done) &
+      nginx -g "daemon off;"'
+    networks: [synapse-net]
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  certbot:
+    image: certbot/certbot
+    container_name: synapse-certbot
+    restart: unless-stopped
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    # 12시간마다 갱신 시도 (만료 임박 시에만 실제 갱신)
+    entrypoint: >
+      /bin/sh -c 'trap exit TERM; while :; do
+      certbot renew --webroot -w /var/www/certbot;
+      sleep 12h & wait $${!}; done'
+
+networks:
+  synapse-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  certbot-etc:
+  certbot-www:

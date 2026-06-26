@@ -1,0 +1,99 @@
+# ─────────────────────────────────────────────────────────
+# Synapse Platform — docker-compose (로컬 개발)
+#
+# 백엔드·DB만 Docker. 프론트는 호스트에서 pnpm dev.
+#
+#   docker compose -f docker-compose.dev.yml up --build
+#   cd frontend && pnpm dev   → http://localhost:5173
+#   cd extension && pnpm dev  → http://localhost:5174 (CRXJS HMR)
+#   API                       → http://localhost:8000
+#
+# frontend/.env:
+#   VITE_API_BASE_URL=http://localhost:8000
+#
+# backend/.env — API 키 등 (DATABASE_URL은 compose가 덮어씀)
+# 배포·통합 테스트: docker compose up  (루트 docker-compose.yaml)
+# ─────────────────────────────────────────────────────────
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: synapse-db-dev
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: synapse
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d synapse"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - synapse-dev-net
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: synapse-migrate-dev
+    restart: "no"
+    entrypoint: ["uv", "run", "alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/synapse
+    networks:
+      - synapse-dev-net
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: synapse-backend-dev
+    restart: unless-stopped
+    # dev 핫리로드: 소스 변경 시 uvicorn 자동 재시작 (재빌드 불필요)
+    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      # DATABASE_URL은 compose 네트워킹(db 호스트) 때문에 반드시 덮어씀.
+      # NAVIGATOR_MODEL은 backend/.env에 없어 기본값 제공.
+      # 그 외 secret(OPENAI/GOOGLE/YOUTUBE/RESEND/NAVER 등)은 env_file(backend/.env)에서 공급.
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/synapse
+      NAVIGATOR_MODEL: ${NAVIGATOR_MODEL:-gpt-4o}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:5173}
+      # Windows/Docker Desktop에서 bind-mount 파일변경 감지 안정화
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      # 소스 코드 마운트 → 저장 즉시 반영 (의존성 변경 시엔 여전히 --build 필요)
+      - ./backend/app:/app/app
+    ports:
+      - "8000:8000"
+    networks:
+      - synapse-dev-net
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+networks:
+  synapse-dev-net:
+    driver: bridge
+
+volumes:
+  pgdata-dev:
