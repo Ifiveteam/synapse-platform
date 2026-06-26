@@ -230,14 +230,31 @@ async function fetchArchiverHistory(
   return body.data ?? []
 }
 
+export interface ArchiverSessionBundle {
+  sessionId: string | null
+  history: ArchiverChatMessage[]
+}
+
+/** 활성 탭 URL과 일치하는 Archiver 세션 ID·히스토리를 함께 조회한다. */
+export async function resolveArchiverSessionForContext(
+  context: TabContext,
+): Promise<ArchiverSessionBundle> {
+  const sessions = await fetchArchiverSessions()
+  const session = sessions.find((item) => item.context_url === context.url)
+  if (!session) {
+    return { sessionId: null, history: [] }
+  }
+
+  const history = await fetchArchiverHistory(session.session_id)
+  return { sessionId: session.session_id, history }
+}
+
 /** 활성 탭 URL과 일치하는 세션의 대화 히스토리를 조회한다. */
 export async function fetchHistoryForContext(
   context: TabContext,
 ): Promise<ArchiverChatMessage[]> {
-  const sessions = await fetchArchiverSessions()
-  const session = sessions.find((item) => item.context_url === context.url)
-  if (!session) return []
-  return fetchArchiverHistory(session.session_id)
+  const bundle = await resolveArchiverSessionForContext(context)
+  return bundle.history
 }
 
 /** POST /archiver/stream — SSE 이벤트를 타입별로 구분해 전달한다. */

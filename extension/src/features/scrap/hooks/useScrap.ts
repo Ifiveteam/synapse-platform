@@ -1,79 +1,95 @@
 /**
- * Synapse 컨텍스트 보관함 데이터 동기화 훅
- * chrome.storage.local의 'synapse_scrap_list' 키를 구독하여 실시간 추가/삭제를 UI에 반영합니다.
+ * Synapse 스크랩 보관함 — 백엔드 API 동기화 훅.
  */
-import { useEffect, useState } from 'react'
-import { STORAGE_KEYS } from '@/shared/constants/storageKeys'
+import { useCallback, useEffect, useState } from 'react'
+import { SCRAP_CREATED_MESSAGE } from '@/features/scrap/services/createScrap'
+import { deleteScrap as deleteScrapApi, getScraps } from '@/features/scrap/services/scrapClient'
+import { type ScrapListItem, toScrapListItem } from '@/features/scrap/models/types'
 import { isExtensionContextValid } from '@/shared/utils/extensionContext'
 
-export interface ScrapItem {
-  id: string
-  url: string
-  title: string
-  scrapedAt: string
+export type { ScrapListItem }
+
+function mapLoadError(loadError: unknown): string {
+  return loadError instanceof Error
+    ? loadError.message
+    : '스크랩 목록을 불러오지 못했습니다.'
 }
 
 export function useScrap() {
-  const [scrapList, setScrapList] = useState<ScrapItem[]>([])
+  const [scrapList, setScrapList] = useState<ScrapListItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const reloadScraps = useCallback(() => {
+    void getScraps()
+      .then((items) => {
+        setScrapList(items.map(toScrapListItem))
+        setError(null)
+      })
+      .catch((loadError) => {
+        console.error('[Synapse Scrap] 목록 로드 실패:', loadError)
+        setScrapList([])
+        setError(mapLoadError(loadError))
+      })
+      .finally(() => {
+        setIsLoading(false)
+      })
+  }, [])
 
   useEffect(() => {
-    if (!isExtensionContextValid() || !chrome.storage?.local) {
-      setIsLoading(false)
-      return
-    }
+    let cancelled = false
 
-    // 마운트 시 스토리지에서 기존 스크랩 리스트 로드
-    chrome.storage.local.get([STORAGE_KEYS.SCRAP_LIST], (result) => {
-      if (chrome.runtime.lastError) return
-      const stored = result[STORAGE_KEYS.SCRAP_LIST]
-      if (Array.isArray(stored)) {
-        setScrapList(stored as ScrapItem[])
-      }
-      setIsLoading(false)
-    })
-
-    // 다른 컨텍스트(FAB 클릭 등)에서 스토리지 변경 시 React 상태 실시간 싱크
-    const handleStorageChange = (
-      changes: Record<string, chrome.storage.StorageChange>,
-      areaName: string,
-    ) => {
-      if (areaName === 'local' && changes[STORAGE_KEYS.SCRAP_LIST]) {
-        const next = changes[STORAGE_KEYS.SCRAP_LIST].newValue
-        setScrapList(Array.isArray(next) ? (next as ScrapItem[]) : [])
-      }
-    }
-
-    chrome.storage.onChanged.addListener(handleStorageChange)
+    void getScraps()
+      .then((items) => {
+        if (cancelled) return
+        setScrapList(items.map(toScrapListItem))
+        setError(null)
+      })
+      .catch((loadError) => {
+        if (cancelled) return
+        console.error('[Synapse Scrap] 목록 로드 실패:', loadError)
+        setScrapList([])
+        setError(mapLoadError(loadError))
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
 
     return () => {
-      chrome.storage.onChanged.removeListener(handleStorageChange)
+      cancelled = true
     }
   }, [])
 
-  /**
-   * 특정 스크랩 아이템 삭제 핸들러
-   * React state가 아닌 storage에서 최신 목록을 읽어 갱신 — 다른 컨텍스트와의 경합 시 stale closure 방지
-   */
-  const deleteScrap = (id: string) => {
-    if (!isExtensionContextValid() || !chrome.storage?.local) return
+  useEffect(() => {
+    if (!isExtensionContextValid()) return
 
-    chrome.storage.local.get([STORAGE_KEYS.SCRAP_LIST], (result) => {
-      if (chrome.runtime.lastError) return
-      const currentList = Array.isArray(result[STORAGE_KEYS.SCRAP_LIST])
-        ? (result[STORAGE_KEYS.SCRAP_LIST] as ScrapItem[])
-        : []
-      const updatedList = currentList.filter((item) => item.id !== id)
+    const handleRuntimeMessage = (message: { action?: string }) => {
+      if (message.action === SCRAP_CREATED_MESSAGE) {
+        reloadScraps()
+      }
+    }
 
-      chrome.storage.local.set({
-        [STORAGE_KEYS.SCRAP_LIST]: updatedList,
-      })
-    })
-  }
+    chrome.runtime.onMessage.addListener(handleRuntimeMessage)
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleRuntimeMessage)
+    }
+  }, [reloadScraps])
+
+  const deleteScrap = useCallback(async (id: string) => {
+    setError(null)
+    try {
+      await deleteScrapApi(id)
+      setScrapList((prev) => prev.filter((item) => item.id !== id))
+    } catch (deleteError) {
+      console.error('[Synapse Scrap] 삭제 실패:', deleteError)
+      setError(deleteError instanceof Error ? deleteError.message : '스크랩 삭제에 실패했습니다.')
+    }
+  }, [])
 
   return {
     scrapList,
     isLoading,
+    error,
     deleteScrap,
   }
 }
