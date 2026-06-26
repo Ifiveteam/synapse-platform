@@ -32,7 +32,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Frontend 이미지 빌드 & 푸시 (context=루트, shared 포함)
+      - name: Frontend 이미지 빌드 & 푸시 (context=루트)
         uses: docker/build-push-action@v6
         with:
           context: .
