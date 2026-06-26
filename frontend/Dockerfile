@@ -1,7 +1,6 @@
 # Synapse Frontend 이미지 (nginx + 빌드된 SPA + 리버스프록시 + HTTPS)
 #
-# ⚠️ 빌드 컨텍스트는 레포 루트(.)다.
-#    frontend가 @synapse/shared(../shared)를 참조하기 때문.
+# ⚠️ 빌드 컨텍스트는 레포 루트(.)다. (.dockerignore가 backend/extension 등 제외)
 #    빌드 예: docker build -f frontend/Dockerfile -t synapse-frontend .
 
 # ── Stage 1: 프론트 빌드 ──────────────────────────────
@@ -16,9 +15,8 @@ COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml 
 WORKDIR /app/frontend
 RUN pnpm install --frozen-lockfile
 
-# 소스 복사 (shared 포함)
+# 소스 복사
 WORKDIR /app
-COPY shared ./shared
 COPY frontend ./frontend
 
 # 운영 API 주소 주입 (공개값 — 시크릿 아님)
