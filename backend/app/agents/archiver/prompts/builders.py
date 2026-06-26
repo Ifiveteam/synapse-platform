@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from app.agents.archiver.models import (
+    NO_CONTEXT_BODY,
+    NO_CONTEXT_TITLE,
+    NO_CONTEXT_URL,
+    NO_RAG_CONTEXT,
+)
 from app.agents.archiver.prompts.context import format_archiver_current_date
 from app.agents.archiver.prompts.system_prompt import (
     ARCHIVER_COMPREHENSIVE_TEMPLATE,
@@ -9,12 +15,6 @@ from app.agents.archiver.prompts.system_prompt import (
     ARCHIVER_RAG_TEMPLATE,
     ARCHIVER_SEARCH_COLLECT_TEMPLATE,
     ARCHIVER_SEARCH_RESPOND_TEMPLATE,
-)
-from app.agents.archiver.models import (
-    NO_CONTEXT_BODY,
-    NO_CONTEXT_TITLE,
-    NO_CONTEXT_URL,
-    NO_RAG_CONTEXT,
 )
 
 
@@ -105,8 +105,7 @@ def build_synthesis_route_instruction(
     search = (context_search or "").strip()
     if search:
         sections.append(
-            f"[웹 검색 결과]\n{search}\n\n"
-            "외부 사실은 이 섹션만 근거로 사용하세요."
+            f"[웹 검색 결과]\n{search}\n\n외부 사실은 이 섹션만 근거로 사용하세요."
         )
 
     if not any((dom, rag, search)):

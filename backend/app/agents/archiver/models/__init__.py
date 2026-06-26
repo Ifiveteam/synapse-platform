@@ -4,7 +4,10 @@
 외부 코드는 반드시 `from app.agents.archiver.models import ...` 만 사용한다.
 """
 
-from app.agents.archiver.core.constants import MAX_RETRIEVAL_ATTEMPTS, MAX_SEARCH_ATTEMPTS
+from app.agents.archiver.core.constants import (
+    MAX_RETRIEVAL_ATTEMPTS,
+    MAX_SEARCH_ATTEMPTS,
+)
 
 from .context import (
     NO_CONTEXT_BODY,

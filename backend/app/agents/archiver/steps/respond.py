@@ -14,14 +14,17 @@ from app.agents.archiver.core.constants import (
     RESPOND_FACTUAL_TEMPERATURE,
     STREAM_ERROR_MESSAGE,
 )
-from app.agents.shared.gemini import GEMINI_MODEL, get_client
-from app.agents.archiver.protocols.stream_status import MSG_RESPOND_GENERATING, status_event
+from app.agents.archiver.models import ArchiverState, format_router_trace_label
+from app.agents.archiver.protocols.stream_status import (
+    MSG_RESPOND_GENERATING,
+    status_event,
+)
 from app.agents.archiver.steps.respond_context import (
     build_gemini_contents,
     resolve_system_instruction,
 )
 from app.agents.archiver.trace import log_node_enter, log_respond_result
-from app.agents.archiver.models import ArchiverState, format_router_trace_label
+from app.agents.shared.gemini import GEMINI_MODEL, get_client
 
 logger = logging.getLogger(__name__)
 

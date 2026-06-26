@@ -22,19 +22,33 @@ from app.agents.shared.embedding import embed_texts
 logger = logging.getLogger(__name__)
 
 _CATEGORY_NAMES: dict[str, str] = {
-    "1": "영화/애니메이션", "2": "자동차/교통", "10": "음악",
-    "15": "반려동물", "17": "스포츠", "19": "여행/이벤트",
-    "20": "게임", "22": "사람/블로그", "23": "코미디",
-    "24": "엔터테인먼트", "25": "뉴스/정치", "26": "라이프스타일",
-    "27": "교육", "28": "과학/기술", "29": "비영리/사회운동",
+    "1": "영화/애니메이션",
+    "2": "자동차/교통",
+    "10": "음악",
+    "15": "반려동물",
+    "17": "스포츠",
+    "19": "여행/이벤트",
+    "20": "게임",
+    "22": "사람/블로그",
+    "23": "코미디",
+    "24": "엔터테인먼트",
+    "25": "뉴스/정치",
+    "26": "라이프스타일",
+    "27": "교육",
+    "28": "과학/기술",
+    "29": "비영리/사회운동",
 }
 
 
 def _emit_chart(writer, chart_type: str, title: str, items: list) -> None:
-    writer({
-        "event": "chart",
-        "content": json.dumps({"type": chart_type, "title": title, "items": items}, ensure_ascii=False),
-    })
+    writer(
+        {
+            "event": "chart",
+            "content": json.dumps(
+                {"type": chart_type, "title": title, "items": items}, ensure_ascii=False
+            ),
+        }
+    )
 
 
 def _latest_user_message(state: CuratorState) -> str:
@@ -68,6 +82,7 @@ def _format_profile(profile) -> str:
 async def _fetch_catalog_stats(db: AsyncSession, user_id) -> tuple[str, list[dict]]:
     """총 통계 텍스트 + 카테고리 차트 아이템 반환."""
     from sqlalchemy import func, select
+
     from app.models.user_watch_catalog import UserWatchCatalog
 
     total_q = await db.execute(
@@ -91,7 +106,10 @@ async def _fetch_catalog_stats(db: AsyncSession, user_id) -> tuple[str, list[dic
         .limit(6)
     )
     cat_rows = cat_q.all()
-    top_cats = [f"{_CATEGORY_NAMES.get(r[0] or '', r[0] or '미분류')}({r[1]}건)" for r in cat_rows]
+    top_cats = [
+        f"{_CATEGORY_NAMES.get(r[0] or '', r[0] or '미분류')}({r[1]}건)"
+        for r in cat_rows
+    ]
 
     text = (
         f"총 시청 영상: {total}개 / 쇼츠 비율: {shorts}/{total} / "
@@ -106,57 +124,77 @@ async def _fetch_catalog_stats(db: AsyncSession, user_id) -> tuple[str, list[dic
 
 async def _fetch_top_channels(db: AsyncSession, user_id) -> list[Any]:
     from sqlalchemy import func, select
+
     from app.models.user_watch_catalog import UserWatchCatalog
 
-    rows = (await db.execute(
-        select(UserWatchCatalog.channel, func.count().label("cnt"))
-        .where(UserWatchCatalog.user_id == user_id)
-        .group_by(UserWatchCatalog.channel)
-        .order_by(func.count().desc())
-        .limit(TOP_CHANNEL_LIMIT)
-    )).fetchall()
+    rows = (
+        await db.execute(
+            select(UserWatchCatalog.channel, func.count().label("cnt"))
+            .where(UserWatchCatalog.user_id == user_id)
+            .group_by(UserWatchCatalog.channel)
+            .order_by(func.count().desc())
+            .limit(TOP_CHANNEL_LIMIT)
+        )
+    ).fetchall()
     return rows
 
 
 async def _fetch_recent_videos(db: AsyncSession, user_id) -> list[Any]:
     from sqlalchemy import desc, select
+
     from app.models.user_watch_catalog import UserWatchCatalog
 
-    rows = (await db.execute(
-        select(UserWatchCatalog.title, UserWatchCatalog.channel, UserWatchCatalog.watched_at)
-        .where(
-            UserWatchCatalog.user_id == user_id,
-            UserWatchCatalog.title.isnot(None),
-            UserWatchCatalog.is_shorts.isnot(True),
+    rows = (
+        await db.execute(
+            select(
+                UserWatchCatalog.title,
+                UserWatchCatalog.channel,
+                UserWatchCatalog.watched_at,
+            )
+            .where(
+                UserWatchCatalog.user_id == user_id,
+                UserWatchCatalog.title.isnot(None),
+                UserWatchCatalog.is_shorts.isnot(True),
+            )
+            .order_by(desc(UserWatchCatalog.watched_at))
+            .limit(RECENT_VIDEO_LIMIT)
         )
-        .order_by(desc(UserWatchCatalog.watched_at))
-        .limit(RECENT_VIDEO_LIMIT)
-    )).fetchall()
+    ).fetchall()
     return rows
 
 
 async def _fetch_shorts(db: AsyncSession, user_id) -> list[Any]:
     from sqlalchemy import desc, select
+
     from app.models.user_watch_catalog import UserWatchCatalog
 
-    rows = (await db.execute(
-        select(UserWatchCatalog.title, UserWatchCatalog.channel, UserWatchCatalog.watched_at)
-        .where(
-            UserWatchCatalog.user_id == user_id,
-            UserWatchCatalog.is_shorts.is_(True),
-            UserWatchCatalog.title.isnot(None),
+    rows = (
+        await db.execute(
+            select(
+                UserWatchCatalog.title,
+                UserWatchCatalog.channel,
+                UserWatchCatalog.watched_at,
+            )
+            .where(
+                UserWatchCatalog.user_id == user_id,
+                UserWatchCatalog.is_shorts.is_(True),
+                UserWatchCatalog.title.isnot(None),
+            )
+            .order_by(desc(UserWatchCatalog.watched_at))
+            .limit(10)
         )
-        .order_by(desc(UserWatchCatalog.watched_at))
-        .limit(10)
-    )).fetchall()
+    ).fetchall()
     return rows
 
 
-async def _vector_search_catalog(db: AsyncSession, user_id, vec: list[float]) -> list[Any]:
+async def _vector_search_catalog(
+    db: AsyncSession, user_id, vec: list[float]
+) -> list[Any]:
     from sqlalchemy import text
 
-    rows = (await db.execute(
-        text("""
+    rows = (
+        await db.execute(
+            text("""
             SELECT title, channel, youtube_category_id,
                    1 - (embedding <=> CAST(:vec AS vector)) AS score
             FROM user_watch_catalog
@@ -164,16 +202,20 @@ async def _vector_search_catalog(db: AsyncSession, user_id, vec: list[float]) ->
             ORDER BY embedding <=> CAST(:vec AS vector)
             LIMIT :lim
         """),
-        {"vec": str(vec), "uid": str(user_id), "lim": VIDEO_SEARCH_LIMIT},
-    )).fetchall()
+            {"vec": str(vec), "uid": str(user_id), "lim": VIDEO_SEARCH_LIMIT},
+        )
+    ).fetchall()
     return rows
 
 
-async def _vector_search_analysis(db: AsyncSession, user_id, vec: list[float]) -> list[Any]:
+async def _vector_search_analysis(
+    db: AsyncSession, user_id, vec: list[float]
+) -> list[Any]:
     from sqlalchemy import text
 
-    rows = (await db.execute(
-        text("""
+    rows = (
+        await db.execute(
+            text("""
             SELECT va.summary_kr,
                    1 - (va.embedding <=> CAST(:vec AS vector)) AS score
             FROM video_analysis va
@@ -182,8 +224,9 @@ async def _vector_search_analysis(db: AsyncSession, user_id, vec: list[float]) -
             ORDER BY va.embedding <=> CAST(:vec AS vector)
             LIMIT :lim
         """),
-        {"vec": str(vec), "uid": str(user_id), "lim": ANALYSIS_SEARCH_LIMIT},
-    )).fetchall()
+            {"vec": str(vec), "uid": str(user_id), "lim": ANALYSIS_SEARCH_LIMIT},
+        )
+    ).fetchall()
     return rows
 
 
@@ -208,6 +251,7 @@ async def retrieve(state: CuratorState, db: AsyncSession) -> dict[str, Any]:
     if "profile" in sources:
         try:
             from app.repositories.profiler_repository import fetch_latest_profile
+
             profile = await fetch_latest_profile(db, user_id)
             if profile:
                 context_parts.append("[프로필]\n" + _format_profile(profile))
@@ -227,9 +271,16 @@ async def retrieve(state: CuratorState, db: AsyncSession) -> dict[str, Any]:
         try:
             rows = await _fetch_top_channels(db, user_id)
             if rows:
-                context_parts.append("[자주 본 채널]\n" + "\n".join(f"· {r.channel} ({r.cnt}개)" for r in rows))
-                _emit_chart(writer, "channel_rank", "자주 본 채널 TOP 5",
-                            [{"label": r.channel, "count": r.cnt} for r in rows])
+                context_parts.append(
+                    "[자주 본 채널]\n"
+                    + "\n".join(f"· {r.channel} ({r.cnt}개)" for r in rows)
+                )
+                _emit_chart(
+                    writer,
+                    "channel_rank",
+                    "자주 본 채널 TOP 5",
+                    [{"label": r.channel, "count": r.cnt} for r in rows],
+                )
         except Exception as e:
             logger.warning("top channels failed: %s", e)
 
@@ -237,9 +288,16 @@ async def retrieve(state: CuratorState, db: AsyncSession) -> dict[str, Any]:
         try:
             rows = await _fetch_recent_videos(db, user_id)
             if rows:
-                context_parts.append("[최근 시청 영상]\n" + "\n".join(f"· {r.title} ({r.channel})" for r in rows))
-                _emit_chart(writer, "video_list", "최근 시청 영상",
-                            [{"title": r.title, "channel": r.channel} for r in rows])
+                context_parts.append(
+                    "[최근 시청 영상]\n"
+                    + "\n".join(f"· {r.title} ({r.channel})" for r in rows)
+                )
+                _emit_chart(
+                    writer,
+                    "video_list",
+                    "최근 시청 영상",
+                    [{"title": r.title, "channel": r.channel} for r in rows],
+                )
         except Exception as e:
             logger.warning("recent videos failed: %s", e)
 
@@ -247,9 +305,16 @@ async def retrieve(state: CuratorState, db: AsyncSession) -> dict[str, Any]:
         try:
             rows = await _fetch_shorts(db, user_id)
             if rows:
-                context_parts.append("[최근 시청 쇼츠]\n" + "\n".join(f"· {r.title} ({r.channel})" for r in rows))
-                _emit_chart(writer, "shorts_list", "최근 본 쇼츠",
-                            [{"title": r.title, "channel": r.channel} for r in rows])
+                context_parts.append(
+                    "[최근 시청 쇼츠]\n"
+                    + "\n".join(f"· {r.title} ({r.channel})" for r in rows)
+                )
+                _emit_chart(
+                    writer,
+                    "shorts_list",
+                    "최근 본 쇼츠",
+                    [{"title": r.title, "channel": r.channel} for r in rows],
+                )
         except Exception as e:
             logger.warning("shorts fetch failed: %s", e)
 
@@ -257,9 +322,16 @@ async def retrieve(state: CuratorState, db: AsyncSession) -> dict[str, Any]:
         try:
             rows = await _vector_search_catalog(db, user_id, vec)
             if rows:
-                context_parts.append("[질문 관련 시청 영상]\n" + "\n".join(f"· {r.title} ({r.channel})" for r in rows))
-                _emit_chart(writer, "video_list", "관련 시청 영상",
-                            [{"title": r.title, "channel": r.channel} for r in rows])
+                context_parts.append(
+                    "[질문 관련 시청 영상]\n"
+                    + "\n".join(f"· {r.title} ({r.channel})" for r in rows)
+                )
+                _emit_chart(
+                    writer,
+                    "video_list",
+                    "관련 시청 영상",
+                    [{"title": r.title, "channel": r.channel} for r in rows],
+                )
         except Exception as e:
             logger.warning("vector catalog search failed: %s", e)
 
@@ -267,7 +339,10 @@ async def retrieve(state: CuratorState, db: AsyncSession) -> dict[str, Any]:
         try:
             rows = await _vector_search_analysis(db, user_id, vec)
             if rows:
-                context_parts.append("[질문 관련 영상 분석]\n" + "\n".join(f"· {r.summary_kr}" for r in rows))
+                context_parts.append(
+                    "[질문 관련 영상 분석]\n"
+                    + "\n".join(f"· {r.summary_kr}" for r in rows)
+                )
         except Exception as e:
             logger.warning("vector analysis search failed: %s", e)
 

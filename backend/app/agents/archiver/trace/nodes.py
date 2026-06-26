@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from app.agents.archiver.models import Evaluation
 from app.agents.archiver.trace._common import logger, truncate
 from app.agents.archiver.trace.observability import log_event
-from app.agents.archiver.models import Evaluation
 
 
 def log_router_result(*, route: str, raw_route: str | None = None) -> None:
@@ -35,12 +35,16 @@ def log_collect_result(
     logger.info("  ┌─ 📥 collect 수집 결과")
     logger.info("  │ route              : %s", route)
     logger.info("  │ retrieval_attempts : %s", retrieval_attempts)
-    logger.info("  │ context_rag        : %s자 (hit=%s)", rag_chars, "✅" if rag_hit else "❌")
+    logger.info(
+        "  │ context_rag        : %s자 (hit=%s)", rag_chars, "✅" if rag_hit else "❌"
+    )
     logger.info("  │ context_dom        : %s자", context_body_chars)
     logger.info("  └─ collect 완료")
 
 
-def log_search_payload(*, context_search: str, search_attempts: int, is_loop: bool) -> None:
+def log_search_payload(
+    *, context_search: str, search_attempts: int, is_loop: bool
+) -> None:
     log_event(
         "search.result",
         search_chars=len(context_search),

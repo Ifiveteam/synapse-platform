@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from app.agents.archiver.trace.observability import log_event
-from app.agents.archiver.trace._common import logger
 from app.agents.archiver.models import (
     MAX_RETRIEVAL_ATTEMPTS,
     MAX_SEARCH_ATTEMPTS,
     Evaluation,
 )
+from app.agents.archiver.trace._common import logger
+from app.agents.archiver.trace.observability import log_event
 
 
 def log_router_branch(
@@ -59,18 +59,14 @@ def log_evaluator_branch(
             f"미실행 엔진 병렬 역주행 {pending}"
         )
     elif next_node == "search_node":
-        branch_reason = (
-            f"AI 권장 search — 역주행 (시도 {search_attempts + 1}/{MAX_SEARCH_ATTEMPTS})"
-        )
+        branch_reason = f"AI 권장 search — 역주행 (시도 {search_attempts + 1}/{MAX_SEARCH_ATTEMPTS})"
     elif next_node in {"collect_node", "rag_node"}:
         branch_reason = (
             f"AI 권장 {evaluation.recommended_action} — "
             f"역주행 (rag 시도 {retrieval_attempts + 1}/{MAX_RETRIEVAL_ATTEMPTS})"
         )
     else:
-        branch_reason = (
-            f"루프 한도 또는 best-effort — search={search_attempts}, rag={retrieval_attempts}"
-        )
+        branch_reason = f"루프 한도 또는 best-effort — search={search_attempts}, rag={retrieval_attempts}"
 
     log_event(
         "evaluator.branch",
@@ -85,7 +81,9 @@ def log_evaluator_branch(
         reason=branch_reason,
     )
     logger.info("  ┌─ 🔀 Evaluator 조건부 분기 (LLM Structured Output)")
-    logger.info("  │ 충분성      : %s", "✅ 충분" if evaluation.is_sufficient else "❌ 불충분")
+    logger.info(
+        "  │ 충분성      : %s", "✅ 충분" if evaluation.is_sufficient else "❌ 불충분"
+    )
     logger.info("  │ 권장 액션   : %s", evaluation.recommended_action)
     logger.info(
         "  │ 소스 verdict: dom=%s | rag=%s | search=%s",
@@ -94,7 +92,9 @@ def log_evaluator_branch(
         evaluation.search_verdict,
     )
     logger.info("  │ search      : %s / %s회", search_attempts, MAX_SEARCH_ATTEMPTS)
-    logger.info("  │ collect     : %s / %s회", retrieval_attempts, MAX_RETRIEVAL_ATTEMPTS)
+    logger.info(
+        "  │ collect     : %s / %s회", retrieval_attempts, MAX_RETRIEVAL_ATTEMPTS
+    )
     logger.info("  │ 남은 엔진   : %s", pending or "(없음)")
     logger.info("  │ 판단 근거   : %s", evaluation.reason or "(없음)")
     logger.info("  │ 다음 노드   : %s", next_node)

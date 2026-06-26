@@ -1,20 +1,24 @@
 #!/usr/bin/env python
 """데이터베이스 리셋 스크립트"""
+
 import sys
-import os
 from pathlib import Path
 
 # 백엔드 경로 추가 (scripts/ 한 단계 위가 backend 루트)
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import asyncio
+
 from sqlalchemy import text
+
 from app.core.env import load_backend_env
+
 load_backend_env()
 
-from app.core.database.base import Base
-from app.core.database.session import engine
-import app.models  # noqa: F401 - 모든 모델 등록
+import app.models  # noqa: E402,F401 - 모든 모델 등록
+from app.core.database.base import Base  # noqa: E402
+from app.core.database.session import engine  # noqa: E402
+
 
 async def reset_db():
     print("🗑️  데이터베이스 리셋 중...")
@@ -27,7 +31,7 @@ async def reset_db():
 
         async with engine.begin() as conn:
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\""))
+            await conn.execute(text('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"'))
             await conn.run_sync(Base.metadata.create_all)
             print("✓ 새 테이블 생성 완료")
 
@@ -35,7 +39,9 @@ async def reset_db():
     except Exception as e:
         print(f"❌ 에러: {e}")
         import traceback
+
         traceback.print_exc()
+
 
 if __name__ == "__main__":
     asyncio.run(reset_db())

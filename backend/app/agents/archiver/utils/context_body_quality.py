@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import re
 
-from app.agents.archiver.core.constants import MIN_CLIENT_CONTEXT_BODY_CHARS, MIN_CONTEXT_BODY_QUALITY
+from app.agents.archiver.core.constants import (
+    MIN_CLIENT_CONTEXT_BODY_CHARS,
+    MIN_CONTEXT_BODY_QUALITY,
+)
 
 _CODE_LINE_RE = re.compile(
     r"^\s*(var|let|const|function|import|export|@media|@keyframes)\b"
@@ -72,9 +75,7 @@ def score_line_density(text: str) -> float:
 
     return min(
         1.0,
-        substantive_ratio * 0.5
-        + unique_ratio * 0.25
-        + min(avg_len / 80.0, 1.0) * 0.25,
+        substantive_ratio * 0.5 + unique_ratio * 0.25 + min(avg_len / 80.0, 1.0) * 0.25,
     )
 
 
@@ -125,9 +126,7 @@ def prepare_context_body(text: str | None) -> str | None:
 
     filtered = filter_noise_lines(normalized)
     candidate = (
-        filtered
-        if len(filtered) >= MIN_CLIENT_CONTEXT_BODY_CHARS
-        else normalized
+        filtered if len(filtered) >= MIN_CLIENT_CONTEXT_BODY_CHARS else normalized
     )
     if not is_meaningful_context_body(candidate):
         return None

@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from app.agents.archiver.core.constants import MAX_SEARCH_ATTEMPTS
+
 from .state import (
     COLLECT_NODE,
     RAG_NODE,
@@ -88,10 +89,7 @@ class Evaluation(BaseModel):
         rag_v = _verdict(rag, RAG_NODE)
         search_v = _verdict(search, SEARCH_NODE)
 
-        if (
-            search_attempts < MAX_SEARCH_ATTEMPTS
-            and SEARCH_NODE in pending
-        ):
+        if search_attempts < MAX_SEARCH_ATTEMPTS and SEARCH_NODE in pending:
             return cls(
                 is_sufficient=False,
                 reason="LLM evaluator 실패 — 외부 검색(search_node) 재시도가 필요합니다.",

@@ -9,7 +9,11 @@ from fastapi.responses import StreamingResponse
 
 from app.api.v1.auth import get_current_user_dep
 from app.models.user import User
-from app.schemas.curator import CuratorChatRequest, CuratorSessionListResponse, CuratorSessionMessagesResponse
+from app.schemas.curator import (
+    CuratorChatRequest,
+    CuratorSessionListResponse,
+    CuratorSessionMessagesResponse,
+)
 from app.services.curator_service import CuratorService
 
 router = APIRouter(prefix="/curator", tags=["Curator"])
@@ -59,7 +63,9 @@ async def delete_session(
     await service.delete_session(session_id, user.id)
 
 
-@router.get("/sessions/{session_id}/messages", response_model=CuratorSessionMessagesResponse)
+@router.get(
+    "/sessions/{session_id}/messages", response_model=CuratorSessionMessagesResponse
+)
 async def get_session_messages(
     session_id: str,
     user: User = Depends(get_current_user_dep),

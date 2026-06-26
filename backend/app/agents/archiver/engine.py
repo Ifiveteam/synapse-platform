@@ -10,13 +10,13 @@ from typing import Any
 from langchain_core.messages import BaseMessage
 
 from app.agents.archiver.core.store import ArchiverStore, build_run_config
-from app.agents.archiver.trace import log_workflow_end, log_workflow_start
 from app.agents.archiver.models import (
     NO_CONTEXT_TITLE,
     NO_CONTEXT_URL,
     ArchiverState,
     ArchiverStreamEvent,
 )
+from app.agents.archiver.trace import log_workflow_end, log_workflow_start
 from app.agents.archiver.workflow import build_archiver_workflow
 
 _compiled_graph = None
@@ -53,7 +53,9 @@ class ArchiverEngine:
         dom_continuation: bool = False,
     ) -> ArchiverState:
         """Service가 주입하는 초기 State 가방."""
-        from app.agents.archiver.nodes.utils.scraper import normalize_client_context_body
+        from app.agents.archiver.nodes.utils.scraper import (
+            normalize_client_context_body,
+        )
 
         state: ArchiverState = {
             "messages": messages,
@@ -131,4 +133,3 @@ def get_archiver_engine() -> ArchiverEngine:
     if _archiver_engine_runner is None:
         _archiver_engine_runner = ArchiverEngine()
     return _archiver_engine_runner
-

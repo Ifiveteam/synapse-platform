@@ -4,21 +4,24 @@ from __future__ import annotations
 
 import sys
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 
-from app.agents.archiver.core.history import append_user_turn, history_to_messages
 from app.agents.archiver.core.constants import (
     RESPOND_CHITCHAT_TEMPERATURE,
     RESPOND_FACTUAL_TEMPERATURE,
+)
+from app.agents.archiver.core.history import append_user_turn, history_to_messages
+from app.agents.archiver.models import SEARCH_NODE, ArchiverStreamEvent
+from app.agents.archiver.protocols.stream_status import status_event
+from app.agents.archiver.protocols.streaming import (
+    format_sse_event,
+    format_stream_event,
 )
 from app.agents.archiver.steps.respond_context import (
     build_gemini_contents,
     resolve_respond_tools,
     resolve_system_instruction,
 )
-from app.agents.archiver.protocols.streaming import format_sse_event, format_stream_event
-from app.agents.archiver.protocols.stream_status import status_event
-from app.agents.archiver.models import ArchiverStreamEvent, SEARCH_NODE
 from app.schemas.archiver import ArchiverChatMessage
 
 
@@ -50,18 +53,28 @@ def run_p2_tests() -> list[str]:
             message=structured["message"],
         )
     )
-    _assert('"phase": "router_parallel"' in sse_structured, "SSE: structured phase", errors)
+    _assert(
+        '"phase": "router_parallel"' in sse_structured, "SSE: structured phase", errors
+    )
     _assert('"engines"' in sse_structured, "SSE: structured engines", errors)
     _assert('"message"' in sse_structured, "SSE: structured message", errors)
     _assert('"content"' in sse_structured, "SSE: legacy content field", errors)
 
     legacy = format_sse_event(event="status", content="안내\n\n")
-    _assert('"content"' in legacy and '"phase"' not in legacy, "SSE: legacy without phase", errors)
+    _assert(
+        '"content"' in legacy and '"phase"' not in legacy,
+        "SSE: legacy without phase",
+        errors,
+    )
 
     # multi-turn history
     history = [
-        ArchiverChatMessage(id=1, role="user", content="이전 질문", created_at="2026-06-18T00:00:00Z"),  # type: ignore[arg-type]
-        ArchiverChatMessage(id=2, role="assistant", content="이전 답", created_at="2026-06-18T00:00:01Z"),  # type: ignore[arg-type]
+        ArchiverChatMessage(
+            id=1, role="user", content="이전 질문", created_at="2026-06-18T00:00:00Z"
+        ),  # type: ignore[arg-type]
+        ArchiverChatMessage(
+            id=2, role="assistant", content="이전 답", created_at="2026-06-18T00:00:01Z"
+        ),  # type: ignore[arg-type]
     ]
     prior = history_to_messages(history, limit=20)
     full = append_user_turn(prior, "새 질문")
@@ -123,9 +136,15 @@ def run_p2_tests() -> list[str]:
     )
     _assert(tools is None, "resolve: BASIC+context_search no tools", errors)
     _assert("body" in instruction, "resolve: BASIC+context_search includes dom", errors)
-    _assert("cached search" in instruction, "resolve: BASIC+context_search includes search", errors)
+    _assert(
+        "cached search" in instruction,
+        "resolve: BASIC+context_search includes search",
+        errors,
+    )
 
-    general_instruction, general_tools = resolve_system_instruction({"is_general": True})
+    general_instruction, general_tools = resolve_system_instruction(
+        {"is_general": True}
+    )
     _assert(general_tools is None, "resolve: is_general no tools", errors)
     _assert("일상 대화" in general_instruction, "resolve: is_general template", errors)
 

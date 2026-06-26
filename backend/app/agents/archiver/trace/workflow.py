@@ -5,8 +5,6 @@ from __future__ import annotations
 import textwrap
 from typing import Any
 
-from app.agents.archiver.trace.observability import log_event, log_workflow_summary
-from app.agents.archiver.trace._common import banner, logger, truncate
 from app.agents.archiver.models import (
     ArchiverState,
     Evaluation,
@@ -15,6 +13,8 @@ from app.agents.archiver.models import (
     get_context_rag,
     get_context_search,
 )
+from app.agents.archiver.trace._common import banner, logger, truncate
+from app.agents.archiver.trace.observability import log_event, log_workflow_summary
 
 
 def log_workflow_start(*, state: ArchiverState) -> None:
@@ -64,8 +64,12 @@ def log_workflow_end(state: dict[str, Any], *, latency_ms: int) -> None:
         f"| latency_ms={latency_ms}"
     )
     logger.info("  ┌─ 최종 스냅샷")
-    logger.info("  │ 충분성        : %s", evaluation.is_sufficient if evaluation else "—")
-    logger.info("  │ 권장 액션     : %s", evaluation.recommended_action if evaluation else "—")
+    logger.info(
+        "  │ 충분성        : %s", evaluation.is_sufficient if evaluation else "—"
+    )
+    logger.info(
+        "  │ 권장 액션     : %s", evaluation.recommended_action if evaluation else "—"
+    )
     logger.info("  │ context_rag   : %s자", len(get_context_rag(state)))  # type: ignore[arg-type]
     logger.info("  │ context_search: %s자", len(get_context_search(state)))  # type: ignore[arg-type]
     logger.info("  │ context_dom   : %s자", len(get_context_dom(state)))  # type: ignore[arg-type]
@@ -97,10 +101,18 @@ def log_node_enter(node: str, *, state: ArchiverState | None = None) -> None:
         logger.info("  └─ 유저 질문 라우팅 시작")
 
     elif node == "collect":
-        logger.info("  └─ route=%s | retrieval_attempts=%s", route_label, state.get("retrieval_attempts", 0))
+        logger.info(
+            "  └─ route=%s | retrieval_attempts=%s",
+            route_label,
+            state.get("retrieval_attempts", 0),
+        )
 
     elif node == "search":
-        logger.info("  └─ route=%s | search_attempts=%s", route_label, state.get("search_attempts", 0))
+        logger.info(
+            "  └─ route=%s | search_attempts=%s",
+            route_label,
+            state.get("search_attempts", 0),
+        )
 
     elif node == "evaluator":
         logger.info(

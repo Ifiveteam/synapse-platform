@@ -11,12 +11,6 @@ from app.agents.archiver.core.constants import (
     CLASSIFY_MODEL,
     CLASSIFY_TEMPERATURE,
 )
-from app.agents.shared.gemini import invoke_structured_safe
-from app.agents.archiver.prompts import build_router_prompt
-from app.agents.archiver.utils.router_heuristics import (
-    is_greeting_preflight,
-    resolve_router_dialogue_context,
-)
 from app.agents.archiver.models import (
     ArchiverState,
     RouterTargets,
@@ -24,12 +18,18 @@ from app.agents.archiver.models import (
     latest_user_message,
     normalize_target_engines,
 )
+from app.agents.archiver.prompts import build_router_prompt
 from app.agents.archiver.protocols.stream_status import (
     MSG_ROUTER_GENERAL,
     router_parallel_message,
     status_event,
 )
 from app.agents.archiver.trace import log_node_enter, log_router_result
+from app.agents.archiver.utils.router_heuristics import (
+    is_greeting_preflight,
+    resolve_router_dialogue_context,
+)
+from app.agents.shared.gemini import invoke_structured_safe
 
 
 def normalize_router_decision(decision: RouterTargets) -> RouterTargets:
@@ -117,7 +117,9 @@ async def classify(state: ArchiverState) -> dict[str, Any]:
         targets = []
 
     targets = normalize_target_engines(targets)
-    trace_label = format_router_trace_label(is_general=is_general, target_engines=targets)
+    trace_label = format_router_trace_label(
+        is_general=is_general, target_engines=targets
+    )
 
     log_router_result(route=trace_label, raw_route=raw_detail)
 

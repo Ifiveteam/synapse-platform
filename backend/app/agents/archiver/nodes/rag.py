@@ -14,6 +14,7 @@ from langgraph.config import get_stream_writer
 from langgraph.types import RunnableConfig
 
 from app.agents.archiver.core.constants import MAX_RETRIEVAL_ATTEMPTS
+from app.agents.archiver.core.store import PastKnowledgeHit, get_archiver_store
 from app.agents.archiver.models import (
     RAG_NODE,
     ArchiverState,
@@ -22,8 +23,11 @@ from app.agents.archiver.models import (
     get_context_rag,
     latest_user_message,
 )
-from app.agents.archiver.core.store import PastKnowledgeHit, get_archiver_store
-from app.agents.archiver.protocols.stream_status import MSG_RAG_FIRST, MSG_RAG_RETRY, status_event
+from app.agents.archiver.protocols.stream_status import (
+    MSG_RAG_FIRST,
+    MSG_RAG_RETRY,
+    status_event,
+)
 from app.agents.archiver.trace import log_collect_result, log_node_enter
 
 logger = logging.getLogger(__name__)

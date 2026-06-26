@@ -8,11 +8,11 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.agents.archiver.core.constants import MAX_CONTEXT_BODY_CHARS
+from app.agents.archiver.models import NO_CONTEXT_BODY, NO_CONTEXT_URL, OFF_TAB_BODY
 from app.agents.archiver.utils.context_body_quality import (
     is_meaningful_context_body,
     prepare_context_body,
 )
-from app.agents.archiver.models import NO_CONTEXT_BODY, NO_CONTEXT_URL, OFF_TAB_BODY
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +70,7 @@ def _extract_main_text(html: str) -> str:
         if main_content
         else soup.get_text(separator="\n", strip=True)
     )
-    cleaned = "\n".join(
-        line.strip() for line in raw_text.splitlines() if line.strip()
-    )
+    cleaned = "\n".join(line.strip() for line in raw_text.splitlines() if line.strip())
     if len(cleaned) > MAX_CONTEXT_BODY_CHARS:
         return cleaned[:MAX_CONTEXT_BODY_CHARS]
     return cleaned
