@@ -1,7 +1,10 @@
 # Synapse DB 스키마
 
 PostgreSQL 17 · `pgvector` · `pgcrypto`  
-마이그레이션: `backend/alembic/versions/001_initial_schema.py` … `013_user_plan.py` (head)
+마이그레이션 (실제 파일):
+`001_initial_schema` → `002_create_scraps` → `003_user_subscription` (**현재 head**)
+
+> 초기 스키마는 `001_initial_schema` **한 파일에 통합**돼 있다(과거 007~013 등 개별 마이그레이션은 통합됨, 실파일 없음). 이후 `scraps`(002), `user_subscription`(003)만 별도 추가. 새 마이그레이션은 `down_revision`을 직전 head로 지정.
 
 ---
 
@@ -13,11 +16,14 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `user_token` | 로그인·Google·익스텐션 토큰 | → `users` |
 | `extension_auth_code` | 웹→익스텐션 1회용 연동 코드 | → `users` |
 | `user_watch_catalog` | 시청 기록 정본 (인덱서) | → `users`, ← `video_analysis` 0~1 |
+| `user_subscription` | 구독 채널 스냅샷 (인덱서, 003) | → `users` |
 | `user_analysis_source` | 업로드 소스별 분석 이력 (중복 방지) | → `users`, → `user_profile_history` 0~1 |
 | `video_analysis` | 영상 LLM 분석 (프로파일러) | → `users`, → `user_watch_catalog` 1:1 |
 | `user_profile_history` | 성향 점수 + LLM 해석 스냅샷 | → `users` |
 | `user_ideal_persona` | 이상 자아 (네비게이터) | → `users`, → `user_profile_history` 0~1 |
 | `navigator_proposal_cache` | 이상향 제안 3안 캐시 (네비게이터) | → `users`, → `user_profile_history` |
+| `navigator_playlist` | 이상향 기반 YouTube 재생목록 (네비게이터) | → `users`, → `user_ideal_persona` |
+| `scraps` | 웹·채팅 스크랩 요약 (아카이버·큐레이터, 002) | → `users` |
 | `ai_chat_logs` | 통합 AI 채팅 로그 (Archiver·Curator) | → `users` |
 
 ---
@@ -102,6 +108,28 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 
 **UK:** `(user_id, url)`  
 **인덱스:** `(user_id, watched_at DESC)`, `(user_id, youtube_category_id)`, HNSW on `embedding`
+
+> **platform**: 시청 출처. 일반 영상은 `youtube`, YouTube Music(`music.youtube.com` URL 또는 header `YouTube Music`)은 `youtube_music`.
+
+---
+
+## user_subscription
+
+인덱서가 Takeout **구독정보 CSV**(ZIP 내)에서 적재하는 **구독 채널 스냅샷**. 채널(URL) 단위 1행. 분석(업로드)마다 **전체 교체**(구독 취소 반영) — 단, 구독 CSV가 있는 ZIP일 때만. (003)
+
+| 컬럼 | 타입 | NULL | 설명 |
+|------|------|:----:|------|
+| `id` | UUID | N | PK. `gen_random_uuid()` |
+| `user_id` | UUID | N | FK → `users.id` ON DELETE CASCADE |
+| `channel_id` | TEXT | N | Takeout `채널 ID` |
+| `channel_url` | TEXT | Y | Takeout `채널 URL` |
+| `channel_title` | TEXT | Y | Takeout `채널 제목` |
+| `created_at` / `updated_at` | TIMESTAMPTZ | N | |
+
+**UK:** `(user_id, channel_id)` — `uq_usub_user_channel`  
+**인덱스:** `ix_usub_user (user_id)`
+
+> 적재만 인덱서 담당. 활용(소비 자율성·아스피레이션)은 **네비게이터** 예정 — 프로파일러 채점엔 미사용.
 
 ---
 
@@ -244,6 +272,51 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `updated_at` | TIMESTAMPTZ | N | |
 
 **UK:** `(user_id, source_profile_history_id)` — `uq_npc_user_snapshot`
+
+---
+
+## navigator_playlist
+
+네비게이터 **이상향 기반 YouTube 재생목록**. 이상향(`user_ideal_persona`) 1개에 N개. (001)
+
+| 컬럼 | 타입 | NULL | 설명 |
+|------|------|:----:|------|
+| `id` | UUID | N | PK. `gen_random_uuid()` |
+| `user_id` | UUID | N | FK → `users.id` ON DELETE CASCADE |
+| `ideal_id` | UUID | N | FK → `user_ideal_persona.id` ON DELETE CASCADE |
+| `title` | TEXT | Y | 자동 `{persona_label} #N`, 사용자 수정 가능 |
+| `summary` | TEXT | Y | 재생목록 총평 (LLM 큐레이션) |
+| `items_json` | JSONB | Y | 보여줄 영상 10개 |
+| `channels_json` | JSONB | Y | 발굴·선택 채널 `{channel_id, title}` — re-RSS 무쿼터 보충 |
+| `reservoir_json` | JSONB | Y | 여분 영상 (즉시 교체용) |
+| `youtube_playlist_id` | TEXT | Y | 실제 저장 후 채워짐 (Phase B) |
+| `created_at` / `updated_at` | TIMESTAMPTZ | N | |
+
+**인덱스:** `ix_np_user_ideal (user_id, ideal_id)`
+
+계획: [navigator/PLAN_youtube_playlist.md](./navigator/PLAN_youtube_playlist.md)
+
+---
+
+## scraps
+
+아카이버·큐레이터가 수집한 **웹 페이지·채팅 스크랩** (Gemini 요약·분류). (002)
+
+| 컬럼 | 타입 | NULL | 설명 |
+|------|------|:----:|------|
+| `id` | UUID | N | PK. `gen_random_uuid()` |
+| `user_id` | UUID | N | FK → `users.id` ON DELETE CASCADE. index |
+| `source_type` | VARCHAR(20) | N | `web` \| `chat` |
+| `url` | VARCHAR(2048) | Y | 출처 URL |
+| `title` | VARCHAR(512) | Y | 제목 |
+| `summary` | TEXT | N | LLM 요약 |
+| `category` | VARCHAR(512) | N | LLM 분류 |
+| `tags` | JSONB | N | 태그 배열 (기본 `[]`) |
+| `raw_body_snapshot` | TEXT | Y | 원문 스냅샷 |
+| `session_id` | VARCHAR(50) | Y | chat 출처 시 아카이버 세션 ID |
+| `created_at` / `updated_at` | TIMESTAMPTZ | N | |
+
+**인덱스:** `ix_scraps_user_id (user_id)`, `ix_scraps_user_created (user_id, created_at)`
 
 ---
 

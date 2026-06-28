@@ -146,8 +146,8 @@ stateDiagram-v2
 ### 3.2 summarize — 의미 분석
 
 - **모델:** Gemini (`invoke_gemini_structured`)
-- **스키마:** `schemas/profiler/video.py` → `VideoSemanticAnalysis`
-- **프롬프트:** `sub_agent/video_summary/prompt.py`
+- **스키마:** `schemas/profiler/llm/video.py` → `VideoSemanticAnalysis`
+- **프롬프트:** `sub_agent/video_summary/prompts.py`
 
 | 필드 | 설명 |
 |------|------|
@@ -168,7 +168,7 @@ stateDiagram-v2
 
 ## 4. build_profile — 21축 프로필
 
-**파일:** `nodes/build_profile.py` · **프롬프트:** `agents/profiler/prompt.py`
+**파일:** `nodes/build_profile.py` · **프롬프트:** `agents/profiler/prompts.py` · **의미라벨 매핑:** `agents/profiler/semantics.py`
 
 ### 입력
 
@@ -205,8 +205,23 @@ flowchart LR
 
 - 수신: `ProfilerState.notify_email`
 - `POST /profiler/run` → `user.email` 설정됨
-- 인덱서 자동 큐잉 → 현재 `enqueue_for_user(user_id)`만 호출 (**이메일 미전달 시 스킵**)
+- 인덱서/Drive 자동 큐잉도 `enqueue_for_user(user_id, user.email)`로 **이메일 전달함** (takeout·indexer 라우터 모두)
 - `RESEND_API_KEY` 없으면 발송 skipped
+
+> ⚠️ 자동 트리거(`enqueue_for_user`)는 `loop.create_task`로 fire-and-forget 실행 → 태스크 참조 미보관이라 부하 시 GC로 유실될 수 있음(메일 누락 원인). 수동 `POST /run`은 `BackgroundTasks` 사용(안정). job 상태도 인메모리라 재시작 시 유실.
+
+---
+
+## 5b. compare 서브에이전트 (스냅샷 비교)
+
+메인 그래프와 별개로, **두 `user_profile_history` 스냅샷을 비교**하는 서브에이전트 (`sub_agent/compare/`). API `GET /me/analyses/compare?from=&to=`에서 파사드(`ProfilerAgent.compare`)를 통해 호출.
+
+```text
+load(두 스냅샷) → diff(축별 결정적 변화) → summarize(LLM 변화 서술) → END
+```
+
+- `diff`는 규칙 기반(결정적), `summarize`만 LLM 내러티브.
+- 결과: 축별 gap + 변화 요약 → `AnalysisCompareResponse`.
 
 ---
 
@@ -260,7 +275,10 @@ sequenceDiagram
 | `POST` | `/api/v1/profiler/run` | 메인 파이프라인 job 시작 |
 | `GET` | `/api/v1/profiler/jobs/{job_id}` | job 상태·프로필 결과·알림 |
 | `GET` | `/api/v1/profiler/me/profile` | 최신 `user_profile_history` |
-| `GET` | `/api/v1/profiler/profile/{user_id}` | 동일 (user_id 지정) |
+| `GET` | `/api/v1/profiler/me/analyses` | 분석 목록 (완료 스냅샷 + 진행 중 job) |
+| `GET` | `/api/v1/profiler/me/analyses/compare?from=&to=` | 두 스냅샷 비교 (compare 서브에이전트) |
+| `GET` | `/api/v1/profiler/me/analyses/{snapshot_id}` | 스냅샷 단건 |
+| `GET` | `/api/v1/profiler/profile/{user_id}` | 최신 (user_id 지정) |
 | `POST` | `/api/v1/profiler/video-summary/run` | 서브그래프만 (`limit` optional) |
 | `GET` | `/api/v1/profiler/video-summary/{task_id}` | 영상 분석 단독 task 상태 |
 
@@ -273,27 +291,34 @@ sequenceDiagram
 ```text
 backend/app/
   agents/profiler/
-    graph.py                 # 메인 그래프
-    prompt.py                # build_profile LLM 프롬프트
+    facade.py                # ProfilerAgent 파사드 (run_profile·compare·summarize_videos)
+    graph.py                 # 메인 그래프 (video_summary→build_profile→notify)
+    prompts.py               # build_profile 2단계 LLM 프롬프트
+    semantics.py             # 의미라벨(tone/intent/value) → 13축 근거 매핑
+    scores.py(서비스)·axis_labels.py·habit_metrics.py
     nodes/
       video_summary.py       # 서브그래프 진입
-      build_profile.py
+      build_profile.py       # 21축 채점 (2단계 LLM + rule 블렌드 + calibration)
       notify.py
     sub_agent/video_summary/
       graph.py
-      prompt.py              # 영상 의미분석 프롬프트
+      prompts.py             # 영상 의미분석 프롬프트
       nodes/ select, summarize, embed, store
-      tool.py                # 자막 fetch 등
+      transcript.py          # 자막 fetch
+    sub_agent/compare/        # 두 스냅샷 비교 (load→diff→summarize)
+      graph.py · nodes/ · prompts.py · state.py · utils.py
     state/profiler.py
   agents/shared/
     embedding.py             # OpenAI embed_texts (인덱서·프로파일러 공용)
+    analysis_window.py       # WATCH_CATALOG_WINDOW_DAYS (인덱서·프로파일러 공유)
   services/profiler/
-    service.py               # Job 큐
+    service.py               # Job 오케스트레이션 (인메모리)
     sampling.py              # 영상 선별
+    scores.py                # history_scores_dict 등
   repositories/
     profiler_repository.py
   api/v1/profiler.py
-  schemas/profiler/
+  schemas/profiler/          # http/ , llm/ , job.py
 ```
 
 ---
@@ -301,5 +326,5 @@ backend/app/
 ## 10. 알려진 제약
 
 - Job·video-summary task 상태는 **프로세스 메모리** (다중 워커/재시작 시 유실)
-- 인덱서 자동 실행 시 **이메일 미전달** → notify 스킵 가능
-- Navigator FE는 구 mock API·Layer B 스펙 일부 미정리 (프로파일러 백엔드와 별도)
+- 자동 트리거(`enqueue_for_user`)는 `loop.create_task` fire-and-forget → **태스크 GC로 유실 가능**(메일 누락 원인). 수동 `POST /run`은 `BackgroundTasks`라 안정.
+- Resend rate limit 시 메일 발송 실패해도 예외 없이 `sent=False` (조용히 스킵)

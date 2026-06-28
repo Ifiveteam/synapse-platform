@@ -9,6 +9,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.user_subscription import UserSubscription
 from app.models.user_watch_catalog import UserWatchCatalog
 from app.models.video_analysis import VideoAnalysis
 
@@ -163,6 +164,66 @@ async def delete_user_catalog(
     await session.execute(
         delete(UserWatchCatalog).where(UserWatchCatalog.user_id == user_id)
     )
+
+
+# ---------------------------------------------------------------------------
+# 구독정보 (user_subscription)
+# ---------------------------------------------------------------------------
+
+
+async def replace_subscriptions(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    rows: list[dict],
+) -> int:
+    """구독 전체 교체 — 기존 삭제 후 이번 스냅샷 insert (구독 취소 반영).
+
+    호출부는 구독 CSV가 실제로 있을 때만 호출한다 (빈 목록으로 교체 금지).
+    """
+    await session.execute(
+        delete(UserSubscription).where(UserSubscription.user_id == user_id)
+    )
+    count = 0
+    seen: set[str] = set()
+    for row in rows:
+        channel_id = (row.get("channel_id") or "").strip()
+        if not channel_id or channel_id in seen:
+            continue
+        seen.add(channel_id)
+        session.add(
+            UserSubscription(
+                user_id=user_id,
+                channel_id=channel_id,
+                channel_url=row.get("channel_url"),
+                channel_title=row.get("channel_title"),
+            )
+        )
+        count += 1
+    await session.flush()
+    return count
+
+
+async def delete_subscriptions(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+) -> None:
+    """유저 구독 전체 삭제 (catalog 초기화 시 동반 삭제)."""
+    await session.execute(
+        delete(UserSubscription).where(UserSubscription.user_id == user_id)
+    )
+
+
+async def fetch_subscriptions(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+) -> list[UserSubscription]:
+    """유저 구독 채널 전체 (프로파일러·네비게이터 재사용용 읽기)."""
+    result = await session.execute(
+        select(UserSubscription)
+        .where(UserSubscription.user_id == user_id)
+        .order_by(UserSubscription.channel_title)
+    )
+    return list(result.scalars().all())
 
 
 async def count_catalog(

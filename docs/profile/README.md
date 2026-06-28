@@ -25,10 +25,13 @@ YouTube 시청 catalog를 바탕으로 **영상 의미 분석 → 21축 성향 �
 ## API (프로덕션)
 
 ```text
-POST /api/v1/profiler/run              → job 시작 (202)
-GET  /api/v1/profiler/jobs/{job_id}     → job 상태·결과
-GET  /api/v1/profiler/me/profile       → 최신 스냅샷 조회
-POST /api/v1/profiler/video-summary/run → 영상 분석만 단독 실행 (202)
+POST /api/v1/profiler/run                    → job 시작 (202)
+GET  /api/v1/profiler/jobs/{job_id}          → job 상태·결과
+GET  /api/v1/profiler/me/profile             → 최신 스냅샷 조회
+GET  /api/v1/profiler/me/analyses            → 분석 목록 (스냅샷 + 진행 job)
+GET  /api/v1/profiler/me/analyses/compare    → 두 스냅샷 비교
+GET  /api/v1/profiler/me/analyses/{id}       → 스냅샷 단건
+POST /api/v1/profiler/video-summary/run      → 영상 분석만 단독 실행 (202)
 ```
 
 인덱서 성공 시 `profiler_service.enqueue_for_user()`로 메인 파이프라인이 자동 큐잉된다.  

@@ -198,7 +198,7 @@ Authorization: Bearer {token}
 DELETE /indexer/videos
 ```
 
-`video_analysis` → `user_watch_catalog` 순 삭제.
+`user_watch_catalog` · `video_analysis` · `user_subscription` · `user_analysis_source` 삭제 (인덱서 페이지 「초기화」 버튼).
 
 ---
 
