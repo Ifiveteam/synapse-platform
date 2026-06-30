@@ -111,9 +111,7 @@ async def exchange_code_postmessage(code: str) -> dict:
     return res.json()
 
 
-async def store_google_tokens(
-    session: AsyncSession, user: User, tokens: dict
-) -> None:
+async def store_google_tokens(session: AsyncSession, user: User, tokens: dict) -> None:
     """이미 로그인된 유저의 구글 access/refresh 토큰 저장 (Drive 폴더 연동용).
 
     refresh_token은 응답에 있을 때만 갱신(재동의 없이는 안 줄 수 있으므로 보존).

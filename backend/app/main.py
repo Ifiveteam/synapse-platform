@@ -28,6 +28,7 @@ logging.getLogger("app.agents.archiver.observability").setLevel(logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """앱 수명주기 — Takeout 자동분석 스케줄러 기동/종료."""

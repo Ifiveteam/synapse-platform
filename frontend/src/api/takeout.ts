@@ -1,4 +1,19 @@
-import { apiFetchAuth } from "@/api/client";
+import { apiFetch, apiFetchAuth } from "@/api/client";
+
+export interface GoogleConfig {
+  client_id: string;
+  picker_api_key: string;
+}
+
+let googleConfigCache: Promise<GoogleConfig> | null = null;
+
+/** Picker용 공개 설정(client_id + api key)을 백엔드 env에서 받아온다 (1회 캐시). */
+export function getGoogleConfig(): Promise<GoogleConfig> {
+  if (!googleConfigCache) {
+    googleConfigCache = apiFetch<GoogleConfig>("/api/v1/auth/google-config");
+  }
+  return googleConfigCache;
+}
 
 export interface DriveConnectResponse {
   /** Picker 렌더용 drive.file access token (단기) */

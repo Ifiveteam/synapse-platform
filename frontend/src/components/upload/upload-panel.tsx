@@ -227,8 +227,8 @@ function GuideTab() {
           },
           {
             num: 2,
-            title: "YouTube만 선택",
-            desc: '"모두 선택 해제" 후 "YouTube 및 YouTube Music"만 체크하세요. (시청 기록 포함)',
+            title: "YouTube만 선택 + 형식 JSON 권장",
+            desc: '"모두 선택 해제" 후 "YouTube 및 YouTube Music"만 체크하세요. → "여러 형식" 버튼에서 "기록(시청 기록)"을 JSON으로 바꾸면 가장 정확합니다. (HTML도 지원하지만 시각 정확도는 JSON이 더 좋아요.)',
           },
           {
             num: 3,

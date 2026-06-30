@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -19,6 +21,7 @@ from app.schemas.auth import (
     ExtensionRefreshRequest,
     ExtensionRevokeRequest,
     ExtensionSessionResponse,
+    GoogleConfigResponse,
     RefreshResponse,
     UpdateMeRequest,
     UserResponse,
@@ -128,6 +131,19 @@ async def drive_connect(
     await google_oauth.store_google_tokens(session, user, tokens)
     await session.commit()
     return DriveConnectResponse(access_token=access)
+
+
+@router.get("/google-config", response_model=GoogleConfigResponse)
+def google_config() -> GoogleConfigResponse:
+    """프론트 Picker용 공개 설정 — client_id + picker API key를 백엔드 env에서 제공.
+
+    VITE 빌드에 박지 않고 런타임에 받아 단일 소스(백엔드 env) 유지. 공개 안전 값
+    (origin/referrer 제한으로 보호).
+    """
+    return GoogleConfigResponse(
+        client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
+        picker_api_key=os.getenv("GOOGLE_PICKER_API_KEY", ""),
+    )
 
 
 @router.get("/status", response_model=AuthStatusResponse)

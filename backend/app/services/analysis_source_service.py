@@ -44,9 +44,7 @@ async def fail_source_async(source_id: uuid.UUID | str | None) -> None:
         await session.commit()
 
 
-async def set_source_stage_async(
-    source_id: uuid.UUID | str | None, stage: str
-) -> None:
+async def set_source_stage_async(source_id: uuid.UUID | str | None, stage: str) -> None:
     """진행 단계(indexing→profiling) 갱신. 표시용."""
     if source_id is None:
         return

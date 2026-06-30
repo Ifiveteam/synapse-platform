@@ -79,3 +79,10 @@ class DriveFolderRequest(BaseModel):
 class DriveConnectionResponse(BaseModel):
     connected: bool
     folder_name: str | None = None
+
+
+class GoogleConfigResponse(BaseModel):
+    """프론트 Picker용 공개 설정 (빌드에 안 박고 런타임 제공)."""
+
+    client_id: str
+    picker_api_key: str

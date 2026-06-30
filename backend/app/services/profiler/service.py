@@ -125,9 +125,7 @@ class ProfilerService:
         for src in running:
             indexing = src.stage == AnalysisSourceStage.INDEXING
             if indexing:
-                title = (
-                    f"{src.file_name} 분류 중" if src.file_name else "파일 분류 중"
-                )
+                title = f"{src.file_name} 분류 중" if src.file_name else "파일 분류 중"
             else:
                 title = "프로파일 분석 중"
             items.append(

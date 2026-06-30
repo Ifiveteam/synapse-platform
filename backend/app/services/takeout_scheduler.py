@@ -81,7 +81,9 @@ async def _process_file(user: User, file_id: str, file_name: str | None) -> None
         return
     result = await run_takeout_pipeline(path, user_id=user.id)
     if result.get("error"):
-        logger.warning("[scheduler] pipeline 오류 file=%s: %s", file_id, result["error"])
+        logger.warning(
+            "[scheduler] pipeline 오류 file=%s: %s", file_id, result["error"]
+        )
         await fail_source_async(source_id)
         return
 
@@ -141,6 +143,8 @@ async def scheduler_loop() -> None:
             logger.info("[scheduler] 종료")
             raise
         except Exception:
-            logger.exception("[scheduler] tick 실패 — %ds 후 재시도", ERROR_RETRY_SECONDS)
+            logger.exception(
+                "[scheduler] tick 실패 — %ds 후 재시도", ERROR_RETRY_SECONDS
+            )
             delay = min(TICK_SECONDS, ERROR_RETRY_SECONDS)
         await asyncio.sleep(delay)
