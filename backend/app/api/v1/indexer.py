@@ -11,8 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.indexer.graph import graph
 from app.api.v1.auth import get_current_user_dep
 from app.core.database.session import get_db
+from app.models.user_analysis_source import AnalysisSourceStage
 from app.repositories.analysis_source_repository import begin_source
-from app.services.analysis_source_service import fail_source_async, upload_source_key
+from app.services.analysis_source_service import (
+    fail_source_async,
+    set_source_stage_async,
+    upload_source_key,
+)
 
 router = APIRouter(prefix="/indexer", tags=["indexer"])
 
@@ -87,6 +92,7 @@ async def run_analysis(
             "category_stats": category_stats,
         }
 
+        await set_source_stage_async(analysis_source_id, AnalysisSourceStage.PROFILING)
         await _enqueue_profiler(user_id, user_email, analysis_source_id)
     except Exception as e:
         analysis_status[task_id] = {"status": "error", "message": str(e)}

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -12,11 +14,14 @@ from app.models.user import User
 from app.schemas.auth import (
     AuthStatusResponse,
     DevLoginResponse,
+    DriveConnectRequest,
+    DriveConnectResponse,
     ExtensionCodeResponse,
     ExtensionExchangeRequest,
     ExtensionRefreshRequest,
     ExtensionRevokeRequest,
     ExtensionSessionResponse,
+    GoogleConfigResponse,
     RefreshResponse,
     UpdateMeRequest,
     UserResponse,
@@ -103,6 +108,41 @@ async def callback(
         error=error,
         state=state or None,
         session=session,
+    )
+
+
+@router.post("/drive/connect", response_model=DriveConnectResponse)
+async def drive_connect(
+    body: DriveConnectRequest,
+    user: User = Depends(get_current_user_dep),
+    session: AsyncSession = Depends(get_db),
+) -> DriveConnectResponse:
+    """GIS 코드 클라이언트 code → drive.file 토큰 저장 + Picker용 access token 반환.
+
+    이후 프론트는 받은 access_token으로 Picker를 띄워 폴더를 선택한다(계정 정렬).
+    """
+    tokens = await google_oauth.exchange_code_postmessage(body.code)
+    access = tokens.get("access_token")
+    if not access:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="drive_token_exchange_failed",
+        )
+    await google_oauth.store_google_tokens(session, user, tokens)
+    await session.commit()
+    return DriveConnectResponse(access_token=access)
+
+
+@router.get("/google-config", response_model=GoogleConfigResponse)
+def google_config() -> GoogleConfigResponse:
+    """프론트 Picker용 공개 설정 — client_id + picker API key를 백엔드 env에서 제공.
+
+    VITE 빌드에 박지 않고 런타임에 받아 단일 소스(백엔드 env) 유지. 공개 안전 값
+    (origin/referrer 제한으로 보호).
+    """
+    return GoogleConfigResponse(
+        client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
+        picker_api_key=os.getenv("GOOGLE_PICKER_API_KEY", ""),
     )
 
 

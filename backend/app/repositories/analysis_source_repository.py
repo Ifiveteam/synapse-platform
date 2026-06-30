@@ -7,7 +7,11 @@ import uuid
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user_analysis_source import AnalysisSourceStatus, UserAnalysisSource
+from app.models.user_analysis_source import (
+    AnalysisSourceStage,
+    AnalysisSourceStatus,
+    UserAnalysisSource,
+)
 
 
 async def fetch_source(
@@ -37,6 +41,7 @@ async def begin_source(
         if existing.status == AnalysisSourceStatus.RUNNING:
             return existing, "skip_running"
         existing.status = AnalysisSourceStatus.RUNNING
+        existing.stage = AnalysisSourceStage.INDEXING
         existing.file_name = file_name
         existing.profile_history_id = None
         await session.flush()
@@ -47,10 +52,36 @@ async def begin_source(
         source_key=source_key,
         file_name=file_name,
         status=AnalysisSourceStatus.RUNNING,
+        stage=AnalysisSourceStage.INDEXING,
     )
     session.add(row)
     await session.flush()
     return row, "run"
+
+
+async def mark_source_stage(
+    session: AsyncSession, source_id: uuid.UUID, stage: str
+) -> None:
+    """진행 단계 갱신 (indexing → profiling). 표시용."""
+    row = await session.get(UserAnalysisSource, source_id)
+    if row is None:
+        return
+    row.stage = stage
+
+
+async def fetch_running_sources(
+    session: AsyncSession, user_id: uuid.UUID
+) -> list[UserAnalysisSource]:
+    """진행 중(running) 소스 목록 — 분류중/분석중 표시용. 최신순."""
+    result = await session.execute(
+        select(UserAnalysisSource)
+        .where(
+            UserAnalysisSource.user_id == user_id,
+            UserAnalysisSource.status == AnalysisSourceStatus.RUNNING,
+        )
+        .order_by(UserAnalysisSource.created_at.desc())
+    )
+    return list(result.scalars().all())
 
 
 async def mark_source_completed(
