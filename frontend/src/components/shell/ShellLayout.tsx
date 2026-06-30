@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { refreshSession } from "@/api/auth";
 import { LoginModal } from "@/components/auth/login-modal";
+import { ScrapDetailPanel } from "@/components/scraps/scrap-detail-panel";
 import { Sidebar } from "@/components/shell/Sidebar";
 import {
   clearAuthFromExtension,
@@ -12,6 +13,7 @@ import {
 import { ROUTES } from "@/routes";
 import { isMockAuthToken, useAuthStore } from "@/stores/auth";
 import { useShellStore } from "@/stores/shell";
+import { useScrapDetailPanelStore } from "@/stores/scrap-detail-panel";
 import { useSidebarStore } from "@/stores/sidebar";
 
 function isPublicPath(pathname: string) {
@@ -36,10 +38,20 @@ export function ShellLayout() {
   const openLoginModal = useShellStore((s) => s.openLoginModal);
   const closeLoginModal = useShellStore((s) => s.closeLoginModal);
   const loadChats = useSidebarStore((s) => s.loadChats);
+  const loadScraps = useSidebarStore((s) => s.loadScraps);
+  const clearScraps = useSidebarStore((s) => s.clearScraps);
+  const scrapPanelOpen = useScrapDetailPanelStore((s) => s.open);
+  const selectedScrapId = useScrapDetailPanelStore((s) => s.selectedScrapId);
+  const setScrapPanelOpen = useScrapDetailPanelStore((s) => s.setOpen);
 
   useEffect(() => {
-    if (user) void loadChats();
-  }, [user, loadChats]);
+    if (user) {
+      void loadChats();
+      void loadScraps();
+    } else {
+      clearScraps();
+    }
+  }, [user, loadChats, loadScraps, clearScraps]);
   const isHomePage = location.pathname === ROUTES.home;
 
   useEffect(() => {
@@ -137,6 +149,11 @@ export function ShellLayout() {
         <Outlet />
       </main>
       <LoginModal />
+      <ScrapDetailPanel
+        scrapId={selectedScrapId}
+        open={scrapPanelOpen}
+        onOpenChange={setScrapPanelOpen}
+      />
     </div>
   );
 }

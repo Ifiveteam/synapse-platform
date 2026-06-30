@@ -32,7 +32,6 @@ async def collect_node(state: ArchiverState) -> dict[str, Any]:
     log_node_enter("collect_node", state=state)
     writer = get_stream_writer()
     patch: dict[str, Any] = {
-        "current_step": COLLECT_NODE,
         "executed_steps": [COLLECT_NODE],
     }
 

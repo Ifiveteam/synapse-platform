@@ -5,7 +5,10 @@ from __future__ import annotations
 from google.genai import types
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
-from app.agents.archiver.core.tools import GOOGLE_SEARCH_TOOL
+from app.agents.archiver.core.tools import (
+    GOOGLE_SEARCH_TOOL,
+    SCRAP_CURRENT_PAGE_TOOL,
+)
 from app.agents.archiver.models import (
     SEARCH_NODE,
     ArchiverState,
@@ -30,19 +33,19 @@ def resolve_respond_tools(
     context_search: str,
     *,
     target_engines: list[str] | None = None,
-) -> list[types.Tool] | None:
-    """Google Search Tool — search_node 타겟인데 검색 미수집 시."""
-    if context_search.strip():
-        return None
-    targets = set(normalize_target_engines(target_engines))
-    if SEARCH_NODE in targets:
-        return [GOOGLE_SEARCH_TOOL]
-    return None
+) -> list[types.Tool]:
+    """respond 단계 Gemini Tool 목록 — 스크랩 도구는 항상, 검색은 조건부."""
+    tools: list[types.Tool] = [SCRAP_CURRENT_PAGE_TOOL]
+    if not context_search.strip():
+        targets = set(normalize_target_engines(target_engines))
+        if SEARCH_NODE in targets:
+            tools.append(GOOGLE_SEARCH_TOOL)
+    return tools
 
 
 def resolve_system_instruction(
     state: ArchiverState,
-) -> tuple[str, list[types.Tool] | None]:
+) -> tuple[str, list[types.Tool]]:
     """채워진 context_* 기반 synthesis 또는 general 프롬프트를 조립한다."""
     context_dom = get_context_dom(state)
     context_rag = get_context_rag(state)
@@ -55,7 +58,7 @@ def resolve_system_instruction(
     )
 
     if state.get("is_general") and not has_evidence:
-        return build_general_route_instruction(), None
+        return build_general_route_instruction(), [SCRAP_CURRENT_PAGE_TOOL]
 
     instruction = build_synthesis_route_instruction(
         context_title=state.get("context_title"),

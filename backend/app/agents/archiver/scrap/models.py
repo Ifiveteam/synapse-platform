@@ -1,4 +1,4 @@
-"""Scrap Gemini Structured Output 스키마."""
+"""Archiver 스크랩 Gemini Structured Output 스키마."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class ScrapClassificationResult(BaseModel):
-    """스크랩 본문·대화 맥락에 대한 요약·분류 결과."""
+    """스크랩 본문에 대한 요약·분류 결과."""
 
     summary: str = Field(
         ...,

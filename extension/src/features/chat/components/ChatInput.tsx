@@ -10,11 +10,11 @@ export function ChatInput() {
   const [inputText, setInputText] = useState('')
   const {
     sendMessage,
-    scrapCurrentConversation,
+    scrapCurrentPage,
     isGenerating,
     isScraping,
     isSessionLoading,
-    canScrapConversation,
+    canScrapPage,
   } = useChatContext()
 
   const handleSubmit = () => {
@@ -33,8 +33,8 @@ export function ChatInput() {
   }
 
   const handleScrapClick = () => {
-    if (isGenerating || !canScrapConversation) return
-    void scrapCurrentConversation()
+    if (isGenerating || !canScrapPage) return
+    void scrapCurrentPage()
   }
 
   const isSendable = inputText.trim().length > 0 && !isGenerating
@@ -47,18 +47,16 @@ export function ChatInput() {
           variant="outline"
           size="sm"
           onClick={handleScrapClick}
-          disabled={isGenerating || !canScrapConversation}
+          disabled={isGenerating || !canScrapPage}
           className="h-7 shrink-0 border-slate-200 px-2.5 text-[10px] font-medium text-slate-600"
-          aria-label="현재 대화 스크랩"
+          aria-label="현재 페이지 스크랩"
         >
-          {isScraping ? '스크랩 중…' : '📌 현재 대화 스크랩'}
+          {isScraping ? '스크랩 중…' : '📌 현재 페이지 스크랩'}
         </Button>
         <span className="truncate text-[9px] text-slate-400">
           {isSessionLoading
             ? '대화 세션 동기화 중…'
-            : canScrapConversation
-              ? '"스크랩해줘" 입력 또는 📌 버튼'
-              : '대화 후 스크랩 가능'}
+            : '"저장"·"스크랩" 입력 또는 📌 버튼으로 페이지 저장'}
         </span>
       </div>
 
