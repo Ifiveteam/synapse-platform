@@ -13,6 +13,7 @@ import { IdealDetailPage } from "@/pages/IdealDetailPage";
 import { IdealManagementPage } from "@/pages/IdealManagementPage";
 import { IdealSetupPage } from "@/pages/IdealSetupPage";
 import { PlaylistPage } from "@/pages/PlaylistPage";
+import { MyActivityPage } from "@/pages/MyActivityPage";
 import { MyAnalysesPage } from "@/pages/MyAnalysesPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ScrapDetailPage } from "@/pages/ScrapDetailPage";
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
     children: [
       { path: ROUTES.home, element: <HomePage /> },
       { path: ROUTES.myAnalyses, element: <MyAnalysesPage /> },
+      { path: ROUTES.ME.ACTIVITY, element: <MyActivityPage /> },
       { path: "/me/analyses/compare", element: <AnalysisComparePage /> },
       { path: "/me/analyses/:id", element: <AnalysisDetailPage /> },
       { path: ROUTES.idealManagement, element: <IdealManagementPage /> },
