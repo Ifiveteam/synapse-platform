@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Annotated, Any, NotRequired, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph.message import add_messages
+
+from app.agents.archiver.core.tools import SCRAP_CURRENT_PAGE_TOOL_NAME
 
 # ── 수집 엔진 노드명 (확장 시 이 집합에 추가) ─────────────────────
 
@@ -59,6 +62,17 @@ class ArchiverState(TypedDict):
 
     final_response: NotRequired[str]
     system_instruction: NotRequired[str]
+
+    # 익스텐션 스크랩 완료 후 세션 저장소에서 환류되는 페이지 본문·요약
+    scrapped_content: NotRequired[str]
+    scrapped_summary: NotRequired[str]
+    page_scrap_completed: NotRequired[bool]
+
+    # respond 루프백 — 스크랩 도구 후 동일 턴 요약 연속 처리
+    respond_loop_count: NotRequired[int]
+    executed_respond_tools: Annotated[NotRequired[list[str]], merge_executed_steps]
+    pending_followup_summary: NotRequired[bool]
+    scrap_confirmation_text: NotRequired[str]
 
     current_step: NotRequired[str]
     error: NotRequired[str]
@@ -155,6 +169,74 @@ def get_context_search(state: ArchiverState) -> str:
     return (state.get("context_search") or state.get("search_data") or "").strip()
 
 
+def get_scrapped_content(state: ArchiverState) -> str:
+    """스크랩 파이프라인이 주입한 페이지 본문 스냅샷."""
+    return (state.get("scrapped_content") or "").strip()
+
+
+def get_scrapped_summary(state: ArchiverState) -> str:
+    """스크랩 파이프라인이 생성한 Gemini 요약."""
+    return (state.get("scrapped_summary") or "").strip()
+
+
+def is_page_scrap_completed(state: ArchiverState) -> bool:
+    """현재 세션에서 페이지 스크랩이 이미 완료되었는지."""
+    return bool(state.get("page_scrap_completed"))
+
+
+_CONTENT_FOLLOWUP_HINT = re.compile(
+    r"요약|정리|내용|어떤|무슨|설명|알려|뭐야|뭔지|개요|핵심|줘|해줘",
+    re.IGNORECASE,
+)
+
+
+def has_respond_body_context(state: ArchiverState) -> bool:
+    """respond 요약 루프에 쓸 수 있는 페이지 본문이 있는지."""
+    return bool(get_context_dom(state) or get_scrapped_content(state))
+
+
+def wants_content_followup(state: ArchiverState) -> bool:
+    """유저 메시지에 요약·내용 정리 등 후속 답변 의도가 있는지."""
+    message = latest_user_message(state)
+    if not message:
+        return False
+    has_scrap_intent = bool(
+        re.search(r"스크랩|저장|보관|킵|넣어|보관함", message, re.IGNORECASE)
+    )
+    has_content_intent = bool(_CONTENT_FOLLOWUP_HINT.search(message))
+    return has_scrap_intent and has_content_intent
+
+
+def should_schedule_scrap_followup_summary(state: ArchiverState) -> bool:
+    """스크랩 도구 트리거 직후 같은 턴에 요약 루프를 탈지."""
+    if not wants_content_followup(state):
+        return False
+    if not has_respond_body_context(state):
+        return False
+
+    from app.agents.archiver.models.evaluation import Evaluation
+
+    evaluation = Evaluation.from_state(state)
+    if evaluation is not None:
+        return evaluation.is_sufficient
+    return True
+
+
+def is_scrap_followup_pass(state: ArchiverState) -> bool:
+    """스크랩 확인 후 2차 respond 요약 패스인지."""
+    if not state.get("pending_followup_summary"):
+        return False
+    executed = set(state.get("executed_respond_tools") or [])
+    return SCRAP_CURRENT_PAGE_TOOL_NAME in executed
+
+
+def scrap_tool_already_executed(state: ArchiverState) -> bool:
+    """이번 턴 respond에서 scrap_current_page가 이미 호출됐는지."""
+    return SCRAP_CURRENT_PAGE_TOOL_NAME in set(
+        state.get("executed_respond_tools") or []
+    )
+
+
 def normalize_target_engines(raw: list[str] | None) -> list[str]:
     """알 수 없는 노드명을 제거하고 ALL_COLLECT_ENGINES 순서로 정렬한다."""
     if not raw:
@@ -172,4 +254,8 @@ def normalize_target_engines(raw: list[str] | None) -> list[str]:
 def remaining_engines(state: ArchiverState) -> list[str]:
     """이번 세션에서 아직 실행되지 않은 전체 수집 엔진 목록."""
     executed = set(state.get("executed_steps") or [])
-    return [e for e in normalize_target_engines(list(ALL_COLLECT_ENGINES)) if e not in executed]
+    return [
+        e
+        for e in normalize_target_engines(list(ALL_COLLECT_ENGINES))
+        if e not in executed
+    ]

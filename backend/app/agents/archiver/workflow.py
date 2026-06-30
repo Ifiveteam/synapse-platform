@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
-from app.agents.archiver.branches import route_after_evaluator, route_after_router
+from app.agents.archiver.branches import (
+    route_after_evaluator,
+    route_after_respond,
+    route_after_router,
+)
 from app.agents.archiver.models import (
     COLLECT_NODE,
     RAG_NODE,
@@ -51,6 +55,10 @@ def build_archiver_workflow():
     )
 
     graph.add_edge("need_dom", END)
-    graph.add_edge("respond", END)
+    graph.add_conditional_edges(
+        "respond",
+        route_after_respond,
+        {"respond": "respond", END: END},
+    )
 
     return graph.compile()
