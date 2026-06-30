@@ -2,8 +2,9 @@
  * Archiver 백엔드 클라이언트 — REST 호출·SSE 스트림 구독·이벤트 envelope 파싱 SSOT.
  *
  * 프로토콜: backend `protocols/streaming.py`
- * event: status | token | need_dom
+ * event: status | token | need_dom | action
  * data: {"content": "..."} + optional status: phase, engines, message
+ * action 이벤트: {"action": "TRIGGER_WEB_SCRAP", "custom_category": "레시피", "content": "..."}
  */
 import type {
   ArchiverChatMessage,
@@ -22,7 +23,14 @@ interface ApiListResponse<T> {
   data: T[]
 }
 
-export type ArchiverStreamEventType = 'status' | 'token' | 'need_dom'
+export type ArchiverStreamEventType = 'status' | 'token' | 'need_dom' | 'action'
+
+export type ArchiverStreamAction = 'TRIGGER_WEB_SCRAP'
+
+export interface ArchiverWebScrapActionPayload {
+  action: 'TRIGGER_WEB_SCRAP'
+  customCategory?: string | null
+}
 
 export type { ArchiverStreamStatus, ArchiverStructuredStatus, ArchiverStatusPhase }
 
@@ -30,9 +38,14 @@ interface ArchiverStreamChunk {
   event: ArchiverStreamEventType
   content: string
   statusPayload?: ArchiverStreamStatus
+  action?: ArchiverStreamAction
+  customCategory?: string | null
 }
 
-export type ArchiverStreamEventPayload = string | ArchiverStreamStatus
+export type ArchiverStreamEventPayload =
+  | string
+  | ArchiverStreamStatus
+  | ArchiverWebScrapActionPayload
 
 type ArchiverStreamEventHandler = (
   event: ArchiverStreamEventType,
@@ -49,6 +62,8 @@ interface StreamArchiverMessageOptions {
 interface ConsumeArchiverSseResult {
   finalContent: string
   needsDom: boolean
+  needsWebScrap: boolean
+  webScrapCustomCategory: string | null
 }
 
 const VALID_PHASES = new Set<ArchiverStatusPhase>([
@@ -105,7 +120,7 @@ function parseSseBlock(block: string): ArchiverStreamChunk | null {
   for (const line of lines) {
     if (line.startsWith('event:')) {
       const name = line.slice(6).trim()
-      if (name === 'status' || name === 'token' || name === 'need_dom') {
+      if (name === 'status' || name === 'token' || name === 'need_dom' || name === 'action') {
         event = name
       }
     } else if (line.startsWith('data:')) {
@@ -122,6 +137,13 @@ function parseSseBlock(block: string): ArchiverStreamChunk | null {
     const chunk: ArchiverStreamChunk = { event, content: payload.content }
     if (event === 'status' || event === 'need_dom') {
       chunk.statusPayload = parseStructuredStatus(payload, payload.content)
+    }
+    if (event === 'action' && payload.action === 'TRIGGER_WEB_SCRAP') {
+      chunk.action = 'TRIGGER_WEB_SCRAP'
+      const customCategoryRaw = payload.custom_category
+      if (typeof customCategoryRaw === 'string' && customCategoryRaw.trim()) {
+        chunk.customCategory = customCategoryRaw.trim()
+      }
     }
     return chunk
   } catch {
@@ -164,8 +186,26 @@ function dispatchParsedEvents(
       onEvent(chunk.event, chunk.content)
       continue
     }
+    if (chunk.event === 'action' && chunk.action === 'TRIGGER_WEB_SCRAP') {
+      const payload: ArchiverWebScrapActionPayload = {
+        action: 'TRIGGER_WEB_SCRAP',
+        customCategory: chunk.customCategory ?? null,
+      }
+      onEvent(chunk.event, payload)
+      continue
+    }
     onEvent(chunk.event, chunk.statusPayload ?? chunk.content)
   }
+}
+
+function resolveWebScrapCustomCategory(chunks: ArchiverStreamChunk[]): string | null {
+  for (let index = chunks.length - 1; index >= 0; index -= 1) {
+    const chunk = chunks[index]
+    if (chunk.event === 'action' && chunk.action === 'TRIGGER_WEB_SCRAP') {
+      return chunk.customCategory?.trim() || null
+    }
+  }
+  return null
 }
 
 async function consumeArchiverSseStream(
@@ -199,6 +239,10 @@ async function consumeArchiverSseStream(
   return {
     finalContent: accumulateTokenContent(streamChunks),
     needsDom: streamChunks.some((item) => item.event === 'need_dom'),
+    needsWebScrap: streamChunks.some(
+      (item) => item.event === 'action' && item.action === 'TRIGGER_WEB_SCRAP',
+    ),
+    webScrapCustomCategory: resolveWebScrapCustomCategory(streamChunks),
   }
 }
 

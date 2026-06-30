@@ -1,272 +1,240 @@
-import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Bookmark, ChevronDown, LayoutGrid, List, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Bookmark, Loader2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  SCRAP_GRAPH_EDGES,
-  SCRAP_GRAPH_NODES,
-  SCRAP_LIST_ITEMS,
-  type ScrapFilterMode,
+  fetchScrapGraph,
+  fetchScraps,
+  type ScrapGraphData,
   type ScrapGraphNode,
-  type ScrapViewMode,
-} from "@/lib/scraps/mock";
-import { ROUTES } from "@/routes";
+  type ScrapItem,
+} from "@/api/scraps";
+import {
+  DEFAULT_MIN_SIMILARITY,
+  ScrapEmbeddingGraph,
+} from "@/components/scraps/scrap-embedding-graph";
+import { Badge } from "@/components/ui/badge";
+import { useScrapDetailPanelStore } from "@/stores/scrap-detail-panel";
+import { useSidebarStore } from "@/stores/sidebar";
 import { cn } from "@/lib/utils";
 
-const FILTER_TABS: { id: ScrapFilterMode; label: string }[] = [
-  { id: "all", label: "전체보기" },
-  { id: "category", label: "카테고리별" },
-  { id: "date", label: "날짜별" },
-];
+function formatSavedAt(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat("ko-KR", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
 
-function ScrapGraphView({
+function ScrapListPanel({
+  items,
+  loading,
+  highlightedId,
   selectedId,
   onSelect,
-  onOpenDetail,
 }: {
+  items: ScrapItem[];
+  loading: boolean;
+  highlightedId: string | null;
   selectedId: string | null;
-  onSelect: (node: ScrapGraphNode | null) => void;
-  onOpenDetail: (scrapId: string) => void;
+  onSelect: (scrapId: string) => void;
 }) {
-  const nodeMap = useMemo(
-    () => Object.fromEntries(SCRAP_GRAPH_NODES.map((n) => [n.id, n])),
-    [],
-  );
-
-  return (
-    <div className="border-border relative min-h-[420px] flex-1 overflow-hidden rounded-2xl border bg-card">
-      <svg
-        viewBox="0 0 800 480"
-        className="h-full w-full"
-        role="img"
-        aria-label="스크랩 키워드 그래프"
-      >
-        {SCRAP_GRAPH_EDGES.map(([a, b], i) => {
-          const from = nodeMap[a];
-          const to = nodeMap[b];
-          if (!from || !to) return null;
-          return (
-            <line
-              key={i}
-              x1={from.cx}
-              y1={from.cy}
-              x2={to.cx}
-              y2={to.cy}
-              stroke="var(--border)"
-              strokeWidth={1.5}
-            />
-          );
-        })}
-
-        {SCRAP_GRAPH_NODES.map((node) => (
-          <g
-            key={node.id}
-            className="cursor-pointer"
-            onClick={() => {
-              if (node.isCenter) {
-                onSelect(selectedId === node.id ? null : node);
-                return;
-              }
-              if (node.scrapId) {
-                onOpenDetail(node.scrapId);
-                return;
-              }
-              onSelect(selectedId === node.id ? null : node);
-            }}
-          >
-            <circle
-              cx={node.cx}
-              cy={node.cy}
-              r={node.r}
-              fill={node.fill}
-              opacity={selectedId && selectedId !== node.id ? 0.45 : 0.9}
-              stroke={selectedId === node.id ? "var(--primary)" : "transparent"}
-              strokeWidth={3}
-            />
-            <text
-              x={node.cx}
-              y={node.cy + 4}
-              textAnchor="middle"
-              className="fill-white text-[11px] font-semibold select-none"
-              style={{ fontSize: node.isCenter ? 13 : 11 }}
-            >
-              {node.label}
-            </text>
-          </g>
-        ))}
-      </svg>
-
-      {selectedId && nodeMap[selectedId] && !nodeMap[selectedId].isCenter && (
-        <NodePopup
-          node={nodeMap[selectedId]}
-          onClose={() => onSelect(null)}
-          onOpenDetail={onOpenDetail}
-        />
-      )}
-    </div>
-  );
-}
-
-function NodePopup({
-  node,
-  onClose,
-  onOpenDetail,
-}: {
-  node: ScrapGraphNode;
-  onClose: () => void;
-  onOpenDetail: (scrapId: string) => void;
-}) {
-  const left = `${(node.cx / 800) * 100}%`;
-  const top = `${(node.cy / 480) * 100}%`;
-
-  return (
-    <div
-      className="border-border absolute z-10 w-52 -translate-x-1/2 -translate-y-[110%] rounded-xl border bg-card p-3 shadow-lg"
-      style={{ left, top }}
-    >
-      <p className="text-sm font-semibold">{node.label}</p>
-      <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
-        {node.summary}
-      </p>
-      <div className="mt-3 flex gap-2">
-        {node.scrapId ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 flex-1 gap-1 text-xs"
-            onClick={() => onOpenDetail(node.scrapId!)}
-          >
-            <Bookmark size={12} />
-            상세보기
-          </Button>
-        ) : (
-          <Button size="sm" variant="outline" className="h-8 flex-1 gap-1 text-xs">
-            <Bookmark size={12} />
-            스크랩
-          </Button>
-        )}
-        <Button
-          size="sm"
-          variant="outline"
-          className="text-destructive h-8 flex-1 gap-1 text-xs"
-          onClick={onClose}
-        >
-          <Trash2 size={12} />
-          삭제
-        </Button>
+  if (loading) {
+    return (
+      <div className="text-muted-foreground flex flex-1 items-center justify-center gap-2 text-sm">
+        <Loader2 className="size-4 animate-spin" />
+        스크랩 목록 불러오는 중…
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-function ScrapListView() {
+  if (items.length === 0) {
+    return (
+      <div className="text-muted-foreground flex flex-1 items-center justify-center p-6 text-center text-sm">
+        저장된 스크랩이 없습니다.
+        <br />
+        익스텐션에서 페이지를 스크랩해 보세요.
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-3">
-      {SCRAP_LIST_ITEMS.map((item) => (
-        <Link
+    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
+      {items.map((item) => (
+        <button
           key={item.id}
-          to={ROUTES.scrapDetail(item.id)}
-          className="border-border hover:bg-secondary/50 flex items-center gap-4 rounded-2xl border bg-card px-4 py-4 transition-colors"
+          type="button"
+          onClick={() => onSelect(item.id)}
+          className={cn(
+            "border-border hover:bg-secondary/50 flex w-full flex-col gap-2 rounded-xl border bg-card px-4 py-3 text-left transition-colors",
+            (highlightedId === item.id || selectedId === item.id) &&
+              "border-primary/50 bg-primary/5 ring-1 ring-primary/20",
+          )}
         >
-          <div className="bg-accent text-accent-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
-            <Bookmark size={18} />
+          <div className="flex items-start gap-3">
+            <div className="bg-accent text-accent-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+              <Bookmark size={16} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="line-clamp-2 text-sm font-medium leading-snug">
+                {item.title?.trim() || "(제목 없음)"}
+              </p>
+              <p className="text-muted-foreground mt-1 text-xs">
+                {item.category} · {formatSavedAt(item.created_at)}
+              </p>
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{item.title}</p>
-            <p className="text-muted-foreground mt-0.5 text-xs">
-              {item.category} · {item.savedAt}
-            </p>
-          </div>
-        </Link>
+          <p className="text-muted-foreground line-clamp-2 pl-12 text-xs leading-relaxed">
+            {item.summary}
+          </p>
+          {item.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 pl-12">
+              {item.tags.slice(0, 4).map((tag) => (
+                <Badge key={tag} variant="secondary" className="px-1.5 py-0 text-[10px]">
+                  #{tag}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </button>
       ))}
     </div>
   );
 }
 
 export function ScrapPage() {
-  const navigate = useNavigate();
-  const [view, setView] = useState<ScrapViewMode>("graph");
-  const [filter, setFilter] = useState<ScrapFilterMode>("all");
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const loadSidebarScraps = useSidebarStore((s) => s.loadScraps);
+  const [scraps, setScraps] = useState<ScrapItem[]>([]);
+  const [graphData, setGraphData] = useState<ScrapGraphData | null>(null);
+  const [listLoading, setListLoading] = useState(true);
+  const [graphLoading, setGraphLoading] = useState(true);
+  const [graphError, setGraphError] = useState<string | null>(null);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [minSimilarity, setMinSimilarity] = useState(DEFAULT_MIN_SIMILARITY);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const openScrapPanel = useScrapDetailPanelStore((s) => s.openScrapPanel);
+  const selectedScrapId = useScrapDetailPanelStore((s) => s.selectedScrapId);
 
-  const openDetail = (scrapId: string) => {
-    navigate(ROUTES.scrapDetail(scrapId));
-  };
+  const allNodesForFilters: ScrapGraphNode[] = useMemo(
+    () =>
+      scraps.map((item) => ({
+        id: item.id,
+        title: item.title,
+        category: item.category,
+        tags: item.tags,
+      })),
+    [scraps],
+  );
+
+  const loadList = useCallback(async () => {
+    setListLoading(true);
+    try {
+      const data = await fetchScraps();
+      setScraps(data);
+    } catch {
+      setScraps([]);
+    } finally {
+      setListLoading(false);
+    }
+  }, []);
+
+  const loadGraph = useCallback(async () => {
+    setGraphLoading(true);
+    setGraphError(null);
+    try {
+      const data = await fetchScrapGraph({
+        categories: selectedCategories.length ? selectedCategories : undefined,
+        tags: selectedTags.length ? selectedTags : undefined,
+      });
+      setGraphData(data);
+    } catch (err) {
+      setGraphData(null);
+      setGraphError(err instanceof Error ? err.message : "그래프를 불러오지 못했습니다.");
+    } finally {
+      setGraphLoading(false);
+    }
+  }, [selectedCategories, selectedTags]);
+
+  useEffect(() => {
+    void loadList();
+    void loadSidebarScraps();
+  }, [loadList, loadSidebarScraps]);
+
+  useEffect(() => {
+    void loadGraph();
+  }, [loadGraph]);
+
+  const filteredList = useMemo(() => {
+    return scraps.filter((item) => {
+      if (
+        selectedCategories.length > 0 &&
+        !selectedCategories.includes(item.category)
+      ) {
+        return false;
+      }
+      if (selectedTags.length > 0) {
+        const tagSet = new Set(item.tags);
+        if (!selectedTags.some((tag) => tagSet.has(tag))) return false;
+      }
+      return true;
+    });
+  }, [scraps, selectedCategories, selectedTags]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col px-6 py-6">
-      <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <h1 className="text-xl font-semibold tracking-tight">
-          스크랩 — 비슷한 키워드
-        </h1>
+    <div className="flex h-full min-h-0 flex-col px-4 py-5 sm:px-6 sm:py-6">
+      <header className="mb-4 shrink-0">
+        <h1 className="text-xl font-semibold tracking-tight">스크랩 대시보드</h1>
+        <p className="text-muted-foreground mt-1 text-sm">
+          임베딩 기반 의미 그래프로 스크랩 간 연관성을 탐색하세요.
+        </p>
+      </header>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Tabs
-            value={filter}
-            onValueChange={(v) => setFilter(v as ScrapFilterMode)}
-            className="gap-0"
-          >
-            <TabsList className="h-9 bg-transparent p-0">
-              {FILTER_TABS.map(({ id, label }) => (
-                <TabsTrigger
-                  key={id}
-                  value={id}
-                  className="rounded-full px-3 text-xs shadow-none"
-                >
-                  {label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-5 lg:gap-5">
+        <section className="flex min-h-[min(560px,72vh)] flex-col lg:col-span-3">
+          {graphError ? (
+            <div className="border-border text-destructive flex flex-1 items-center justify-center rounded-2xl border bg-card p-6 text-sm">
+              {graphError}
+            </div>
+          ) : (
+            <ScrapEmbeddingGraph
+              className="h-full"
+              data={graphData}
+              allNodesForFilters={allNodesForFilters}
+              loading={graphLoading}
+              selectedCategories={selectedCategories}
+              selectedTags={selectedTags}
+              onCategoriesChange={setSelectedCategories}
+              onTagsChange={setSelectedTags}
+              minSimilarity={minSimilarity}
+              onMinSimilarityChange={setMinSimilarity}
+              onNodeHover={setHoveredNodeId}
+              onNodeClick={openScrapPanel}
+            />
+          )}
+        </section>
 
-          <Button variant="outline" size="sm" className="gap-1 text-xs">
-            필터
-            <ChevronDown size={14} />
-          </Button>
-
-          <div className="border-border ml-1 flex rounded-full border p-0.5">
-            <button
-              type="button"
-              onClick={() => setView("list")}
-              className={cn(
-                "flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                view === "list"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <List size={14} />
-              리스트
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("graph")}
-              className={cn(
-                "flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                view === "graph"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <LayoutGrid size={14} />
-              그래프
-            </button>
+        <aside className="border-border flex min-h-[320px] flex-col rounded-2xl border bg-card lg:col-span-2">
+          <div className="border-border shrink-0 border-b px-4 py-3">
+            <h2 className="text-sm font-semibold">스크랩 목록</h2>
+            <p className="text-muted-foreground mt-0.5 text-xs">
+              {filteredList.length}건
+              {(selectedCategories.length > 0 || selectedTags.length > 0) && " (필터 적용)"}
+            </p>
           </div>
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1">
-        {view === "graph" ? (
-          <ScrapGraphView
-            selectedId={selectedNodeId}
-            onSelect={(node) => setSelectedNodeId(node?.id ?? null)}
-            onOpenDetail={openDetail}
-          />
-        ) : (
-          <ScrapListView />
-        )}
+          <div className="flex min-h-0 flex-1 flex-col p-3">
+            <ScrapListPanel
+              items={filteredList}
+              loading={listLoading}
+              highlightedId={hoveredNodeId}
+              selectedId={selectedScrapId}
+              onSelect={openScrapPanel}
+            />
+          </div>
+        </aside>
       </div>
     </div>
   );

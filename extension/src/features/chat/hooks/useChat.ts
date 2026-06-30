@@ -4,6 +4,7 @@ import {
   type ArchiverStreamEventPayload,
   type ArchiverStreamEventType,
   type ArchiverStreamStatus,
+  type ArchiverWebScrapActionPayload,
 } from '@/features/archiver/useArchiver'
 import type { ArchiverChatMessage } from '@/features/archiver/models/types'
 import { createScrap } from '@/features/scrap/services/createScrap'
@@ -16,11 +17,15 @@ interface ChatMessage {
   timestamp: string
 }
 
-const SCRAP_PROCESSING_MESSAGE =
-  '[System] 현재 대화 맥락을 요약하여 스크랩 저장소에 등록 중입니다...'
+const WEB_SCRAP_PROCESSING_MESSAGE =
+  '[System] 현재 페이지 본문을 수집하여 스크랩 저장소에 등록 중입니다...'
 const SCRAP_SUCCESS_MESSAGE = '✓ 스크랩 저장이 완료되었습니다!'
-const SCRAP_NO_SESSION_MESSAGE =
-  '❌ 현재 페이지와 연결된 대화 세션이 없습니다. 먼저 AI와 대화를 나눠 주세요.'
+
+function scrapSuccessMessage(customCategory?: string | null): string {
+  const category = customCategory?.trim()
+  if (!category) return SCRAP_SUCCESS_MESSAGE
+  return `✓ 「${category}」 카테고리에 스크랩 저장이 완료되었습니다!`
+}
 const SCRAP_ERROR_MESSAGE = '❌ 스크랩 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.'
 
 function formatTimestamp(date?: Date | string) {
@@ -35,12 +40,6 @@ function historyToChatMessages(history: ArchiverChatMessage[]): ChatMessage[] {
     content: item.content,
     timestamp: formatTimestamp(item.created_at),
   }))
-}
-
-function hasScrapableAssistantTurn(history: ArchiverChatMessage[]): boolean {
-  return history.some(
-    (item) => item.role === 'assistant' && item.content.trim().length > 0,
-  )
 }
 
 function normalizeStatusPayload(payload: ArchiverStreamEventPayload): ArchiverStreamStatus {
@@ -59,11 +58,21 @@ function createSystemMessage(content: string): ChatMessage {
   }
 }
 
+function isWebScrapActionPayload(
+  payload: ArchiverStreamEventPayload,
+): payload is ArchiverWebScrapActionPayload {
+  return (
+    typeof payload === 'object' &&
+    payload !== null &&
+    'action' in payload &&
+    payload.action === 'TRIGGER_WEB_SCRAP'
+  )
+}
+
 /** 사이드패널 채팅 UI — 렌더링·메시지 슬롯 관리만 담당. 엔진 로직은 useArchiver에 위임. */
 export function useChat() {
   const {
     currentContext,
-    currentSessionId,
     serverHistory,
     isStreaming,
     isSessionLoading,
@@ -74,13 +83,10 @@ export function useChat() {
   const [isScraping, setIsScraping] = useState(false)
   const scrollAnchorRef = useRef<HTMLDivElement>(null)
   const contextUrlRef = useRef<string | null>(null)
+  const pendingScrapCategoryRef = useRef<string | null>(null)
 
   const isBusy = isStreaming || isScraping || isSessionLoading
-  const canScrapConversation =
-    Boolean(currentSessionId?.trim()) &&
-    !isSessionLoading &&
-    !isStreaming &&
-    hasScrapableAssistantTurn(serverHistory)
+  const canScrapPage = !isBusy
 
   useEffect(() => {
     const contextUrl = currentContext?.url ?? null
@@ -107,15 +113,9 @@ export function useChat() {
     scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, currentStatus])
 
-  const executeChatScrap = useCallback(
+  const executeWebScrap = useCallback(
     async (options?: { includeUserMessage?: string }) => {
       if (isBusy) return
-
-      const sessionId = currentSessionId?.trim()
-      if (!sessionId || !hasScrapableAssistantTurn(serverHistory)) {
-        setMessages((prev) => [...prev, createSystemMessage(SCRAP_NO_SESSION_MESSAGE)])
-        return
-      }
 
       const systemMessageId = crypto.randomUUID()
       setIsScraping(true)
@@ -134,19 +134,14 @@ export function useChat() {
         next.push({
           id: systemMessageId,
           role: 'system',
-          content: SCRAP_PROCESSING_MESSAGE,
+          content: WEB_SCRAP_PROCESSING_MESSAGE,
           timestamp: formatTimestamp(),
         })
         return next
       })
 
       try {
-        await createScrap({
-          source_type: 'chat',
-          session_id: sessionId,
-          url: currentContext?.url ?? null,
-          title: currentContext?.title ?? null,
-        })
+        await createScrap()
 
         setMessages((prev) =>
           prev.map((msg) =>
@@ -156,7 +151,7 @@ export function useChat() {
           ),
         )
       } catch (error) {
-        console.error('[Synapse Chat] 스크랩 실패:', error)
+        console.error('[Synapse Chat] 웹 스크랩 실패:', error)
         const detail = error instanceof Error ? error.message : SCRAP_ERROR_MESSAGE
         setMessages((prev) =>
           prev.map((msg) =>
@@ -173,18 +168,18 @@ export function useChat() {
         setIsScraping(false)
       }
     },
-    [currentContext, currentSessionId, isBusy, serverHistory],
+    [isBusy],
   )
 
-  const scrapCurrentConversation = useCallback(async () => {
-    await executeChatScrap()
-  }, [executeChatScrap])
+  const scrapCurrentPage = useCallback(async () => {
+    await executeWebScrap()
+  }, [executeWebScrap])
 
   const sendMessage = async (userText: string) => {
     if (!userText.trim() || isBusy) return
 
     if (isScrapIntentMessage(userText)) {
-      await executeChatScrap({ includeUserMessage: userText.trim() })
+      await executeWebScrap({ includeUserMessage: userText.trim() })
       return
     }
 
@@ -200,7 +195,15 @@ export function useChat() {
     setMessages((prev) => [...prev, userMessage])
 
     const onEvent = (event: ArchiverStreamEventType, payload: ArchiverStreamEventPayload) => {
-      if (event === 'status' || event === 'need_dom') {
+      if (event === 'status' || event === 'need_dom' || event === 'action') {
+        if (event === 'action' && isWebScrapActionPayload(payload)) {
+          pendingScrapCategoryRef.current = payload.customCategory?.trim() || null
+          const categoryHint = pendingScrapCategoryRef.current
+            ? `「${pendingScrapCategoryRef.current}」 카테고리에 `
+            : ''
+          setCurrentStatus(`📌 현재 페이지를 ${categoryHint}스크랩 보관함에 저장하는 중입니다...`)
+          return
+        }
         setCurrentStatus(normalizeStatusPayload(payload))
         return
       }
@@ -225,12 +228,18 @@ export function useChat() {
     ])
 
     try {
-      const finalContent = await streamMessage(userText, onEvent)
+      const result = await streamMessage(userText, onEvent)
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.id === assistantMessageId ? { ...msg, content: finalContent } : msg,
+          msg.id === assistantMessageId ? { ...msg, content: result.finalContent } : msg,
         ),
       )
+
+      if (result.webScrapCompleted) {
+        const category =
+          result.webScrapCustomCategory ?? pendingScrapCategoryRef.current
+        setMessages((prev) => [...prev, createSystemMessage(scrapSuccessMessage(category))])
+      }
     } catch (error) {
       console.error('[Synapse Chat] 스트리밍 통신 에러:', error)
 
@@ -242,6 +251,7 @@ export function useChat() {
       )
     } finally {
       setCurrentStatus(null)
+      pendingScrapCategoryRef.current = null
     }
   }
 
@@ -252,10 +262,9 @@ export function useChat() {
     isGenerating: isBusy,
     isScraping,
     isSessionLoading,
-    canScrapConversation,
+    canScrapPage,
     sendMessage,
-    scrapCurrentConversation,
+    scrapCurrentPage,
     scrollAnchorRef,
   }
 }
-

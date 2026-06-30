@@ -29,7 +29,7 @@ export function FloatingWidget() {
     setIsScraping(true)
     setScrapFeedback(null)
 
-    void createScrap({ source_type: 'web' })
+    void createScrap()
       .then(() => {
         setScrapFeedback('success')
         window.setTimeout(() => setScrapFeedback(null), 2000)

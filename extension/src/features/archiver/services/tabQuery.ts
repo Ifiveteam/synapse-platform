@@ -15,9 +15,13 @@ export interface ActiveTabInfo {
   title: string
 }
 
+export function hasTabsApi(): boolean {
+  return isExtensionContextValid() && typeof chrome !== 'undefined' && !!chrome.tabs?.query
+}
+
 export function queryActiveTab(): Promise<ActiveTabInfo | null> {
   return new Promise((resolve) => {
-    if (!isExtensionContextValid() || !chrome.tabs) {
+    if (!hasTabsApi()) {
       resolve(null)
       return
     }

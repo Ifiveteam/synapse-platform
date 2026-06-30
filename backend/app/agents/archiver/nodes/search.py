@@ -96,6 +96,5 @@ async def search_node(state: ArchiverState) -> dict[str, Any]:
     return {
         "context_search": search_payload,
         "search_attempts": search_attempts,
-        "current_step": SEARCH_NODE,
         "executed_steps": [SEARCH_NODE],
     }

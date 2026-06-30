@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-StreamEventType = Literal["status", "token", "need_dom"]
+StreamEventType = Literal["status", "token", "need_dom", "action"]
 
 StatusPhase = Literal[
     "router_general",
@@ -28,3 +28,5 @@ class ArchiverStreamEvent:
     phase: StatusPhase | None = None
     engines: tuple[str, ...] | None = None
     message: str | None = None
+    action: str | None = None
+    custom_category: str | None = None

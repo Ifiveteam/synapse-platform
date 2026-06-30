@@ -5,15 +5,15 @@
  * 스키마 변경 시 이 파일을 직접 갱신한다.
  */
 
+/** 레거시 DB 레코드 호환용 — 신규 생성은 항상 web */
 export type ScrapSourceType = 'web' | 'chat'
 
 /** POST /api/v1/scraps 요청 본문 */
 export interface ScrapCreateRequest {
-  source_type: ScrapSourceType
   url?: string | null
   title?: string | null
-  raw_body?: string | null
-  session_id?: string | null
+  raw_body: string
+  custom_category?: string | null
 }
 
 /** GET/POST /api/v1/scraps 응답 항목 */

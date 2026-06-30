@@ -59,6 +59,21 @@ class ScrapRepository:
         )
         return list(result.scalars().all())
 
+    async def get_scrap_by_id(
+        self,
+        *,
+        user_id: uuid.UUID,
+        scrap_id: uuid.UUID,
+    ) -> Scrap | None:
+        """본인 소유 스크랩 1건을 조회한다. 없으면 None."""
+        result = await self.db.execute(
+            select(Scrap).where(
+                Scrap.id == scrap_id,
+                Scrap.user_id == user_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def delete_scrap(
         self,
         *,

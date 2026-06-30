@@ -1,10 +1,12 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+import { fetchArchiverSessions } from "@/api/archiver";
 import { fetchCuratorSessions } from "@/api/curator";
+import { fetchScraps } from "@/api/scraps";
+import { buildSidebarScraps } from "@/lib/sidebar/build-sidebar-scraps";
 import {
   MOCK_ACTIVE_IDEAL_LABEL,
-  MOCK_SCRAPS,
   type SidebarChat,
   type SidebarScrap,
 } from "@/lib/sidebar/mock";
@@ -28,16 +30,18 @@ interface SidebarStore {
   chats: SidebarChat[];
   setActiveIdealLabel: (label: string | null) => void;
   loadChats: () => Promise<void>;
+  loadScraps: () => Promise<void>;
   renameChat: (id: string, title: string) => void;
   deleteChat: (id: string) => void;
   clearChats: () => void;
+  clearScraps: () => void;
 }
 
 export const useSidebarStore = create<SidebarStore>()(
   persist(
     (set) => ({
       activeIdealLabel: MOCK_ACTIVE_IDEAL_LABEL,
-      scraps: MOCK_SCRAPS,
+      scraps: [],
       chats: [],
       setActiveIdealLabel: (activeIdealLabel) => set({ activeIdealLabel }),
       renameChat: (id, title) =>
@@ -47,6 +51,7 @@ export const useSidebarStore = create<SidebarStore>()(
         set((s) => ({ chats: s.chats.filter((c) => c.id !== id) })),
 
       clearChats: () => set({ chats: [] }),
+      clearScraps: () => set({ scraps: [] }),
 
       loadChats: async () => {
         try {
@@ -60,6 +65,20 @@ export const useSidebarStore = create<SidebarStore>()(
           });
         } catch {
           // 로그인 안 된 상태 등 무시
+        }
+      },
+
+      loadScraps: async () => {
+        try {
+          const [scraps, sessions] = await Promise.all([
+            fetchScraps(),
+            fetchArchiverSessions(),
+          ]);
+          set({
+            scraps: buildSidebarScraps(scraps, sessions, formatRelativeTime),
+          });
+        } catch {
+          set({ scraps: [] });
         }
       },
     }),

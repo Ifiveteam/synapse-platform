@@ -17,12 +17,8 @@ MSG_ROUTER_RAG_SEARCH = (
 MSG_ROUTER_DOM_SEARCH = (
     "📄 현재 화면 정보를 읽어오면서, 🌐 관련 최신 정보도 실시간으로 탐색 중입니다..."
 )
-MSG_ROUTER_DOM_RAG = (
-    "📄 현재 페이지의 정보와 🧠 우리가 나눈 이전 대화 흐름을 매칭하여 분석하고 있습니다..."
-)
-MSG_ROUTER_ALL_CHANNELS = (
-    "🚀 현재 화면, 과거 기억, 실시간 웹 검색까지 모든 채널을 동시 가동해 분석 중입니다..."
-)
+MSG_ROUTER_DOM_RAG = "📄 현재 페이지의 정보와 🧠 우리가 나눈 이전 대화 흐름을 매칭하여 분석하고 있습니다..."
+MSG_ROUTER_ALL_CHANNELS = "🚀 현재 화면, 과거 기억, 실시간 웹 검색까지 모든 채널을 동시 가동해 분석 중입니다..."
 
 MSG_ROUTER_DOM_ONLY = "📄 현재 페이지의 화면 정보를 읽어 분석을 시작합니다..."
 MSG_ROUTER_RAG_ONLY = (
@@ -67,13 +63,13 @@ MSG_EVALUATOR_SUFFICIENT = (
 MSG_EVALUATOR_SUPPLEMENTING = (
     "⚙️ 완벽한 답변을 위해 부족한 정보를 추가로 보완하는 중입니다..."
 )
-MSG_EVALUATOR_BEST_EFFORT = (
-    "⚖️ 모아 둔 정보를 바탕으로 최선의 답변을 준비하고 있어요..."
-)
+MSG_EVALUATOR_BEST_EFFORT = "⚖️ 모아 둔 정보를 바탕으로 최선의 답변을 준비하고 있어요..."
 
 # ── Respond ───────────────────────────────────────────────────────
 
 MSG_RESPOND_GENERATING = "✨ 답변을 정리해 작성하고 있어요..."
+
+MSG_SCRAP_TRIGGER = "📌 현재 페이지를 스크랩 보관함에 저장할 준비를 하고 있어요..."
 
 
 def _normalize_sse_text(text: str) -> str:
@@ -109,6 +105,19 @@ def need_dom_event() -> dict[str, Any]:
         "message": MSG_NEED_DOM.strip(),
         "phase": "need_dom",
     }
+
+
+def trigger_web_scrap_event(*, custom_category: str | None = None) -> dict[str, Any]:
+    """클라이언트에 현재 탭 본문 역수집을 요청하는 SSE action 이벤트 dict."""
+    payload: dict[str, Any] = {
+        "event": "action",
+        "action": "TRIGGER_WEB_SCRAP",
+        "content": _normalize_sse_text(MSG_SCRAP_TRIGGER),
+        "message": MSG_SCRAP_TRIGGER.strip(),
+    }
+    if custom_category and custom_category.strip():
+        payload["custom_category"] = custom_category.strip()
+    return payload
 
 
 def router_parallel_message(targets: list[str]) -> str:
