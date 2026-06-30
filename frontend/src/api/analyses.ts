@@ -3,6 +3,7 @@ import type { AnalysisCompareResponse, DbProfileResponse } from "@/api/types/pro
 import {
   formatAnalysisDate,
   type AnalysisResultItem,
+  type AnalysisStage,
   type AnalysisStatus,
 } from "@/lib/analyses/types";
 
@@ -13,6 +14,7 @@ interface AnalysisListItemDto {
   title: string;
   snapshot_date: string | null;
   status: AnalysisStatus;
+  stage?: AnalysisStage | null;
   kind: "snapshot" | "job";
 }
 
@@ -27,6 +29,7 @@ function mapListItem(dto: AnalysisListItemDto): AnalysisResultItem {
     date: formatAnalysisDate(dto.snapshot_date ?? undefined),
     snapshotAt: dto.snapshot_date,
     status: dto.status,
+    stage: dto.stage ?? null,
     kind: dto.kind,
   };
 }

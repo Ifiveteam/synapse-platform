@@ -9,6 +9,7 @@ from app.core.database.session import AsyncSessionLocal
 from app.repositories.analysis_source_repository import (
     mark_source_completed,
     mark_source_failed,
+    mark_source_stage,
 )
 
 
@@ -40,4 +41,14 @@ async def fail_source_async(source_id: uuid.UUID | str | None) -> None:
     sid = uuid.UUID(str(source_id))
     async with AsyncSessionLocal() as session:
         await mark_source_failed(session, sid)
+        await session.commit()
+
+
+async def set_source_stage_async(source_id: uuid.UUID | str | None, stage: str) -> None:
+    """진행 단계(indexing→profiling) 갱신. 표시용."""
+    if source_id is None:
+        return
+    sid = uuid.UUID(str(source_id))
+    async with AsyncSessionLocal() as session:
+        await mark_source_stage(session, sid, stage)
         await session.commit()

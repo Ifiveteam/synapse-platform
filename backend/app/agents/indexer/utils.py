@@ -15,7 +15,7 @@ import json
 import logging
 import re
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 # 인덱서·프로파일러 공통 손잡이 (여기서 재노출 → 기존 import 경로 유지)
 from app.agents.shared.analysis_window import (  # noqa: F401
@@ -80,20 +80,36 @@ def filter_classified_catalog_items(items: list[dict]) -> tuple[list[dict], int]
 # ---------------------------------------------------------------------------
 
 
-def parse_takeout_zip(zip_path: str) -> list[dict]:
-    """구글 테이크아웃 ZIP에서 watch-history.json(또는 한글 파일명) 추출."""
-    target_names = ["watch-history.json", "시청_기록.json", "시청 기록.json"]
+_WATCH_JSON_NAMES = ["watch-history.json", "시청_기록.json", "시청 기록.json"]
+_WATCH_HTML_NAMES = ["watch-history.html", "시청_기록.html", "시청 기록.html"]
 
+
+def parse_takeout_zip(zip_path: str) -> list[dict]:
+    """Takeout ZIP에서 시청 기록 추출 — JSON 우선, 없으면 HTML 폴백.
+
+    JSON(권장)은 ISO 시각이라 정확. HTML은 현지화 시각이라 best-effort.
+    """
     with zipfile.ZipFile(zip_path, "r") as z:
         all_names = z.namelist()
         logger.debug(f"[ZIP] 파일 목록 ({len(all_names)}개): {all_names[:20]}")
+
         for name in all_names:
-            if any(target in name for target in target_names):
-                logger.info(f"[ZIP] 시청 기록 발견: {name}")
+            if any(t in name for t in _WATCH_JSON_NAMES):
+                logger.info(f"[ZIP] 시청 기록(JSON) 발견: {name}")
                 with z.open(name) as f:
                     data = json.load(f)
-                    logger.info(f"[ZIP] 항목 수: {len(data)}")
-                    return data
+                logger.info(f"[ZIP] 항목 수: {len(data)}")
+                return data
+
+        for name in all_names:
+            if any(t in name for t in _WATCH_HTML_NAMES):
+                logger.info(f"[ZIP] 시청 기록(HTML) 폴백 파싱: {name}")
+                with z.open(name) as f:
+                    html = f.read().decode("utf-8", errors="replace")
+                data = parse_watch_history_html(html)
+                logger.info(f"[ZIP] HTML 파싱 항목 수: {len(data)}")
+                return data
+
     logger.warning(f"[ZIP] 시청 기록 파일 없음. 전체 목록: {all_names}")
     return []
 
@@ -102,6 +118,105 @@ def parse_takeout_json(json_path: str) -> list[dict]:
     """로컬 JSON 시청 기록 파일 로드."""
     with open(json_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+# ── HTML 폴백 파싱 (JSON 없을 때) ────────────────────────────────
+# 타임존 약어 → UTC 오프셋(시간). 미지의 약어는 KST 기본(주 사용자=한국).
+_TZ_OFFSETS = {
+    "KST": 9,
+    "JST": 9,
+    "UTC": 0,
+    "GMT": 0,
+    "BST": 1,
+    "CET": 1,
+    "CEST": 2,
+    "IST": 5.5,
+    "PST": -8,
+    "PDT": -7,
+    "MST": -7,
+    "MDT": -6,
+    "CST": -6,
+    "CDT": -5,
+    "EST": -5,
+    "EDT": -4,
+}
+
+
+def _html_timestamp_to_iso(text: str) -> str:
+    """Takeout HTML 현지화 시각 → ISO 8601 (한국어/영어). 실패 시 ''."""
+    text = (text or "").strip()
+    tz_abbr = ""
+    m_tz = re.search(r"\b([A-Z]{2,5})\s*$", text)
+    if m_tz:
+        tz_abbr = m_tz.group(1)
+    tz = timezone(timedelta(hours=_TZ_OFFSETS.get(tz_abbr, 9)))
+
+    # 한국어: "2024. 6. 30. 오후 3:24:00"
+    m = re.search(
+        r"(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.\s*(오전|오후)\s*(\d{1,2}):(\d{2}):(\d{2})",
+        text,
+    )
+    if m:
+        y, mo, d, ampm, hh, mm, ss = m.groups()
+        hour = int(hh) % 12 + (12 if ampm == "오후" else 0)
+        try:
+            return datetime(
+                int(y), int(mo), int(d), hour, int(mm), int(ss), tzinfo=tz
+            ).isoformat()
+        except ValueError:
+            return ""
+
+    # 영어: "Jun 30, 2024, 3:24:00 PM"
+    m = re.search(
+        r"([A-Za-z]{3,})\.?\s+(\d{1,2}),\s*(\d{4}),?\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)",
+        text,
+    )
+    if m:
+        mon_name, d, y, hh, mm, ss, ampm = m.groups()
+        try:
+            month = datetime.strptime(mon_name[:3], "%b").month
+            hour = int(hh) % 12 + (12 if ampm.upper() == "PM" else 0)
+            return datetime(
+                int(y), month, int(d), hour, int(mm), int(ss), tzinfo=tz
+            ).isoformat()
+        except ValueError:
+            return ""
+
+    return ""
+
+
+def parse_watch_history_html(html: str) -> list[dict]:
+    """Takeout 시청기록 HTML → JSON과 동일 구조의 raw 항목 (폴백 전용).
+
+    각 항목을 {title, titleUrl, subtitles, time, products}로 만들어 preprocess가
+    JSON과 동일하게 처리하도록 한다. 시각은 현지화 텍스트라 best-effort.
+    """
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    items: list[dict] = []
+    for cell in soup.find_all("div", class_="content-cell"):
+        links = cell.find_all("a")
+        if not links:
+            continue
+        url = links[0].get("href", "") or ""
+        if "watch?v=" not in url and "/shorts/" not in url:
+            continue
+        title = links[0].get_text(strip=True)
+        channel = links[1].get_text(strip=True) if len(links) >= 2 else ""
+        channel_url = (links[1].get("href", "") or "") if len(links) >= 2 else ""
+        lines = [t.strip() for t in cell.get_text("\n").split("\n") if t.strip()]
+        ts = lines[-1] if lines else ""
+        items.append(
+            {
+                "title": title,
+                "titleUrl": url,
+                "subtitles": [{"name": channel, "url": channel_url}] if channel else [],
+                "time": _html_timestamp_to_iso(ts),
+                "products": ["YouTube"],
+            }
+        )
+    return items
 
 
 # ---------------------------------------------------------------------------

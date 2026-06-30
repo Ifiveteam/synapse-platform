@@ -16,6 +16,13 @@ class AnalysisSourceStatus:
     FAILED = "failed"
 
 
+class AnalysisSourceStage:
+    """status=running 동안의 세부 단계 (표시용)."""
+
+    INDEXING = "indexing"  # 분류 중
+    PROFILING = "profiling"  # 분석 중
+
+
 class UserAnalysisSource(TimestampMixin, Base):
     """업로드 소스(Takeout 파일) 단위 분석 실행 이력 — 중복 방지."""
 
@@ -37,6 +44,11 @@ class UserAnalysisSource(TimestampMixin, Base):
         String(20),
         nullable=False,
         server_default=AnalysisSourceStatus.RUNNING,
+    )
+    stage: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default=AnalysisSourceStage.INDEXING,
     )
     profile_history_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
