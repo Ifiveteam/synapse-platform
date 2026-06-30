@@ -57,7 +57,6 @@ async def rag_node(
     writer = get_stream_writer()
     retrieval_attempts = state.get("retrieval_attempts", 0) + 1
     patch: dict[str, Any] = {
-        "current_step": RAG_NODE,
         "executed_steps": [RAG_NODE],
         "retrieval_attempts": retrieval_attempts,
     }

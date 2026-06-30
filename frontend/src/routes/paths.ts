@@ -5,7 +5,6 @@ export const ROUTES = {
   login: "/login",
   upload: "/upload",
   setup: "/setup",
-  profiler: "/agents/profiler",
   myAnalyses: "/me/analyses",
   analysisDetail: (id: string) => `/me/analyses/${id}`,
   analysisCompare: (fromId: string, toId: string) =>
@@ -20,8 +19,6 @@ export const ROUTES = {
   scrapDetail: (id: string) => `/me/scraps/${id}`,
   settings: "/settings",
   download: "/download",
-  navigator: "/agents/navigator",
-  indexer: "/agents/indexer",
   agentDetail: (slug: AgentId | string) => `/agents/${slug}`,
   trendPosts: (slug: AgentId | string) => `/agents/${slug}/posts`,
   trendPost: (slug: AgentId | string, postId: string) =>

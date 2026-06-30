@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import base64
 import os
+import time
 from dataclasses import dataclass
 
 DEFAULT_FROM_ADDRESS = "synapse@ifive.site"
+_MAX_SEND_RETRIES = 3  # 일시적 실패(rate limit 등) 재시도 횟수
+_SEND_BACKOFF = 1.0  # 초, 지수 백오프 (1 → 2 → 4)
 
 
 @dataclass
@@ -47,34 +50,41 @@ def send_email(
             error="mail_not_configured",
         )
 
-    try:
-        import resend
+    import resend
 
-        resend.api_key = api_key
-        payload: dict[str, object] = {
-            "from": sender,
-            "to": [to],
-            "subject": subject,
-            "text": text,
-        }
-        if attachments:
-            payload["attachments"] = [
-                {
-                    "filename": item.filename,
-                    "content": base64.b64encode(item.content).decode(),
-                }
-                for item in attachments
-            ]
-        resend.Emails.send(payload)
-        return MailDeliveryResult(
-            attempted=True,
-            sent=True,
-            from_address=DEFAULT_FROM_ADDRESS,
-        )
-    except Exception as exc:  # noqa: BLE001 — mail must not fail the caller pipeline
-        return MailDeliveryResult(
-            attempted=True,
-            sent=False,
-            from_address=DEFAULT_FROM_ADDRESS,
-            error=str(exc),
-        )
+    resend.api_key = api_key
+    payload: dict[str, object] = {
+        "from": sender,
+        "to": [to],
+        "subject": subject,
+        "text": text,
+    }
+    if attachments:
+        payload["attachments"] = [
+            {
+                "filename": item.filename,
+                "content": base64.b64encode(item.content).decode(),
+            }
+            for item in attachments
+        ]
+
+    last_error: str | None = None
+    for attempt in range(_MAX_SEND_RETRIES):
+        try:
+            resend.Emails.send(payload)
+            return MailDeliveryResult(
+                attempted=True,
+                sent=True,
+                from_address=DEFAULT_FROM_ADDRESS,
+            )
+        except Exception as exc:  # noqa: BLE001 — mail must not fail caller pipeline
+            last_error = str(exc)
+            if attempt < _MAX_SEND_RETRIES - 1:
+                time.sleep(_SEND_BACKOFF * (2**attempt))
+
+    return MailDeliveryResult(
+        attempted=True,
+        sent=False,
+        from_address=DEFAULT_FROM_ADDRESS,
+        error=last_error,
+    )

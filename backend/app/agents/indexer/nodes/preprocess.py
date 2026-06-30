@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from app.agents.indexer.state import IndexerState
 from app.agents.indexer.utils import (
     WATCH_CATALOG_WINDOW_DAYS,
+    parse_subscriptions_zip,
     parse_takeout_json,
     parse_takeout_zip,
 )
@@ -86,12 +87,20 @@ def run_preprocess(json_path: str) -> dict:
     deduped = dedupe_by_url(windowed_events)
     deduped.sort(key=lambda x: x.get("watched_at", ""), reverse=True)
 
+    # 구독정보는 ZIP에만 있음 (watch-history.json 단독엔 없음)
+    subscriptions: list[dict] = []
+    subscription_file_found = False
+    if json_path.endswith(".zip"):
+        subscriptions, subscription_file_found = parse_subscriptions_zip(json_path)
+
     return {
         "raw_data": raw_data,
         "cleaned_data": deduped,
         "filtered_count": len(deduped),
         "analysis_start": analysis_start,
         "analysis_end": analysis_end,
+        "subscriptions": subscriptions,
+        "subscription_file_found": subscription_file_found,
     }
 
 

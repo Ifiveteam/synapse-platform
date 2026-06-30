@@ -54,7 +54,7 @@
 
 - 인덱스: `(user_id, ideal_id)`.
 - **새 테이블은 이거 하나.** catalog 근거(카테고리·채널·시청영상)·watched 디덥은 **기존 `user_watch_catalog`에서 읽기만** 한다.
-- 마이그레이션 `alembic/versions/002_navigator_playlist.py` (`down_revision="001_initial_schema"`).
+- 테이블 `navigator_playlist`은 **`001_initial_schema`에 포함**(통합 스키마)되어 있음 — 별도 마이그레이션 파일 없음.
 
 ## 4. 추천 근거 — 이상향(13축) + 시청 기록 둘 다
 
@@ -120,7 +120,7 @@ LLM 검색어 작문 → search?type=channel&maxResults=25 (1콜=실재 채널 2
   - `graph.py` — 생성 그래프 + 편집 그래프(노드 공유), `run_playlist` / `edit_playlist`
 - `agents/navigator/schemas.py` — `PlaylistItem`·`Playlist`·`QuerySpec`·`ChannelPick`·`PlaylistCuration`·`EditSpec`
 - `agents/navigator/base.py` — 파사드 `generate_playlist` / `edit_playlist` / `refresh_item`(store 주입)
-- `models/navigator_playlist.py` (신규 테이블) + `alembic/versions/002_navigator_playlist.py`
+- `models/navigator_playlist.py` (테이블은 `001_initial_schema`에 통합)
 - `repositories/navigator_repository.py` — CRUD(`create_playlist`/`list_playlists`/`get_playlist`/`update_playlist`/`delete_playlist`) + catalog 근거 조회 + `fetch_watched_video_ids`
 - `schemas/navigator.py` — `PlaylistItemResponse`·`PlaylistResponse`·`PlaylistSummary`·`SavePlaylistResponse`
 - `services/navigator/service.py` — `create_playlist`·`list_playlists`·`get_playlist`·`rename_playlist`·`delete_playlist`·`refresh_item`·`chat_edit`(SSE)·`save_to_youtube`

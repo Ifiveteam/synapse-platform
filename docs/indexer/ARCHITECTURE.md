@@ -8,9 +8,11 @@
 
 ## 1. 한 줄 정의
 
-**Takeout 파싱 → 광고·노이즈 제거 → YouTube API 50개 배치 enrich → catalog upsert**
+**Takeout 파싱 → 광고·노이즈 제거 → 증분 diff → YouTube API 50개 배치 enrich → 임베딩 → catalog upsert (+구독 전체 교체)**
 
 프로파일러(`video_analysis`)·GPT 카테고리 분류·job DB 테이블은 **인덱서 범위 밖**.
+
+구독정보(ZIP의 구독 CSV)는 `user_subscription`에 별도 적재(영상 단위 catalog와 분리). YouTube Music 시청은 `platform=youtube_music`로 라벨.
 
 ---
 
@@ -33,7 +35,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │  app/services/takeout_service.py  Drive 검색·다운로드         │
 │  app/agents/indexer/nodes/                                          │
-│    preprocess.py · enrich_api.py · attach_derived.py · store.py    │
+│    preprocess · diff · enrich · embed · store · subscriptions      │
 └─────────────────────────────────────────────────────────────┘
        │
        ▼
@@ -121,11 +123,10 @@ GPT 분류 없음              catalog JOIN으로 description/tags
 | 구분 | 경로 |
 |------|------|
 | LangGraph | `backend/app/agents/indexer/graph.py` |
-| 노드 | `preprocess.py`, `enrich_api.py`, `attach_derived.py`, `store.py` |
-| Takeout 파싱 헬퍼 | `backend/app/agents/indexer/tool.py` (ZIP/JSON·광고 필터) |
-| 상수 | `backend/app/agents/indexer/constants.py` |
+| 노드 | `preprocess.py`, `diff.py`, `enrich.py`, `embed.py`, `store.py`, `subscriptions.py` |
+| Takeout 파싱·헬퍼 | `backend/app/agents/indexer/utils.py` (ZIP/JSON·광고 필터·플랫폼·구독 CSV·썸네일·숏츠) |
 | Repository | `backend/app/repositories/indexer_repository.py` |
-| ORM | `backend/app/models/user_watch_catalog.py` |
+| ORM | `backend/app/models/user_watch_catalog.py`, `user_subscription.py` |
 | Takeout API | `backend/app/api/v1/takeout.py` |
 | Indexer API | `backend/app/api/v1/indexer.py` |
 | Drive 서비스 | `backend/app/services/takeout_service.py` |

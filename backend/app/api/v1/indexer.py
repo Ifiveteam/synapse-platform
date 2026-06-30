@@ -256,11 +256,15 @@ async def get_embedding_graph(
 async def delete_all_videos(
     session: AsyncSession = Depends(get_db), user=Depends(get_current_user_dep)
 ):
-    """본인 catalog + 분석 결과 + 소스 이력 전체 삭제"""
+    """본인 catalog + 분석 결과 + 구독 + 소스 이력 전체 삭제"""
     from app.repositories.analysis_source_repository import delete_sources_for_user
-    from app.repositories.indexer_repository import delete_user_catalog
+    from app.repositories.indexer_repository import (
+        delete_subscriptions,
+        delete_user_catalog,
+    )
 
     await delete_user_catalog(session, user.id)
+    await delete_subscriptions(session, user.id)
     await delete_sources_for_user(session, user.id)
     await session.commit()
     return {"message": "전체 삭제 완료"}

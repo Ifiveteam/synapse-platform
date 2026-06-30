@@ -34,10 +34,10 @@ RAG_SEARCH_LIMIT = 3
 # multi-turn 대화 (user+assistant 메시지 쌍 상한)
 MAX_HISTORY_MESSAGES = 20
 
-# Router(classify) — 최저 레이턴시 전용 (구조화 분류만 수행)
+# Router(classify) — Structured Output JSON 잘림 방지 (↔ scrap classifier 2048)
 CLASSIFY_MODEL = "gemini-2.5-flash"
 CLASSIFY_TEMPERATURE = 0.0
-CLASSIFY_MAX_OUTPUT_TOKENS = 128
+CLASSIFY_MAX_OUTPUT_TOKENS = 2048
 
 # Step temperature
 EVALUATE_TEMPERATURE = 0.0

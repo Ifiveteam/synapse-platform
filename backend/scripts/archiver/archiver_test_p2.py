@@ -11,8 +11,12 @@ from app.agents.archiver.core.constants import (
     RESPOND_FACTUAL_TEMPERATURE,
 )
 from app.agents.archiver.core.history import append_user_turn, history_to_messages
+from app.agents.archiver.core.tools import GOOGLE_SEARCH_TOOL, SCRAP_CURRENT_PAGE_TOOL
 from app.agents.archiver.models import SEARCH_NODE, ArchiverStreamEvent
-from app.agents.archiver.protocols.stream_status import status_event
+from app.agents.archiver.protocols.stream_status import (
+    status_event,
+    trigger_web_scrap_event,
+)
 from app.agents.archiver.protocols.streaming import (
     format_sse_event,
     format_stream_event,
@@ -67,6 +71,28 @@ def run_p2_tests() -> list[str]:
         errors,
     )
 
+    action_frame = format_sse_event(
+        event="action",
+        content="스크랩 준비",
+        action="TRIGGER_WEB_SCRAP",
+    )
+    _assert(
+        '"action": "TRIGGER_WEB_SCRAP"' in action_frame, "SSE: action payload", errors
+    )
+
+    scrap_signal = trigger_web_scrap_event(custom_category="레시피")
+    _assert(scrap_signal["event"] == "action", "scrap signal: action event", errors)
+    _assert(
+        scrap_signal["action"] == "TRIGGER_WEB_SCRAP",
+        "scrap signal: TRIGGER_WEB_SCRAP",
+        errors,
+    )
+    _assert(
+        scrap_signal.get("custom_category") == "레시피",
+        "scrap signal: custom_category",
+        errors,
+    )
+
     # multi-turn history
     history = [
         ArchiverChatMessage(
@@ -89,19 +115,34 @@ def run_p2_tests() -> list[str]:
     _assert(gemini_single == "단일", "gemini: single string shortcut", errors)
 
     # respond tool binding
+    search_tools = resolve_respond_tools("", target_engines=[SEARCH_NODE])
     _assert(
-        resolve_respond_tools("", target_engines=[SEARCH_NODE]) is not None,
-        "tools: search_node without context_search binds tool",
+        SCRAP_CURRENT_PAGE_TOOL in search_tools,
+        "tools: scrap always bound",
         errors,
     )
     _assert(
-        resolve_respond_tools("이미 수집됨", target_engines=[SEARCH_NODE]) is None,
-        "tools: search_node with context_search skips tool",
+        GOOGLE_SEARCH_TOOL in search_tools,
+        "tools: search_node without context_search binds search",
+        errors,
+    )
+    no_search_tools = resolve_respond_tools("이미 수집됨", target_engines=[SEARCH_NODE])
+    _assert(
+        SCRAP_CURRENT_PAGE_TOOL in no_search_tools,
+        "tools: scrap bound when search already collected",
         errors,
     )
     _assert(
-        resolve_respond_tools("보완 검색", target_engines=["collect_node"]) is None,
-        "tools: collect_node only never binds search tool",
+        GOOGLE_SEARCH_TOOL not in no_search_tools,
+        "tools: search_node with context_search skips search tool",
+        errors,
+    )
+    collect_only_tools = resolve_respond_tools(
+        "보완 검색", target_engines=["collect_node"]
+    )
+    _assert(
+        collect_only_tools == [SCRAP_CURRENT_PAGE_TOOL],
+        "tools: collect_node only binds scrap tool",
         errors,
     )
 
@@ -115,7 +156,7 @@ def run_p2_tests() -> list[str]:
             "context_search": "web hits",
         }
     )
-    _assert(tools is None, "resolve: dom+search parallel no tools", errors)
+    _assert(len(tools) == 1, "resolve: dom+search parallel scrap tool only", errors)
     _assert("page body" in instruction, "resolve: dom+search includes dom", errors)
     _assert("web hits" in instruction, "resolve: dom+search includes search", errors)
     _assert(
@@ -134,7 +175,7 @@ def run_p2_tests() -> list[str]:
             "context_search": "cached search",
         }
     )
-    _assert(tools is None, "resolve: BASIC+context_search no tools", errors)
+    _assert(len(tools) == 1, "resolve: BASIC+context_search scrap tool only", errors)
     _assert("body" in instruction, "resolve: BASIC+context_search includes dom", errors)
     _assert(
         "cached search" in instruction,
@@ -145,7 +186,7 @@ def run_p2_tests() -> list[str]:
     general_instruction, general_tools = resolve_system_instruction(
         {"is_general": True}
     )
-    _assert(general_tools is None, "resolve: is_general no tools", errors)
+    _assert(len(general_tools) == 1, "resolve: is_general has scrap tool", errors)
     _assert("일상 대화" in general_instruction, "resolve: is_general template", errors)
 
     synthesis_instruction, _ = resolve_system_instruction(

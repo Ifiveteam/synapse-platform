@@ -4,22 +4,11 @@ import { ListVideo, Plus, Target } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  applyIdeal,
-  listIdeals,
-  IDEAL_TYPE_LABEL,
-  type IdealResponse,
-} from "@/lib/ideals/api";
+import { applyIdeal, listIdeals } from "@/api/navigator";
+import type { IdealResponse } from "@/api/types/navigator";
+import { IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
 import { ROUTES } from "@/routes";
 import { useSidebarStore } from "@/stores/sidebar";
-
-const TABS = [
-  { id: "confirmed", label: "확정 이상향" },
-  { id: "setup", label: "이상향 설정" },
-] as const;
-
-type TabId = (typeof TABS)[number]["id"];
 
 function IdealCard({
   item,
@@ -89,7 +78,7 @@ function IdealCard({
   );
 }
 
-function ConfirmedTab({
+function IdealList({
   ideals,
   loading,
   error,
@@ -123,35 +112,10 @@ function ConfirmedTab({
   );
 }
 
-function SetupTab() {
-  return (
-    <div className="border-border flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed py-16 text-center">
-      <div className="bg-accent text-accent-foreground flex h-14 w-14 items-center justify-center rounded-2xl">
-        <Target size={26} />
-      </div>
-      <div>
-        <p className="text-sm font-semibold">이상향 설정</p>
-        <p className="text-muted-foreground mt-1 text-xs">
-          현재 프로필을 바탕으로 반대·강점심화·균형 이상향을 제안받고,
-          <br />
-          채팅으로 세부 조정해 나만의 이상향을 설계합니다.
-        </p>
-      </div>
-      <Button asChild className="gap-1.5">
-        <Link to={ROUTES.idealSetup}>
-          <Plus size={16} />
-          이상향 설정하러 가기
-        </Link>
-      </Button>
-    </div>
-  );
-}
-
 export function IdealManagementPage() {
   const [ideals, setIdeals] = useState<IdealResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<TabId>("confirmed");
   const setActiveIdealLabel = useSidebarStore((s) => s.setActiveIdealLabel);
 
   const syncSidebar = useCallback(
@@ -209,31 +173,12 @@ export function IdealManagementPage() {
         </div>
       </div>
 
-      <Tabs
-        value={tab}
-        onValueChange={(v) => setTab(v as TabId)}
-        className="gap-6"
-      >
-        <TabsList>
-          {TABS.map((t) => (
-            <TabsTrigger key={t.id} value={t.id}>
-              {t.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        <TabsContent value="confirmed">
-          <ConfirmedTab
-            ideals={ideals}
-            loading={loading}
-            error={error}
-            onApply={handleApply}
-          />
-        </TabsContent>
-        <TabsContent value="setup">
-          <SetupTab />
-        </TabsContent>
-      </Tabs>
+      <IdealList
+        ideals={ideals}
+        loading={loading}
+        error={error}
+        onApply={handleApply}
+      />
     </div>
   );
 }

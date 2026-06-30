@@ -34,3 +34,7 @@ class IndexerState(TypedDict):
     existing_items: NotRequired[list[VideoItem]]  # 기존 = watched_at·watch_count만 갱신
     skipped_existing: NotRequired[int]
     touched_count: NotRequired[int]
+    # 구독정보 (ZIP 전용) — 파일 있을 때만 전체 교체
+    subscriptions: NotRequired[list[dict]]
+    subscription_file_found: NotRequired[bool]
+    subscription_saved: NotRequired[int]

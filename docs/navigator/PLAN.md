@@ -33,7 +33,7 @@
 | 제안 캐시 | `navigator_proposal_cache`(user_id, source_profile_history_id) UNIQUE — 같은 스냅샷=같은 3안. `?refresh=true`로 재생성 |
 | 가이드 그라운딩 | `sub_agent/guide/` 자율 루프(retrieve→generate→evaluate). 약한 축 top3 → `user_watch_catalog` embedding cosine RAG → 실시청 근거 가이드. 근거 없으면 폴백 |
 | 챗 그래프 | 2노드 선형(interpret→respond), evaluator 없음. `event: ideal`로 갱신 8축+13축 JSON 스트리밍(레이더·바 실시간) |
-| 마이그레이션 | **통합 스키마 `001_initial_schema`가 현재 head**(007~013 통합됨). 새 컬럼은 `down_revision="001_initial_schema"` |
+| 마이그레이션 | `001_initial_schema`(007~013 통합) → `002_create_scraps` → `003_user_subscription`(**현재 head**). 새 마이그레이션은 `down_revision`을 직전 head로 |
 
 ## 4. API (모두 `Depends(get_current_user_dep)`)
 

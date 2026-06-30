@@ -18,6 +18,7 @@ import { ROUTES } from "@/routes";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useShellStore } from "@/stores/shell";
+import { useScrapDetailPanelStore } from "@/stores/scrap-detail-panel";
 import { useSidebarStore } from "@/stores/sidebar";
 import { useThemeStore } from "@/stores/theme";
 
@@ -159,6 +160,9 @@ export function Sidebar() {
   const renameChat = useSidebarStore((s) => s.renameChat);
   const deleteChat = useSidebarStore((s) => s.deleteChat);
   const clearChats = useSidebarStore((s) => s.clearChats);
+  const openScrapPanel = useScrapDetailPanelStore((s) => s.openScrapPanel);
+  const scrapPanelOpen = useScrapDetailPanelStore((s) => s.open);
+  const selectedScrapId = useScrapDetailPanelStore((s) => s.selectedScrapId);
 
   useEffect(() => {
     if (!user) {
@@ -360,11 +364,17 @@ export function Sidebar() {
               <div className="flex flex-col gap-0.5 px-2 pb-2">
                 {latestScraps.length > 0 ? (
                   latestScraps.map((scrap) => (
-                    <Link
+                    <button
                       key={scrap.id}
-                      to={ROUTES.scraps}
+                      type="button"
                       title={scrap.title}
-                      className="hover:bg-secondary flex items-start gap-2 rounded-xl px-3 py-2 text-left transition-colors"
+                      onClick={() => openScrapPanel(scrap.id)}
+                      className={cn(
+                        "hover:bg-secondary flex w-full items-start gap-2 rounded-xl px-3 py-2 text-left transition-colors",
+                        scrapPanelOpen &&
+                          selectedScrapId === scrap.id &&
+                          "bg-accent text-accent-foreground",
+                      )}
                     >
                       <Bookmark
                         size={14}
@@ -378,11 +388,11 @@ export function Sidebar() {
                           {scrap.savedAt}
                         </span>
                       </span>
-                    </Link>
+                    </button>
                   ))
                 ) : (
                   <p className="text-muted-foreground px-3 py-2 text-xs">
-                    저장된 스크랩이 없습니다
+                    스크랩·채팅한 페이지가 없습니다
                   </p>
                 )}
               </div>
