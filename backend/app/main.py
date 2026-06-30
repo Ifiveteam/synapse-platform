@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 from app.core.env import load_backend_env
 
@@ -26,10 +28,27 @@ logging.getLogger("app.agents.archiver.observability").setLevel(logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """앱 수명주기 — Takeout 자동분석 스케줄러 기동/종료."""
+    from app.services.takeout_scheduler import scheduler_loop
+
+    task = asyncio.create_task(scheduler_loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
 app = FastAPI(
     title="Synapse Platform API",
     version="0.1.0",
     description="Multi-Agent System 백엔드 API",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

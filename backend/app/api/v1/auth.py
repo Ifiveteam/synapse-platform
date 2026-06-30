@@ -12,6 +12,8 @@ from app.models.user import User
 from app.schemas.auth import (
     AuthStatusResponse,
     DevLoginResponse,
+    DriveConnectRequest,
+    DriveConnectResponse,
     ExtensionCodeResponse,
     ExtensionExchangeRequest,
     ExtensionRefreshRequest,
@@ -104,6 +106,28 @@ async def callback(
         state=state or None,
         session=session,
     )
+
+
+@router.post("/drive/connect", response_model=DriveConnectResponse)
+async def drive_connect(
+    body: DriveConnectRequest,
+    user: User = Depends(get_current_user_dep),
+    session: AsyncSession = Depends(get_db),
+) -> DriveConnectResponse:
+    """GIS 코드 클라이언트 code → drive.file 토큰 저장 + Picker용 access token 반환.
+
+    이후 프론트는 받은 access_token으로 Picker를 띄워 폴더를 선택한다(계정 정렬).
+    """
+    tokens = await google_oauth.exchange_code_postmessage(body.code)
+    access = tokens.get("access_token")
+    if not access:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="drive_token_exchange_failed",
+        )
+    await google_oauth.store_google_tokens(session, user, tokens)
+    await session.commit()
+    return DriveConnectResponse(access_token=access)
 
 
 @router.get("/status", response_model=AuthStatusResponse)

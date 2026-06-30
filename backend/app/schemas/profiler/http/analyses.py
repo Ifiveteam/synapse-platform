@@ -14,6 +14,7 @@ class AnalysisListItem(BaseModel):
     title: str
     snapshot_date: datetime | None = None
     status: str
+    stage: str | None = None  # running일 때: "indexing"(분류) | "profiling"(분석)
     kind: str = "snapshot"
 
 

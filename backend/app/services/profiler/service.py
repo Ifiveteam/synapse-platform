@@ -108,38 +108,35 @@ class ProfilerService:
                 return None
             return await profile_dict_with_catalog(session, row)
 
-    def list_jobs_for_user(self, user_id: str) -> list[ProfilerJob]:
-        with self._lock:
-            return [
-                job
-                for job in self._jobs.values()
-                if job.user_id == user_id
-                and job.status in (JobStatus.PENDING, JobStatus.RUNNING)
-            ]
-
     async def list_analyses_async(self, user_id: str) -> list[dict[str, Any]]:
         from app.core.database.session import AsyncSessionLocal
+        from app.models.user_analysis_source import AnalysisSourceStage
+        from app.repositories.analysis_source_repository import fetch_running_sources
         from app.repositories.profiler_repository import fetch_profile_history_list
 
         uid = uuid.UUID(user_id)
         async with AsyncSessionLocal() as session:
+            running = await fetch_running_sources(session, uid)
             rows = await fetch_profile_history_list(session, uid)
 
         total = len(rows)
         items: list[dict[str, Any]] = []
-        for job in sorted(
-            self.list_jobs_for_user(user_id),
-            key=lambda j: j.created_at,
-            reverse=True,
-        ):
+        # 진행 중 소스 — 분류중/분석중 (DB 기반이라 재시작에도 유지)
+        for src in running:
+            indexing = src.stage == AnalysisSourceStage.INDEXING
+            if indexing:
+                title = (
+                    f"{src.file_name} 분류 중" if src.file_name else "파일 분류 중"
+                )
+            else:
+                title = "프로파일 분석 중"
             items.append(
                 {
-                    "id": job.job_id,
-                    "title": "프로파일 분석 진행 중",
+                    "id": str(src.id),
+                    "title": title,
                     "snapshot_date": None,
-                    "status": (
-                        "pending" if job.status == JobStatus.PENDING else "running"
-                    ),
+                    "status": "running",
+                    "stage": src.stage,
                     "kind": "job",
                 }
             )

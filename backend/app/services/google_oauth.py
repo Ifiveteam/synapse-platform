@@ -24,12 +24,16 @@ REDIRECT_URI = os.getenv(
     "GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/auth/callback"
 )
 
+# 로그인은 기본 프로필만 — Drive 권한은 별도 "폴더 연동"(GIS 코드 클라이언트 +
+# drive.file)으로 분리. 전체 드라이브(drive.readonly) 요구를 제거해 거부감/심사 부담을 없앤다.
 SCOPES = [
     "openid",
     "email",
     "profile",
-    "https://www.googleapis.com/auth/drive.readonly",
 ]
+
+# 폴더 연동용 — 프론트 GIS 코드 클라이언트가 요청하고, 백엔드는 code를 postmessage로 교환.
+DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 
 
 def _client_id() -> str:
@@ -85,6 +89,57 @@ async def fetch_userinfo(access_token: str) -> dict:
             headers={"Authorization": f"Bearer {access_token}"},
         )
     return res.json()
+
+
+async def exchange_code_postmessage(code: str) -> dict:
+    """GIS 코드 클라이언트(popup) code → 토큰.
+
+    팝업 흐름은 redirect_uri="postmessage"로 교환한다(서버 redirect 없음).
+    로그인 redirect 흐름의 exchange_code_for_tokens와 분리.
+    """
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "code": code,
+                "client_id": _client_id(),
+                "client_secret": _client_secret(),
+                "redirect_uri": "postmessage",
+                "grant_type": "authorization_code",
+            },
+        )
+    return res.json()
+
+
+async def store_google_tokens(
+    session: AsyncSession, user: User, tokens: dict
+) -> None:
+    """이미 로그인된 유저의 구글 access/refresh 토큰 저장 (Drive 폴더 연동용).
+
+    refresh_token은 응답에 있을 때만 갱신(재동의 없이는 안 줄 수 있으므로 보존).
+    """
+    access = tokens.get("access_token")
+    refresh = tokens.get("refresh_token")
+
+    if access:
+        user.access_token = access
+
+    result = await session.execute(
+        select(UserToken).where(UserToken.user_id == user.id)
+    )
+    token_row = result.scalar_one_or_none()
+    if token_row is None:
+        token_row = UserToken(
+            user_id=user.id,
+            refresh_token="",
+            google_refresh_token=refresh,
+            expires_at=datetime.now(timezone.utc),
+        )
+        session.add(token_row)
+    elif refresh:
+        token_row.google_refresh_token = refresh
+
+    await session.flush()
 
 
 # ── 3. 영속화 ─────────────────────────────────

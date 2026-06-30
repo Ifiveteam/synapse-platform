@@ -28,35 +28,31 @@ async def refresh_user_token(user) -> str | None:
     return await refresh_access_token(user)
 
 
-async def find_takeout_in_drive(user) -> list[dict]:
-    """유저의 Drive에서 Takeout ZIP 목록 검색"""
+_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files"
+
+
+async def _list_takeout_files(user, q: str) -> list[dict]:
+    """주어진 Drive 쿼리로 Takeout 파일 목록 조회 (401 시 토큰 갱신)."""
     token = user.access_token
     if not token:
         return []
 
     params = {
-        "q": "name contains 'takeout' and mimeType != 'application/vnd.google-apps.folder' and trashed=false",
+        "q": q,
         "orderBy": "modifiedTime desc",
         "fields": "files(id,name,size,modifiedTime,mimeType)",
-        "pageSize": 20,
+        "pageSize": 50,
     }
 
     async with httpx.AsyncClient() as client:
-        response = await _get(
-            client, "https://www.googleapis.com/drive/v3/files", token, params=params
-        )
+        response = await _get(client, _DRIVE_FILES_URL, token, params=params)
 
     if response.status_code == 401:
         token = await refresh_user_token(user)
         if not token:
             return []
         async with httpx.AsyncClient() as client:
-            response = await _get(
-                client,
-                "https://www.googleapis.com/drive/v3/files",
-                token,
-                params=params,
-            )
+            response = await _get(client, _DRIVE_FILES_URL, token, params=params)
 
     if response.status_code != 200:
         print(f"[Drive] 파일 조회 실패: {response.status_code} {response.text}")
@@ -65,7 +61,22 @@ async def find_takeout_in_drive(user) -> list[dict]:
     files = response.json().get("files", [])
     # archive_browser.html만 있는 빈 ZIP 제외 (200KB 미만)
     files = [f for f in files if int(f.get("size", 0)) >= 200 * 1024]
-    print(f"[Drive] 검색 결과 {len(files)}개: {[f['name'] for f in files]}")
+    return files
+
+
+async def find_takeout_in_folder(user, folder_id: str) -> list[dict]:
+    """연동된 폴더 안에서만 Takeout ZIP 검색 (drive.file 스코프)."""
+    if not folder_id:
+        return []
+    q = (
+        f"'{folder_id}' in parents and name contains 'takeout' "
+        "and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
+    )
+    files = await _list_takeout_files(user, q)
+    print(
+        f"[Drive] 폴더 {folder_id[:12]}… 검색 {len(files)}개: "
+        f"{[f['name'] for f in files]}"
+    )
     return files
 
 

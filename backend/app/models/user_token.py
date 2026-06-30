@@ -40,3 +40,8 @@ class UserToken(TimestampMixin, Base):
     extension_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    # Takeout 자동 분석용 — 사용자가 Picker로 1회 선택한 Drive 폴더.
+    # 스케줄러는 drive_folder_id가 있는 유저만 처리한다(없으면 미연동).
+    drive_folder_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    drive_folder_name: Mapped[str | None] = mapped_column(String(512), nullable=True)

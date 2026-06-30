@@ -70,7 +70,13 @@ function AnalysisListItem({
       </div>
 
       <Badge variant={pending ? "orange" : "secondary"} className="shrink-0">
-        {pending ? (item.status === "running" ? "분석 중" : "미완료") : "완료"}
+        {pending
+          ? item.stage === "indexing"
+            ? "분류 중"
+            : item.status === "running"
+              ? "분석 중"
+              : "미완료"
+          : "완료"}
       </Badge>
 
       {!compareMode && !pending && (
