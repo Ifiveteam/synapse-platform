@@ -28,6 +28,9 @@ DOM_STABILITY_TIMEOUT_MS = 500  # DOM mutation 안정화 quiet 대기 (ms)
 MAX_SEARCH_ATTEMPTS = 2
 MAX_RETRIEVAL_ATTEMPTS = 2
 
+# respond 스크랩 도구 → 요약 연속 처리 루프 한도 (1차 도구 + 2차 요약)
+MAX_RESPOND_LOOP_ITERATIONS = 2
+
 # RAG 수집
 RAG_SEARCH_LIMIT = 3
 

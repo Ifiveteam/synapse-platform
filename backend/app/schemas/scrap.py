@@ -37,6 +37,11 @@ class ScrapCreateRequest(BaseModel):
         max_length=512,
         description="유저가 명시한 스크랩 카테고리 — 있으면 Gemini 카테고리 추론을 override",
     )
+    session_id: str | None = Field(
+        default=None,
+        max_length=50,
+        description="Archiver 대화 세션 ID — 스크랩 본문을 LangGraph State에 환류할 때 사용",
+    )
 
 
 class ScrapResponse(BaseModel):
