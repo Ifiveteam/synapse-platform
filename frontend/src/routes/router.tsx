@@ -2,8 +2,6 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { ShellLayout } from "@/components/shell/ShellLayout";
 import { AgentDetailPage } from "@/pages/agents/AgentDetailPage";
-import { IndexerPage } from "@/pages/agents/IndexerPage";
-import { ProfilerPage } from "@/pages/agents/ProfilerPage";
 import { TrendPostDetailPage } from "@/pages/agents/aggregator/TrendPostDetailPage";
 import { TrendPostsPage } from "@/pages/agents/aggregator/TrendPostsPage";
 import { HomePage } from "@/pages/HomePage";
@@ -47,8 +45,6 @@ export const router = createBrowserRouter([
       { path: ROUTES.login, element: <LoginPage /> },
       { path: ROUTES.upload, element: <UploadPage /> },
       { path: ROUTES.setup, element: <SetupPage /> },
-      { path: ROUTES.profiler, element: <ProfilerPage /> },
-      { path: ROUTES.indexer, element: <IndexerPage /> },
       { path: "/agents/:slug", element: <AgentDetailPage /> },
       { path: "/agents/:slug/posts", element: <TrendPostsPage /> },
       { path: "/agents/:slug/posts/:postId", element: <TrendPostDetailPage /> },

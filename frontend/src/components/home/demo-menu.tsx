@@ -6,10 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/routes";
 
 const DEMO_ROUTES = [
-  { label: "Profiler", href: ROUTES.profiler },
-  { label: "Navigator", href: ROUTES.navigator },
   { label: "Aggregator", href: ROUTES.agentDetail("aggregator") },
-  { label: "Indexer", href: ROUTES.indexer },
   { label: "Archiver", href: ROUTES.agentDetail("archiver") },
 ] as const;
 

@@ -152,4 +152,5 @@ async def run_takeout_pipeline(
         "cleaned_count": len(cleaned),
         "shorts_count": shorts_count,
         "category_stats": category_stats,
+        "subscription_count": result.get("subscription_saved") or 0,
     }

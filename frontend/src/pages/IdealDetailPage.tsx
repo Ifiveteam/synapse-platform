@@ -8,16 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TEMPERAMENT_AXES } from "@/lib/analyses/temperament";
 import { VALUES_AXES } from "@/lib/analyses/values";
-import {
-  applyIdeal,
-  getComparison,
-  getGuide,
-  getIdeal,
-  IDEAL_TYPE_LABEL,
-  type ComparisonResponse,
-  type GuideResponse,
-  type IdealResponse,
-} from "@/lib/ideals/api";
+import { applyIdeal, getComparison, getGuide, getIdeal } from "@/api/navigator";
+import type {
+  ComparisonResponse,
+  GuideResponse,
+  IdealResponse,
+} from "@/api/types/navigator";
+import { IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
 import { ROUTES } from "@/routes";
 import { useSidebarStore } from "@/stores/sidebar";
 

@@ -1,6 +1,7 @@
 # Indexer
 
-Google Takeout YouTube 시청 기록을 **`user_watch_catalog`**에 적재하는 에이전트.
+Google Takeout YouTube 시청 기록을 **`user_watch_catalog`**에, 구독정보를 **`user_subscription`**에 적재하는 에이전트.
+(YouTube Music 시청은 `platform=youtube_music`로 라벨)
 
 ## 문서
 
@@ -18,9 +19,9 @@ Google Takeout YouTube 시청 기록을 **`user_watch_catalog`**에 적재하는
 
 | 구분 | 경로 |
 |------|------|
-| LangGraph | `backend/app/agents/indexer/` |
+| LangGraph | `backend/app/agents/indexer/` (preprocess·diff·enrich·embed·store·subscriptions) |
 | Repository | `backend/app/repositories/indexer_repository.py` |
-| ORM | `backend/app/models/user_watch_catalog.py` |
+| ORM | `backend/app/models/user_watch_catalog.py`, `user_subscription.py` |
 | Takeout API | `backend/app/api/v1/takeout.py` |
 | Indexer API | `backend/app/api/v1/indexer.py` |
 | Drive UI | `frontend/src/components/upload/upload-panel.tsx` |

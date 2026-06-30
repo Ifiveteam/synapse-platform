@@ -340,17 +340,17 @@ function GuideTab() {
           {
             num: 2,
             title: "YouTube만 선택",
-            desc: '"모두 선택 해제" 버튼을 누른 뒤 YouTube 항목만 체크하세요.',
+            desc: '"모두 선택 해제" 후 "YouTube 및 YouTube Music"만 체크하세요. (시청 기록 포함)',
           },
           {
             num: 3,
-            title: "보내기 방법 → Google Drive",
-            desc: '"다음 단계"에서 대상을 "Drive에 추가"로 설정하세요.',
+            title: "내보내기 설정",
+            desc: '파일 형식은 ZIP, "한 번 내보내기"로 설정합니다.',
           },
           {
             num: 4,
-            title: "보내기 요청",
-            desc: "요청 완료 후 구글이 처리하는 데 수 분~수 시간이 걸립니다. Drive에 파일이 생기면 감지되며, 직접 분석 시작을 눌러 주세요.",
+            title: "받는 방법 선택 → 업로드",
+            desc: '"다운로드 링크 전송"으로 받으면 ZIP을 [직접 업로드] 탭에 올리고, "Drive에 추가"로 받으면 [Drive 연동] 탭에서 자동 감지된 파일을 선택하세요.',
           },
         ].map((s) => (
           <div key={s.num} className="flex gap-4 rounded-xl border border-gray-100 bg-gray-50 p-4">
@@ -375,8 +375,8 @@ function GuideTab() {
         ))}
       </div>
       <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-700">
-       보내기 완료까지 최대 수 시간 걸릴 수 있어요. Drive 탭에서 30초마다 파일을
-        확인하고, 감지되면 분석 시작을 눌러 주세요.
+        내보내기 완료까지 수 분~수 시간 걸릴 수 있어요. 준비되면 위의 [직접 업로드] 또는
+        [Drive 연동] 탭에서 파일을 올려 분석을 시작하세요.
       </div>
     </div>
   );
@@ -850,16 +850,18 @@ export function UploadPanel({
   selectFileLabel = "파일 직접 선택",
   className,
 }: UploadPanelProps) {
-  const [tab, setTab] = useState<Tab>("upload");
+  const [tab, setTab] = useState<Tab>(showGuideTab ? "guide" : "upload");
 
   const handleSuccess = () => {
     onSuccess?.();
   };
 
   const tabs = [
+    ...(showGuideTab
+      ? [{ id: "guide" as const, icon: "?", label: "Takeout 가이드" }]
+      : []),
     { id: "upload" as const, icon: "📁", label: uploadTabLabel },
     { id: "drive" as const, icon: "☁", label: driveTabLabel },
-    ...(showGuideTab ? [{ id: "guide" as const, icon: "?", label: "가이드" }] : []),
   ];
 
   return (
