@@ -55,9 +55,10 @@ export async function getAuthHeaders(
  * 정산된 페이지 체류 세션을 backend DB로 전송한다.
  */
 export async function sendTrackingData(payload: TrackingPayload): Promise<void> {
+  const headers = await getAuthHeaders({ 'Content-Type': 'application/json' })
   const response = await fetch(`${API_BASE}/api/v1/tracking/events`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(payload),
   })
 

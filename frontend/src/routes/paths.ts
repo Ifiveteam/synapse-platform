@@ -1,6 +1,9 @@
 import type { AgentId } from "@/lib/agents";
 
 export const ROUTES = {
+  ME: {
+    ACTIVITY: "/me/activity",
+  },
   home: "/",
   login: "/login",
   upload: "/upload",
