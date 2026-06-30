@@ -9,6 +9,8 @@
   - URL 패턴         → thumbnail_url_for()  (API 키·quota 불필요)
 """
 
+import csv
+import io
 import json
 import logging
 import re
@@ -102,6 +104,101 @@ def parse_takeout_json(json_path: str) -> list[dict]:
         return json.load(f)
 
 
+# ---------------------------------------------------------------------------
+# 구독정보 CSV 파싱 (ZIP 전용 — watch-history.json 단독엔 없음)
+# ---------------------------------------------------------------------------
+
+# Takeout 구독 CSV 파일명 토큰 (한/영)
+_SUBSCRIPTION_NAME_TOKENS = ("구독정보", "subscriptions")
+
+
+def _match_subscription_columns(header: list[str]) -> dict[str, int]:
+    """구독 CSV 헤더 → 컬럼 인덱스 매핑 (한/영, 컬럼 순서 무관).
+
+    한글: '채널 ID', '채널 URL', '채널 제목' / 영문: 'Channel Id/Url/Title'.
+    Takeout 구독 CSV는 이 3컬럼만 있어 단순 키워드 매칭으로 충분.
+    """
+    idx: dict[str, int] = {}
+    for i, col in enumerate(header):
+        key = (col or "").strip().lower()
+        if "id" in key:
+            idx.setdefault("channel_id", i)
+        elif "url" in key:
+            idx.setdefault("channel_url", i)
+        elif "title" in key or "제목" in key:
+            idx.setdefault("channel_title", i)
+    return idx
+
+
+def _parse_subscription_csv(text_data: str) -> list[dict]:
+    """구독 CSV 본문 → [{channel_id, channel_url, channel_title}] (channel_id dedupe)."""
+    reader = csv.reader(io.StringIO(text_data))
+    rows = list(reader)
+    if not rows:
+        return []
+
+    cols = _match_subscription_columns(rows[0])
+    id_i = cols.get("channel_id")
+    if id_i is None:
+        logger.warning("[구독] CSV에서 채널 ID 컬럼을 찾지 못함")
+        return []
+    url_i = cols.get("channel_url")
+    title_i = cols.get("channel_title")
+
+    def _cell(row: list[str], i: int | None) -> str | None:
+        if i is None or i >= len(row):
+            return None
+        value = (row[i] or "").strip()
+        return value or None
+
+    result: list[dict] = []
+    seen: set[str] = set()
+    for row in rows[1:]:
+        channel_id = _cell(row, id_i)
+        if not channel_id or channel_id in seen:
+            continue
+        seen.add(channel_id)
+        result.append(
+            {
+                "channel_id": channel_id,
+                "channel_url": _cell(row, url_i),
+                "channel_title": _cell(row, title_i),
+            }
+        )
+    return result
+
+
+def parse_subscriptions_zip(zip_path: str) -> tuple[list[dict], bool]:
+    """Takeout ZIP에서 구독정보 CSV 추출.
+
+    반환 (구독 행 목록, 파일 발견 여부). 파일이 없으면 ([], False) —
+    호출부는 '구독 데이터 없음'으로 보고 기존 구독을 건드리지 않는다
+    (빈 목록으로 전체 교체하면 멀쩡한 구독이 삭제되므로).
+    """
+    try:
+        with zipfile.ZipFile(zip_path, "r") as z:
+            csv_name = None
+            for name in z.namelist():
+                lower = name.lower()
+                if lower.endswith(".csv") and any(
+                    token in lower for token in _SUBSCRIPTION_NAME_TOKENS
+                ):
+                    csv_name = name
+                    break
+            if csv_name is None:
+                logger.info("[구독] ZIP에 구독정보 CSV 없음 → 스킵")
+                return [], False
+            logger.info(f"[구독] 구독정보 발견: {csv_name}")
+            with z.open(csv_name) as f:
+                text_data = f.read().decode("utf-8-sig", errors="replace")
+    except zipfile.BadZipFile:
+        return [], False
+
+    rows = _parse_subscription_csv(text_data)
+    logger.info(f"[구독] 파싱 {len(rows)}건")
+    return rows, True
+
+
 def is_ad(item: dict) -> bool:
     """Takeout details에 '광고' 포함 시 True — catalog 제외."""
     details = item.get("details", [])
@@ -125,15 +222,20 @@ def normalize_timestamp(time_str: str) -> str:
 
 
 def detect_platform(item: dict) -> str:
-    """Takeout 항목의 products/header에서 플랫폼을 식별한다 (없으면 youtube).
+    """Takeout 항목의 URL·header·products에서 플랫폼을 식별한다 (없으면 youtube).
 
     예: products=["YouTube"] / header="YouTube" → "youtube".
+    YouTube Music은 products가 ["YouTube"]로 와서 일반 시청과 구분되지 않으므로,
+    titleUrl 호스트(music.youtube.com) 또는 header("YouTube Music")로 먼저 판별한다.
     멀티 플랫폼 확장 대비 — 파일이 알려주는 출처를 그대로 따른다.
     """
+    url = item.get("titleUrl", "") or ""
+    header = item.get("header", "") or ""
+    if "music.youtube.com" in url or header.strip() == "YouTube Music":
+        return "youtube_music"
     products = item.get("products")
     if isinstance(products, list) and products and products[0]:
         return str(products[0]).strip().lower().replace(" ", "_")
-    header = item.get("header")
     if header:
         return str(header).strip().lower().replace(" ", "_")
     return "youtube"

@@ -15,7 +15,7 @@ export function UploadPage() {
         <p className="text-muted-foreground mt-1 text-sm">시청 기록 업로드</p>
       </div>
 
-      <UploadPanel className="flex-1" />
+      <UploadPanel className="flex-1" showGuideTab />
 
       <div className="mt-6 flex justify-end">
         <Button type="button" className="gap-1.5" onClick={() => navigate(ROUTES.home)}>

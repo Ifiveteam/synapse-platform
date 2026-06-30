@@ -70,7 +70,7 @@ YouTube API에 `isShorts` 필드 **없음**.
 
 | Takeout 필드 | catalog | 비고 |
 |--------------|---------|------|
-| `header` | `platform` | `"YouTube"` → `youtube` |
+| `header` / `titleUrl` | `platform` | 기본 `youtube`. `music.youtube.com` URL 또는 header `"YouTube Music"` → `youtube_music` |
 | `title` | `title` | 접미사 제거 |
 | `titleUrl` | `url` | upsert 키 |
 | `subtitles[0].name` | `channel` | |
@@ -137,6 +137,18 @@ GET https://www.googleapis.com/youtube/v3/videos
 | 모드 | 동작 |
 |------|------|
 | **upsert** (기본) | `(user_id, url)` 충돌 시 메타·`watched_at` 갱신 |
-| **reindex** | `video_analysis` → `user_watch_catalog` 삭제 후 S1~S5 |
+| **reindex** | `video_analysis` → `user_watch_catalog` 삭제 후 재적재 |
 
-API: `DELETE /indexer/videos` — 동일 삭제 순서.
+API: `DELETE /indexer/videos` — `user_watch_catalog`·`video_analysis`·**`user_subscription`**·`user_analysis_source` 삭제 (인덱서 페이지 「초기화」).
+
+---
+
+## 8. 구독정보 (`user_subscription`)
+
+| 항목 | 내용 |
+|------|------|
+| 출처 | Takeout ZIP 내 `구독정보.csv` (한/영 헤더 매핑: `채널 ID/URL/제목`) |
+| 제약 | **ZIP에만 존재** — `watch-history.json` 단독 업로드엔 없음 → 스킵 |
+| 컬럼 | `channel_id`, `channel_url`, `channel_title` (UK `(user_id, channel_id)`) |
+| 갱신 | 구독 CSV가 있을 때만 **전체 교체**(delete-all → insert, 구독 취소 반영). 없으면 기존 유지 |
+| 활용 | 적재만 인덱서. 분석 활용(소비 자율성·아스피레이션)은 네비게이터 예정 |

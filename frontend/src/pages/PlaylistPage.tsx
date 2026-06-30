@@ -19,17 +19,19 @@ import {
   createPlaylist,
   deletePlaylist,
   getPlaylist,
-  IDEAL_TYPE_LABEL,
   listIdeals,
   listPlaylists,
   refreshPlaylistItem,
   regeneratePlaylist,
   renamePlaylist,
   streamPlaylistChat,
-  type IdealResponse,
-  type PlaylistResponse,
-  type PlaylistSummary,
-} from "@/lib/ideals/api";
+} from "@/api/navigator";
+import type {
+  IdealResponse,
+  PlaylistResponse,
+  PlaylistSummary,
+} from "@/api/types/navigator";
+import { IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
 import { ROUTES } from "@/routes";
 
 type Row = PlaylistSummary & { idealId: string; idealLabel: string };

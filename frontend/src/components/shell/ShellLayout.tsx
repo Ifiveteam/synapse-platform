@@ -16,7 +16,7 @@ import { useSidebarStore } from "@/stores/sidebar";
 
 function isPublicPath(pathname: string) {
   if (pathname === ROUTES.home || pathname === ROUTES.login) return true;
-  if (pathname === ROUTES.trends) return true;
+  if (pathname === ROUTES.trends || pathname === ROUTES.download) return true;
   return pathname.startsWith("/agents");
 }
 

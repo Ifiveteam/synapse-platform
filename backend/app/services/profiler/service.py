@@ -15,6 +15,9 @@ from app.schemas.profiler import JobStatus
 from app.services.notification import NotificationPayload
 from app.services.profiler.scores import history_scores_dict
 
+# 동시 프로파일 분석 실행 상한 (외부 API·DB 폭주 방지)
+_MAX_CONCURRENT_JOBS = 2
+
 
 def profile_to_dict(row: UserProfileHistory) -> dict[str, Any]:
     traits = row.dominant_traits
@@ -68,6 +71,10 @@ class ProfilerService:
         self._jobs: dict[str, ProfilerJob] = {}
         self._lock = Lock()
         self.agent = get_profiler_agent()
+        # fire-and-forget 태스크의 강한 참조 유지 (GC 수거로 인한 메일 누락 방지)
+        self._bg_tasks: set[asyncio.Task[None]] = set()
+        # 동시 실행 제한 — 대기 job은 PENDING 유지
+        self._semaphore = asyncio.Semaphore(_MAX_CONCURRENT_JOBS)
 
     def create_job(
         self,
@@ -166,43 +173,49 @@ class ProfilerService:
             return await profile_dict_with_catalog(session, row)
 
     async def run_job_async(self, job_id: str) -> None:
-        with self._lock:
-            job = self._jobs.get(job_id)
-            if job is None:
-                return
-            job.status = JobStatus.RUNNING
-            job.updated_at = datetime.now(UTC)
-            user_id = job.user_id
-            notify_email = job.notify_email
-            analysis_source_id = job.analysis_source_id
-
-        try:
-            final = await self.agent.run_profile(user_id, notify_email)
-            profile = await self.fetch_profile_async(user_id)
-            notification = final.get("notification")
-            if profile and analysis_source_id:
-                from app.services.analysis_source_service import complete_source_async
-
-                await complete_source_async(
-                    analysis_source_id, profile.get("snapshot_id")
-                )
+        # 세마포어로 동시 실행 제한 — 슬롯 대기 동안 job은 PENDING 유지
+        async with self._semaphore:
             with self._lock:
-                job = self._jobs[job_id]
-                job.status = JobStatus.COMPLETED
-                job.current_step = final.get("current_step", "notify")
-                job.result = profile
-                job.notification = notification
+                job = self._jobs.get(job_id)
+                if job is None:
+                    return
+                job.status = JobStatus.RUNNING
                 job.updated_at = datetime.now(UTC)
-        except Exception as exc:  # noqa: BLE001
-            if analysis_source_id:
-                from app.services.analysis_source_service import fail_source_async
+                user_id = job.user_id
+                notify_email = job.notify_email
+                analysis_source_id = job.analysis_source_id
 
-                await fail_source_async(analysis_source_id)
-            with self._lock:
-                job = self._jobs[job_id]
-                job.status = JobStatus.FAILED
-                job.error = str(exc)
-                job.updated_at = datetime.now(UTC)
+            try:
+                final = await self.agent.run_profile(user_id, notify_email)
+                profile = await self.fetch_profile_async(user_id)
+                notification = final.get("notification")
+                if profile and analysis_source_id:
+                    from app.services.analysis_source_service import (
+                        complete_source_async,
+                    )
+
+                    await complete_source_async(
+                        analysis_source_id, profile.get("snapshot_id")
+                    )
+                with self._lock:
+                    job = self._jobs[job_id]
+                    job.status = JobStatus.COMPLETED
+                    job.current_step = final.get("current_step", "notify")
+                    job.result = profile
+                    job.notification = notification
+                    job.updated_at = datetime.now(UTC)
+            except Exception as exc:  # noqa: BLE001
+                if analysis_source_id:
+                    from app.services.analysis_source_service import (
+                        fail_source_async,
+                    )
+
+                    await fail_source_async(analysis_source_id)
+                with self._lock:
+                    job = self._jobs[job_id]
+                    job.status = JobStatus.FAILED
+                    job.error = str(exc)
+                    job.updated_at = datetime.now(UTC)
 
     def enqueue_for_user(
         self,
@@ -218,7 +231,10 @@ class ProfilerService:
         except RuntimeError:
             asyncio.run(self.run_job_async(job.job_id))
         else:
-            loop.create_task(self.run_job_async(job.job_id))
+            # 강한 참조 유지 — GC가 실행 중 태스크를 수거하지 않도록 (메일 누락 방지)
+            task = loop.create_task(self.run_job_async(job.job_id))
+            self._bg_tasks.add(task)
+            task.add_done_callback(self._bg_tasks.discard)
         return job
 
 

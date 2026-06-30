@@ -342,7 +342,7 @@ export function SetupPage() {
   }, [token, step]);
 
   const handleChoose = (p: Path) => { setPath(p); setStep(2); };
-  const handleDone = () => navigate("/agents/indexer");
+  const handleDone = () => navigate("/upload");
   const handleLogout = () => { logout(); setStep(0); setPath("none"); };
 
   const stepLabels =

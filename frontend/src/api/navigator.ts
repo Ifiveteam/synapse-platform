@@ -1,82 +1,20 @@
 import { apiFetchAuth } from "@/api/client";
+import type {
+  AxisScores8,
+  AxisScores13,
+  ChatStreamHandlers,
+  ComparisonResponse,
+  GuideResponse,
+  IdealEvent,
+  IdealResponse,
+  IdealType,
+  PlaylistChatHandlers,
+  PlaylistResponse,
+  PlaylistSummary,
+  ProposalsResponse,
+} from "@/api/types/navigator";
 import { API_BASE_URL } from "@/lib/env";
 import { useAuthStore } from "@/stores/auth";
-
-// ── 타입 (백엔드 DTO) ────────────────────────────────────────────
-export type IdealType = "OPPOSITE" | "DEEPEN" | "BALANCE" | "CUSTOM";
-
-export const IDEAL_TYPE_LABEL: Record<IdealType, string> = {
-  OPPOSITE: "반대형",
-  DEEPEN: "강점심화형",
-  BALANCE: "균형형",
-  CUSTOM: "맞춤형",
-};
-
-export const AXIS_LABELS: Record<string, string> = {
-  exploration: "탐색",
-  analytical: "분석",
-  creativity: "창의",
-  execution: "실행",
-  achievement_drive: "성취동기",
-  autonomy: "자율",
-  sociality: "사회성",
-  sensitivity: "감수성",
-};
-
-export type AxisScores8 = Record<string, number>;
-export type AxisScores13 = Record<string, number>;
-
-export interface ProposalItem {
-  ideal_type: IdealType;
-  scores: AxisScores8;
-  values_temperament: AxisScores13;
-  persona_label: string;
-  reasoning: string;
-}
-export interface ProposalsResponse {
-  proposals: ProposalItem[];
-}
-
-export interface IdealResponse {
-  id: string;
-  ideal_type: IdealType;
-  scores: AxisScores8;
-  values_temperament: AxisScores13 | null;
-  persona_label: string;
-  reasoning: string;
-  is_active: boolean;
-  updated_at: string;
-}
-
-export interface AxisGapItem {
-  axis: string;
-  label_ko: string;
-  current: number;
-  ideal: number;
-  gap: number;
-}
-export interface ComparisonResponse {
-  current: AxisScores8;
-  ideal: AxisScores8;
-  gaps: AxisGapItem[];
-  total_gap: number;
-  current_vt: AxisScores13 | null;
-  ideal_vt: AxisScores13 | null;
-}
-
-export interface GuideStepItem {
-  axis: string;
-  label_ko: string;
-  title: string;
-  detail: string;
-  priority: number;
-}
-export interface GuideResponse {
-  summary: string;
-  steps: GuideStepItem[];
-  generated_at: string | null;
-  stale: boolean;
-}
 
 // ── REST ─────────────────────────────────────────────────────────
 const P = "/api/v1/navigator";
@@ -143,33 +81,6 @@ export async function getCurrentAxes(
 }
 
 // ── 재생목록 ───────────────────────────────────────────────────────
-export interface PlaylistItemResponse {
-  video_id: string;
-  title: string;
-  channel: string;
-  channel_id: string;
-  thumbnail_url: string;
-  url: string;
-  reason: string;
-}
-export interface PlaylistResponse {
-  id: string;
-  ideal_id: string;
-  title: string;
-  summary: string;
-  items: PlaylistItemResponse[];
-  youtube_playlist_id: string | null;
-  created_at: string;
-  updated_at: string;
-}
-export interface PlaylistSummary {
-  id: string;
-  title: string;
-  item_count: number;
-  youtube_playlist_id: string | null;
-  created_at: string;
-}
-
 export const createPlaylist = (idealId: string) =>
   apiFetchAuth<PlaylistResponse>(`${P}/ideal/${idealId}/playlists`, {
     method: "POST",
@@ -200,11 +111,6 @@ export const regeneratePlaylist = (playlistId: string) =>
   apiFetchAuth<PlaylistResponse>(`${P}/playlists/${playlistId}/regenerate`, {
     method: "POST",
   });
-
-export interface PlaylistChatHandlers {
-  onStatus?: (content: string) => void;
-  onPlaylist?: (playlist: PlaylistResponse) => void;
-}
 
 export async function streamPlaylistChat(
   playlistId: string,
@@ -265,17 +171,6 @@ export async function streamPlaylistChat(
 }
 
 // ── 챗 SSE ───────────────────────────────────────────────────────
-export interface IdealEvent {
-  behavior: AxisScores8;
-  values_temperament: AxisScores13;
-}
-
-export interface ChatStreamHandlers {
-  onStatus?: (content: string) => void;
-  onIdeal?: (data: IdealEvent) => void;
-  onToken?: (content: string) => void;
-}
-
 export async function streamChat(
   body: {
     message: string;

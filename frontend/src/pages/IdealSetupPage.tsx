@@ -21,16 +21,17 @@ import { TEMPERAMENT_AXES } from "@/lib/analyses/temperament";
 import type { AnalysisResultItem } from "@/lib/analyses/types";
 import { VALUES_AXES } from "@/lib/analyses/values";
 import {
-  AXIS_LABELS,
-  IDEAL_TYPE_LABEL,
   createIdeal,
   getCurrentAxes,
   getProposals,
   streamChat,
-  type AxisScores8,
-  type AxisScores13,
-  type ProposalItem,
-} from "@/lib/ideals/api";
+} from "@/api/navigator";
+import type {
+  AxisScores8,
+  AxisScores13,
+  ProposalItem,
+} from "@/api/types/navigator";
+import { AXIS_LABELS, IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/routes";
 
