@@ -11,6 +11,7 @@ from app.api.v1.payment import router as payment_router
 from app.api.v1.profiler import router as profiler_router
 from app.api.v1.scrap import router as scrap_router
 from app.api.v1.takeout import router as takeout_router
+from app.api.v1.tracking import router as tracking_router
 from app.api.v1.trend import router as trend_router
 
 api_router = APIRouter(prefix="/api/v1")
@@ -28,3 +29,4 @@ api_router.include_router(archiver_router)
 api_router.include_router(scrap_router)
 api_router.include_router(curator_router)
 api_router.include_router(payment_router)
+api_router.include_router(tracking_router)

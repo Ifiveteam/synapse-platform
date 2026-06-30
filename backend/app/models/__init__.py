@@ -1,5 +1,6 @@
 """SQLAlchemy models."""
 
+from app.models.behavior import UserBehaviorLog
 from app.models.chat import AIChatLog
 from app.models.extension_auth_code import ExtensionAuthCode
 from app.models.navigator_playlist import NavigatorPlaylist
@@ -23,6 +24,7 @@ __all__ = [
     "Scrap",
     "ScrapEmbedding",
     "User",
+    "UserBehaviorLog",
     "UserAnalysisSource",
     "UserIdealPersona",
     "UserProfileHistory",

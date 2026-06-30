@@ -1,6 +1,7 @@
 import { type ComponentType, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
+  Activity,
   Bookmark,
   MessageSquare,
   Moon,
@@ -331,8 +332,13 @@ export function Sidebar() {
           )}
         </div>
 
-        {/* 적용 중 이상향 */}
-        <div className={cn("shrink-0", expanded ? "px-2 pt-1" : "")}>
+        {/* 적용 중 이상향 · 활동 이력 */}
+        <div
+          className={cn(
+            "shrink-0 flex flex-col gap-0.5",
+            expanded ? "px-2 pt-1" : "items-center",
+          )}
+        >
           <SidebarRow
             expanded={expanded}
             icon={Target}
@@ -340,6 +346,13 @@ export function Sidebar() {
             sublabel={expanded ? "현재 적용 중" : undefined}
             href={ROUTES.idealManagement}
             active={pathname === ROUTES.idealManagement}
+          />
+          <SidebarRow
+            expanded={expanded}
+            icon={Activity}
+            label="활동 이력"
+            href={ROUTES.ME.ACTIVITY}
+            active={pathname === ROUTES.ME.ACTIVITY}
           />
         </div>
 
