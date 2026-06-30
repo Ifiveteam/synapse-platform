@@ -12,7 +12,7 @@ interface ScrapCardProps {
 }
 
 function resolveHostname(url: string | null) {
-  if (!url) return '대화 맥락'
+  if (!url) return 'URL 없음'
   try {
     return new URL(url).hostname
   } catch {

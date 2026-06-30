@@ -15,6 +15,8 @@ def format_sse_event(
     phase: str | None = None,
     engines: list[str] | None = None,
     message: str | None = None,
+    action: str | None = None,
+    custom_category: str | None = None,
 ) -> str:
     """표준 SSE 프레임 — `event:` + JSON `data:` (content 필수, status 구조화 필드 optional)."""
     payload: dict[str, Any] = {"content": content}
@@ -24,6 +26,10 @@ def format_sse_event(
         payload["phase"] = phase
     if engines:
         payload["engines"] = engines
+    if action is not None:
+        payload["action"] = action
+    if custom_category is not None:
+        payload["custom_category"] = custom_category
     body = json.dumps(payload, ensure_ascii=False)
     return f"event: {event}\ndata: {body}\n\n"
 
@@ -37,4 +43,6 @@ def format_stream_event(event: ArchiverStreamEvent) -> str:
         phase=event.phase,
         engines=engines,
         message=event.message,
+        action=event.action,
+        custom_category=event.custom_category,
     )

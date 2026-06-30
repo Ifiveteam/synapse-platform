@@ -17,13 +17,21 @@ import {
   queryActiveTabContext,
   queryActiveTabContextForSend,
 } from '@/features/archiver/services/queryTabContext'
+import { createScrap } from '@/features/scrap/services/createScrap'
 import { isExtensionContextValid } from '@/shared/utils/extensionContext'
 
 export type {
   ArchiverStreamEventPayload,
   ArchiverStreamEventType,
   ArchiverStreamStatus,
+  ArchiverWebScrapActionPayload,
 } from '@/features/archiver/services/archiverClient'
+
+export interface StreamMessageResult {
+  finalContent: string
+  webScrapCompleted: boolean
+  webScrapCustomCategory: string | null
+}
 
 export function useArchiver() {
   const [currentContext, setCurrentContext] = useState<TabContext | null>(null)
@@ -109,7 +117,7 @@ export function useArchiver() {
     async (
       message: string,
       onEvent: (event: ArchiverStreamEventType, payload: ArchiverStreamEventPayload) => void,
-    ): Promise<string> => {
+    ): Promise<StreamMessageResult> => {
       setIsStreaming(true)
       try {
         const contextAtSend = await queryActiveTabContext()
@@ -133,7 +141,20 @@ export function useArchiver() {
           })
         }
 
-        return result.finalContent
+        if (result.needsWebScrap) {
+          await createScrap({ customCategory: result.webScrapCustomCategory })
+          return {
+            finalContent: result.finalContent,
+            webScrapCompleted: true,
+            webScrapCustomCategory: result.webScrapCustomCategory,
+          }
+        }
+
+        return {
+          finalContent: result.finalContent,
+          webScrapCompleted: false,
+          webScrapCustomCategory: null,
+        }
       } finally {
         setIsStreaming(false)
       }

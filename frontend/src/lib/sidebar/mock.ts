@@ -1,5 +1,6 @@
 export interface SidebarScrap {
   id: string;
+  sessionId: string;
   title: string;
   savedAt: string;
 }
@@ -12,12 +13,6 @@ export interface SidebarChat {
 
 /** 현재 적용 중인 이상향 표시 라벨 (초기값 — 백엔드 로드 전) */
 export const MOCK_ACTIVE_IDEAL_LABEL: string | null = null;
-
-export const MOCK_SCRAPS: SidebarScrap[] = [
-  { id: "1", title: "AI 에이전트 트렌드 2024", savedAt: "2시간 전" },
-  { id: "2", title: "트렌드 갭 분석 노트", savedAt: "어제" },
-  { id: "3", title: "프로파일 그래프 해석", savedAt: "3일 전" },
-];
 
 export const MOCK_CHATS: SidebarChat[] = [
   { id: "c1", title: "이번 주 성장 방향 논의", updatedAt: "오늘" },

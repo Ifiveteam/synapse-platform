@@ -5,6 +5,7 @@ from app.models.extension_auth_code import ExtensionAuthCode
 from app.models.navigator_playlist import NavigatorPlaylist
 from app.models.navigator_proposal_cache import NavigatorProposalCache
 from app.models.scrap import Scrap
+from app.models.scrap_embedding import ScrapEmbedding
 from app.models.user import User
 from app.models.user_analysis_source import UserAnalysisSource
 from app.models.user_ideal_persona import UserIdealPersona
@@ -20,6 +21,7 @@ __all__ = [
     "NavigatorPlaylist",
     "NavigatorProposalCache",
     "Scrap",
+    "ScrapEmbedding",
     "User",
     "UserAnalysisSource",
     "UserIdealPersona",

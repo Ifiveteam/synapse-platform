@@ -1,16 +1,16 @@
-"""Scrap Gemini 요약·분류 파이프라인."""
+"""Archiver 스크랩 Gemini 요약·분류 파이프라인."""
 
 from __future__ import annotations
 
-from app.agents.scrap.models import ScrapClassificationResult
-from app.agents.scrap.prompts import SCRAP_CLASSIFY_SYSTEM_PROMPT
+from app.agents.archiver.scrap.models import ScrapClassificationResult
+from app.agents.archiver.scrap.prompts import SCRAP_CLASSIFY_SYSTEM_PROMPT
 from app.agents.shared.gemini import GEMINI_MODEL, invoke_structured_safe
 
 RAW_BODY_MAX_CHARS = 5000
 SUMMARY_MAX_CHARS = 120
 CATEGORY_MAX_CHARS = 512
 SCRAP_CLASSIFY_TEMPERATURE = 0.2
-SCRAP_CLASSIFY_MAX_OUTPUT_TOKENS = 512
+SCRAP_CLASSIFY_MAX_OUTPUT_TOKENS = 2048
 
 _FALLBACK_CATEGORY = "기타"
 _FALLBACK_SUMMARY = "요약을 생성하지 못했습니다."
@@ -56,11 +56,30 @@ def _fallback_classification() -> ScrapClassificationResult:
     )
 
 
-async def classify_scrap_content(user_content: str) -> ScrapClassificationResult:
-    """본문·대화 맥락을 Gemini Structured Output으로 요약·분류한다."""
+def normalize_custom_category(value: str | None) -> str | None:
+    """유저·Tool이 지정한 카테고리 문자열을 DB 한도에 맞게 정규화한다."""
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    return clamp_field(normalized, max_chars=CATEGORY_MAX_CHARS)
+
+
+async def classify_scrap_content(
+    user_content: str,
+    *,
+    custom_category: str | None = None,
+) -> ScrapClassificationResult:
+    """본문을 Gemini Structured Output으로 요약·분류한다.
+
+    custom_category가 있으면 카테고리 추론을 생략하고 해당 값을 그대로 사용한다.
+    """
     trimmed = truncate_raw_body(user_content)
     if not trimmed:
         return _fallback_classification()
+
+    override_category = normalize_custom_category(custom_category)
 
     result = await invoke_structured_safe(
         system_instruction=SCRAP_CLASSIFY_SYSTEM_PROMPT,
@@ -74,14 +93,20 @@ async def classify_scrap_content(user_content: str) -> ScrapClassificationResult
     if result is None:
         return _fallback_classification()
 
+    resolved_category = (
+        override_category
+        if override_category
+        else clamp_field(
+            result.category.strip() or _FALLBACK_CATEGORY,
+            max_chars=CATEGORY_MAX_CHARS,
+        )
+    )
+
     return ScrapClassificationResult(
         summary=clamp_field(
             result.summary.strip() or _FALLBACK_SUMMARY,
             max_chars=SUMMARY_MAX_CHARS,
         ),
-        category=clamp_field(
-            result.category.strip() or _FALLBACK_CATEGORY,
-            max_chars=CATEGORY_MAX_CHARS,
-        ),
+        category=resolved_category,
         tags=normalize_tags(list(result.tags)),
     )

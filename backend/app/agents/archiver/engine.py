@@ -102,7 +102,12 @@ class ArchiverEngine:
 
             event_type = chunk.get("event")
             content = chunk.get("content")
-            if not content or event_type not in {"status", "token", "need_dom"}:
+            if not content or event_type not in {
+                "status",
+                "token",
+                "need_dom",
+                "action",
+            }:
                 continue
 
             raw_engines = chunk.get("engines")
@@ -114,6 +119,14 @@ class ArchiverEngine:
             message = chunk.get("message")
             status_phase = phase if isinstance(phase, str) else None
             status_message = message if isinstance(message, str) else None
+            action = chunk.get("action")
+            stream_action = action if isinstance(action, str) else None
+            custom_category_raw = chunk.get("custom_category")
+            stream_custom_category = (
+                custom_category_raw.strip()
+                if isinstance(custom_category_raw, str) and custom_category_raw.strip()
+                else None
+            )
 
             yield ArchiverStreamEvent(
                 event=event_type,
@@ -121,6 +134,8 @@ class ArchiverEngine:
                 phase=status_phase,  # type: ignore[arg-type]
                 engines=engines,
                 message=status_message,
+                action=stream_action,
+                custom_category=stream_custom_category,
             )
 
         latency_ms = int((time.perf_counter() - started_at) * 1000)

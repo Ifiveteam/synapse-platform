@@ -9,11 +9,13 @@ from typing import TypeVar
 
 from google import genai
 from google.genai import types
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
 
 TSchema = TypeVar("TSchema", bound=BaseModel)
+
+STRUCTURED_OUTPUT_MAX_RETRIES = 1
 
 GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_API_KEY_ENV_VARS = ("GOOGLE_API_KEY", "GEMINI_API_KEY")
@@ -75,6 +77,13 @@ async def invoke_structured(
     return schema.model_validate_json(raw)
 
 
+def _is_retryable_structured_error(exc: Exception) -> bool:
+    """JSON 파싱·스키마 검증·빈 응답만 1회 재시도 대상으로 본다."""
+    if isinstance(exc, ValidationError):
+        return True
+    return isinstance(exc, ValueError)
+
+
 async def invoke_structured_safe(
     *,
     system_instruction: str,
@@ -85,19 +94,39 @@ async def invoke_structured_safe(
     max_output_tokens: int | None = None,
     fallback_factory: Callable[[], TSchema] | None = None,
 ) -> TSchema | None:
-    """Structured Output 호출. 실패·빈 응답 시 fallback_factory 또는 None."""
-    try:
-        return await invoke_structured(
-            system_instruction=system_instruction,
-            user_content=user_content,
-            schema=schema,
-            temperature=temperature,
-            model=model,
-            max_output_tokens=max_output_tokens,
-            fallback_factory=fallback_factory,
-        )
-    except Exception:
-        logger.exception("Gemini Structured Output failed")
-        if fallback_factory is not None:
-            return fallback_factory()
-        return None
+    """Structured Output 호출. JSON/검증 실패 시 1회 재시도 후 fallback_factory 또는 None."""
+    max_attempts = 1 + STRUCTURED_OUTPUT_MAX_RETRIES
+    last_error: Exception | None = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return await invoke_structured(
+                system_instruction=system_instruction,
+                user_content=user_content,
+                schema=schema,
+                temperature=temperature,
+                model=model,
+                max_output_tokens=max_output_tokens,
+                fallback_factory=None,
+            )
+        except Exception as exc:
+            last_error = exc
+            if attempt < max_attempts and _is_retryable_structured_error(exc):
+                logger.warning(
+                    "Gemini Structured Output attempt %s/%s failed — retrying: %s",
+                    attempt,
+                    max_attempts,
+                    exc,
+                )
+                continue
+            logger.exception(
+                "Gemini Structured Output failed after %s attempt(s)",
+                attempt,
+            )
+            break
+
+    if fallback_factory is not None:
+        return fallback_factory()
+    if last_error is not None:
+        raise last_error
+    return None

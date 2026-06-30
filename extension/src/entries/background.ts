@@ -3,6 +3,8 @@
  * 사이드패널 기본 동작 설정과 트래킹 엔진 초기화를 담당한다.
  */
 import { initializeTrackingEngine } from '@/features/tracking/services/trackingEngine'
+import { CREATE_SCRAP_ACTION } from '@/features/scrap/services/scrapBackgroundBridge'
+import { createScrap as postScrapCreate } from '@/features/scrap/services/scrapClient'
 
 /** manifest side_panel.default_path 와 동일해야 함 */
 const SIDE_PANEL_PATH = 'src/sidepanel/index.html'
@@ -62,7 +64,22 @@ initializeTrackingEngine()
  * setOptions는 onInstalled/onStartup/tabs.onUpdated에서 선행 적용.
  * open()은 user gesture가 유효한 동안 동기 호출해야 함 — 앞에 await 금지.
  */
-chrome.runtime.onMessage.addListener((message, sender) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === CREATE_SCRAP_ACTION) {
+    void (async () => {
+      try {
+        const data = await postScrapCreate(message.payload)
+        sendResponse({ ok: true, data })
+      } catch (error) {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : '스크랩 저장에 실패했습니다.',
+        })
+      }
+    })()
+    return true
+  }
+
   if (message.action !== 'TOGGLE_SIDEPANEL') return
 
   const tabId = sender.tab?.id

@@ -19,6 +19,7 @@ from app.agents.archiver.past_knowledge.retrieval import (
 from app.agents.archiver.past_knowledge.retrieval import (
     search_past_knowledge as run_rag_search,
 )
+from app.agents.archiver.utils.context_refine import clean_context_url
 from app.models.chat import AIChatLog
 from app.schemas.archiver import ArchiverChatMessage, ArchiverSessionSummary
 
@@ -43,6 +44,37 @@ class ArchiverRepository:
         if session_id:
             return session_id
         return str(uuid.uuid4())
+
+    async def find_session_id_by_url(
+        self,
+        *,
+        user_id: uuid.UUID,
+        url: str,
+    ) -> str | None:
+        """정규화 URL과 일치하는 Archiver 세션 ID를 반환한다 (없으면 None)."""
+        target = clean_context_url(url)
+        if not target:
+            return None
+
+        stmt = (
+            select(
+                AIChatLog.session_id,
+                AIChatLog.context_url,
+                func.max(AIChatLog.created_at).label("last_activity"),
+            )
+            .where(
+                AIChatLog.user_id == user_id,
+                AIChatLog.agent_type == ARCHIVER_AGENT_TYPE,
+                AIChatLog.context_url.isnot(None),
+            )
+            .group_by(AIChatLog.session_id, AIChatLog.context_url)
+            .order_by(func.max(AIChatLog.created_at).desc())
+        )
+        result = await self.db.execute(stmt)
+        for row in result.all():
+            if clean_context_url(row.context_url) == target:
+                return row.session_id
+        return None
 
     async def save_chat_log(
         self,
