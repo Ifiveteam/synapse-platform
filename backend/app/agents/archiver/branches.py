@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from typing import Literal
 
+from langgraph.graph import END
 from langgraph.types import Send
 
+from app.agents.archiver.core.constants import MAX_RESPOND_LOOP_ITERATIONS
+from app.agents.archiver.core.tools import SCRAP_CURRENT_PAGE_TOOL_NAME
 from app.agents.archiver.models import (
     COLLECT_NODE,
     MAX_RETRIEVAL_ATTEMPTS,
@@ -16,6 +19,7 @@ from app.agents.archiver.models import (
     Evaluation,
     format_router_trace_label,
     get_context_dom,
+    has_respond_body_context,
     normalize_target_engines,
     remaining_engines,
 )
@@ -163,3 +167,27 @@ def route_after_evaluator(state: ArchiverState) -> RouteAfterEvaluator:
         remaining=retry_targets,
     )
     return sends
+
+
+def route_after_respond(state: ArchiverState) -> Literal["respond"] | str:
+    """respond 후 스크랩+요약 복합 의도 시 2차 요약 패스로 루프백, 아니면 종료."""
+    loop_count = int(state.get("respond_loop_count") or 0)
+    label = format_router_trace_label(state)
+
+    if loop_count >= MAX_RESPOND_LOOP_ITERATIONS:
+        log_router_branch(route=label, next_node="end", targets=[])
+        return END
+
+    if not state.get("pending_followup_summary"):
+        return END
+
+    executed = set(state.get("executed_respond_tools") or [])
+    if SCRAP_CURRENT_PAGE_TOOL_NAME not in executed:
+        return END
+
+    if not has_respond_body_context(state):
+        log_router_branch(route=label, next_node="end", targets=[])
+        return END
+
+    log_router_branch(route=label, next_node="respond", targets=[])
+    return "respond"

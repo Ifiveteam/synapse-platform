@@ -121,6 +121,11 @@ class ArchiverService:
             context_body=context_body,
             dom_continuation=request.dom_continuation,
         )
+        scrapped_fields = await self.archiver_engine.load_scrapped_context(session_id)
+        initial_state = ArchiverEngine.merge_scrapped_context(
+            initial_state,
+            scrapped_fields,
+        )
 
         assistant_token_chunks: list[str] = []
 
@@ -163,6 +168,13 @@ class ArchiverService:
             custom_category=normalize_custom_category(request_data.custom_category),
         )
 
+        session_id = (request_data.session_id or "").strip() or None
+        if not session_id and request_data.url:
+            session_id = await self.repo.find_session_id_by_url(
+                user_id=user_id,
+                url=request_data.url,
+            )
+
         scrap = await self.scrap_repo.create_scrap(
             user_id=user_id,
             source_type="web",
@@ -172,7 +184,7 @@ class ArchiverService:
             category=classification.category,
             tags=classification.tags,
             raw_body_snapshot=raw_body or None,
-            session_id=None,
+            session_id=session_id,
         )
         await self.scrap_embedding_service.embed_and_persist(
             scrap_id=scrap.id,
@@ -180,6 +192,14 @@ class ArchiverService:
             summary=classification.summary,
             raw_body=raw_body or None,
         )
+
+        if session_id:
+            await self.archiver_engine.sync_scrapped_context(
+                session_id=session_id,
+                scrapped_content=raw_body,
+                scrapped_summary=classification.summary,
+            )
+
         return ScrapResponse.model_validate(scrap)
 
     async def get_user_scraps(

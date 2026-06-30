@@ -9,6 +9,10 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage
 
+from app.agents.archiver.core.checkpointer import (
+    load_scrapped_session_context,
+    save_scrapped_session_context,
+)
 from app.agents.archiver.core.store import ArchiverStore, build_run_config
 from app.agents.archiver.models import (
     NO_CONTEXT_TITLE,
@@ -21,6 +25,12 @@ from app.agents.archiver.workflow import build_archiver_workflow
 
 _compiled_graph = None
 _archiver_engine_runner: ArchiverEngine | None = None
+
+_SCRAPPED_CONTEXT_KEYS = (
+    "scrapped_content",
+    "scrapped_summary",
+    "page_scrap_completed",
+)
 
 
 def build_archiver_engine():
@@ -74,6 +84,48 @@ class ArchiverEngine:
         if dom_continuation:
             state["dom_continuation"] = True
         return state
+
+    @staticmethod
+    def merge_scrapped_context(
+        state: ArchiverState,
+        scrapped_fields: dict[str, Any],
+    ) -> ArchiverState:
+        """체크포인터에서 읽은 스크랩 필드를 State에 병합하고 DOM 컨텍스트로 승격한다."""
+        if not scrapped_fields:
+            return state
+
+        merged: ArchiverState = dict(state)
+        for key in _SCRAPPED_CONTEXT_KEYS:
+            value = scrapped_fields.get(key)
+            if value is None:
+                continue
+            if key == "page_scrap_completed":
+                merged[key] = bool(value)
+            elif isinstance(value, str) and value.strip():
+                merged[key] = value.strip()
+
+        scrapped_body = (merged.get("scrapped_content") or "").strip()
+        if scrapped_body and not (merged.get("context_dom") or "").strip():
+            merged["context_dom"] = scrapped_body
+        return merged
+
+    async def load_scrapped_context(self, session_id: str) -> dict[str, Any]:
+        """세션 저장소에서 스크랩 환류 필드를 조회한다."""
+        return load_scrapped_session_context(session_id)
+
+    async def sync_scrapped_context(
+        self,
+        *,
+        session_id: str,
+        scrapped_content: str,
+        scrapped_summary: str,
+    ) -> None:
+        """POST /scraps 완료 시 세션 저장소에 본문·요약을 기록한다."""
+        save_scrapped_session_context(
+            session_id,
+            scrapped_content=scrapped_content,
+            scrapped_summary=scrapped_summary,
+        )
 
     async def stream(
         self,
