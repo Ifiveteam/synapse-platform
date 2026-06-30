@@ -4,8 +4,4 @@
  */
 export const uploadLocalStorage = {
   directUploadTask: "synapse-upload-task",
-  driveTasks: "synapse-drive-tasks",
-  driveAnalyzed: "synapse-analyzed-files",
-  /** 예전 버전 잔여 데이터 삭제용 */
-  driveStatsLegacy: "synapse-drive-stats",
 } as const;
