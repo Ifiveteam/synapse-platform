@@ -15,6 +15,7 @@ import { IdealSetupPage } from "@/pages/IdealSetupPage";
 import { PlaylistPage } from "@/pages/PlaylistPage";
 import { MyActivityPage } from "@/pages/MyActivityPage";
 import { MyAnalysesPage } from "@/pages/MyAnalysesPage";
+import { MyHubPage } from "@/pages/MyHubPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ScrapDetailPage } from "@/pages/ScrapDetailPage";
 import { ScrapPage } from "@/pages/ScrapPage";
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
     element: <ShellLayout />,
     children: [
       { path: ROUTES.home, element: <HomePage /> },
+      { path: ROUTES.ME.HOME, element: <MyHubPage /> },
       { path: ROUTES.myAnalyses, element: <MyAnalysesPage /> },
       { path: ROUTES.ME.ACTIVITY, element: <MyActivityPage /> },
       { path: "/me/analyses/compare", element: <AnalysisComparePage /> },

@@ -2,6 +2,7 @@ import type { AgentId } from "@/lib/agents";
 
 export const ROUTES = {
   ME: {
+    HOME: "/me",
     ACTIVITY: "/me/activity",
   },
   home: "/",
