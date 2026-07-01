@@ -61,11 +61,6 @@ export default defineConfig({
     preserveContentOnExecute(),
   ],
 
-  // Vite 8 + CRXJS dev: WebSocket/HMR 토큰 검사 완화
-  legacy: {
-    skipTokenCheck: true,
-  },
-
   resolve: {
     // Shadcn UI 및 각 기능(features/) 도메인 간 교차 임포트 시 가독성과 유지보수성을 극대화하기 위한 절대경로 설정
     alias: {
