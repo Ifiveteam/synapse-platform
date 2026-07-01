@@ -16,8 +16,8 @@
 
 **Archiver 패턴 미러링** — stateless LangGraph + service(영속) + repository(asyncpg) + JWT + SSE. LLM = **Gemini**(`gemini-2.5-flash`).
 
-- **레이어 경계**: API → Service → **`NavigatorAgent` 파사드(`base.py`)** → agents 내부. **service는 파사드만 호출**(graph·ideal·sub_agent 직접 import 금지).
-- **폴더** `agents/navigator/`: `constants`·`schemas`·`state/`·`ideal.py`(extract/clamp/propose/compare)·`behavior_map.py`(13→8 파생)·`gemini.py`·`streaming.py`·`prompts/`·`nodes/`(interpret→respond 챗 그래프)·`graph.py`·`base.py`(파사드)·`sub_agent/`(guide ✅ / youtube ⬜)·`tools/`(LLM function-calling 예약).
+- **레이어 경계**: API → Service → **`NavigatorAgent` 파사드(`facade.py`)** → agents 내부. **service는 파사드만 호출**(graph·ideal·sub_agent 직접 import 금지).
+- **폴더** `agents/navigator/`: `constants`·`schemas`·`state/`·`ideal.py`(extract/clamp/propose/compare)·`behavior_map.py`(13→8 파생)·`llm.py`·`streaming.py`·`prompts/`·`nodes/`(interpret→respond 챗 그래프)·`graph.py`·`facade.py`(파사드)·`sub_agent/`(guide ✅ / youtube ✅)·`tools/`(LLM function-calling 예약, 미사용).
 - **레이어 파일**: `repositories/navigator_repository.py`·`services/navigator/service.py`·`schemas/navigator.py`·`api/v1/navigator.py`.
 
 ## 3. 핵심 설계 결정
@@ -33,7 +33,7 @@
 | 제안 캐시 | `navigator_proposal_cache`(user_id, source_profile_history_id) UNIQUE — 같은 스냅샷=같은 3안. `?refresh=true`로 재생성 |
 | 가이드 그라운딩 | `sub_agent/guide/` 자율 루프(retrieve→generate→evaluate). 약한 축 top3 → `user_watch_catalog` embedding cosine RAG → 실시청 근거 가이드. 근거 없으면 폴백 |
 | 챗 그래프 | 2노드 선형(interpret→respond), evaluator 없음. `event: ideal`로 갱신 8축+13축 JSON 스트리밍(레이더·바 실시간) |
-| 마이그레이션 | `001_initial_schema`(007~013 통합) → `002_create_scraps` → `003_user_subscription`(**현재 head**). 새 마이그레이션은 `down_revision`을 직전 head로 |
+| 마이그레이션 | 현재 head `007_user_behavior_logs`. `navigator_playlist`/`navigator_proposal_cache`/`user_ideal_persona`는 `001_initial_schema`에 통합. 전체 DAG·리비전 표는 [docs/erd.md](../erd.md) 참고. 새 마이그레이션은 `down_revision`을 직전 head로 |
 
 ## 4. API (모두 `Depends(get_current_user_dep)`)
 
@@ -48,6 +48,8 @@
 | GET | `/navigator/ideal/{id}/comparison` | 현재 vs 이상향 gap(8축+13축) |
 | GET | `/navigator/ideal/{id}/guide?refresh=` | 행동 가이드(시청 RAG 그라운딩, 캐시) |
 
+**재생목록 엔드포인트**(구현됨, 상세는 [PLAN_youtube_playlist.md](./PLAN_youtube_playlist.md) §7): `POST/GET /navigator/ideal/{id}/playlists`, `GET/PATCH/DELETE /navigator/playlists/{id}`, `POST /navigator/playlists/{id}/item/refresh`, `POST /navigator/playlists/{id}/regenerate`, `POST /navigator/playlists/{id}/chat`(SSE).
+
 ## 5. 구현 현황
 
 | 영역 | 상태 |
@@ -57,6 +59,7 @@
 | 제안 3안 캐싱(`navigator_proposal_cache`) | ✅ 완료 |
 | 가이드 RAG 서브에이전트(`sub_agent/guide/`) | ✅ 완료 |
 | 다개 이상향 + 적용(1개) | ✅ 완료 |
+| YouTube 재생목록 서브에이전트 + CRUD/편집/재생성 API (Phase A 백엔드) | ✅ 완료 (프론트·Phase B 저장은 미완) |
 | 정적검증(ruff·compile·import·라우트) | ✅ 통과 |
 | 에이전트 스모크(실 Gemini) | ✅ 통과 (`scripts/navigator_smoke.py`) |
 | HTTP 전체 E2E(DB·인증·영속) | ✅ 통과 |
@@ -70,8 +73,9 @@
 
 ## 6. 남은 작업
 
-- [ ] **① YouTube 재생목록 자동생성** → [PLAN_youtube_playlist.md](./PLAN_youtube_playlist.md)
-  - Gemini Google 검색 그라운딩으로 이상향 맞춤 채널 발굴 → `forHandle`/URL 파싱 → RSS → 자기교정 sub-agent. Phase A(추천 목록, OAuth 무변경) / Phase B(실제 저장, `youtube` 쓰기 스코프).
+- [x] **① YouTube 재생목록 — Phase A 백엔드** (서브에이전트 `sub_agent/youtube/` + CRUD/편집/재생성 API) 완료. 상세·잔여는 [PLAN_youtube_playlist.md](./PLAN_youtube_playlist.md).
+  - [ ] 재생목록 **프론트 UI**(생성·목록·카드·새로고침·채팅·rename) — PLAN_youtube_playlist §0 ⑦~⑨.
+  - [ ] **Phase B 실제 저장**(`youtube` 쓰기 스코프 1회 동의, `create_playlist`/`add_playlist_item`, `youtube_playlist_id` 채우기) — §0 ⑩.
 - [ ] **② 익스텐션 YouTube DOM 자동화 시청**(알고리즘 형성) — 익스텐션 기반 별개 작업. `tools/` LLM 도구 검토.
 - [ ] (선택) `ideal.compare`/`clamp` 단위 테스트.
 

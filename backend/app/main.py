@@ -31,8 +31,20 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """앱 수명주기 — Takeout 자동분석 스케줄러 기동/종료."""
+    """앱 수명주기 — 고아 인덱싱 소스 정리 + Takeout 자동분석 스케줄러 기동/종료."""
+    from app.core.database.session import AsyncSessionLocal
+    from app.repositories.analysis_source_repository import fail_orphan_sources
     from app.services.takeout_scheduler import scheduler_loop
+
+    # 재시작으로 인메모리 큐가 비었으므로, 이전 프로세스의 진행 중(pending/running)
+    # 소스는 되살릴 수 없다 → failed로 정리(화면에 '분류/분석 중' 영구표시 방지).
+    async with AsyncSessionLocal() as session:
+        orphaned = await fail_orphan_sources(session)
+        await session.commit()
+    if orphaned:
+        logging.getLogger(__name__).info(
+            "[startup] 고아 인덱싱 소스 %d건 failed 처리", orphaned
+        )
 
     task = asyncio.create_task(scheduler_loop())
     try:

@@ -22,6 +22,7 @@ import { useShellStore } from "@/stores/shell";
 import { useScrapDetailPanelStore } from "@/stores/scrap-detail-panel";
 import { useSidebarStore } from "@/stores/sidebar";
 import { useThemeStore } from "@/stores/theme";
+import logoUrl from "@/assets/logo.png";
 
 function ThemeToggle({ expanded }: { expanded: boolean }) {
   const { theme, toggle } = useThemeStore();
@@ -69,7 +70,7 @@ function BrandLogo({ expanded }: { expanded: boolean }) {
   const { theme } = useThemeStore();
   return (
     <img
-      src="/src/assets/logo.png"
+      src={logoUrl}
       alt="Synapse"
       className={cn(
         "shrink-0 object-contain",

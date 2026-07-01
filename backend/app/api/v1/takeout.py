@@ -1,21 +1,22 @@
 import uuid
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import get_current_user_dep
 from app.core.database.session import get_db
 from app.models.user import User
-from app.models.user_analysis_source import AnalysisSourceStage
 from app.models.user_token import UserToken
 from app.repositories.analysis_source_repository import begin_source
 from app.schemas.auth import DriveConnectionResponse, DriveFolderRequest
 from app.services.analysis_source_service import (
     drive_source_key,
     fail_source_async,
-    set_source_stage_async,
 )
+from app.services.indexer_service import indexer_service
 from app.services.takeout_service import (
     download_drive_file,
     find_takeout_in_folder,
@@ -25,16 +26,6 @@ from app.services.takeout_service import (
 router = APIRouter(prefix="/takeout", tags=["takeout"])
 
 takeout_status: dict = {}
-
-
-async def _enqueue_profiler(user: User, analysis_source_id: str) -> None:
-    from app.services.profiler.service import profiler_service
-
-    profiler_service.enqueue_for_user(
-        str(user.id),
-        user.email,
-        analysis_source_id=analysis_source_id,
-    )
 
 
 async def run_drive_takeout(
@@ -65,7 +56,6 @@ async def run_drive_takeout(
         print(
             f"[Pipeline] 완료: {saved}개 저장됨 (원본 {result.get('raw_count', 0)}개 파싱)"
         )
-        await set_source_stage_async(analysis_source_id, AnalysisSourceStage.PROFILING)
         takeout_status[task_id] = {
             "status": "success",
             "saved": saved,
@@ -75,8 +65,7 @@ async def run_drive_takeout(
             "shorts_count": result.get("shorts_count", 0),
             "category_stats": result.get("category_stats", {}),
         }
-
-        await _enqueue_profiler(user, analysis_source_id)
+        # 프로파일러 트리거는 IndexerService가 profile-once 정책으로 처리.
     except Exception as e:
         print(f"[Drive] 태스크 오류 ({task_id}): {e}")
         takeout_status[task_id] = {"status": "error", "message": str(e)}
@@ -128,6 +117,55 @@ async def drive_connection(
     )
 
 
+class ScheduleUpdateRequest(BaseModel):
+    interval_months: int = Field(..., ge=1, le=12)
+
+
+@router.get("/schedule")
+async def get_schedule(
+    user: User = Depends(get_current_user_dep),
+    session: AsyncSession = Depends(get_db),
+):
+    """자동분석 주기 설정 + Drive 연동 상태."""
+    token_row = await _get_user_token(session, user)
+    connected = bool(token_row and token_row.drive_folder_id)
+    return {
+        "connected": connected,
+        "folder_name": token_row.drive_folder_name if token_row else None,
+        "interval_months": user.analysis_interval_months,
+        "next_analysis_at": (
+            user.next_analysis_at.isoformat() if user.next_analysis_at else None
+        ),
+    }
+
+
+@router.put("/schedule")
+async def update_schedule(
+    body: ScheduleUpdateRequest,
+    user: User = Depends(get_current_user_dep),
+    session: AsyncSession = Depends(get_db),
+):
+    """자동분석 주기(1~12개월) 변경 — 다음 분석 예정 시각도 재계산."""
+    from app.services.takeout_scheduler import first_of_month_ahead
+
+    token_row = await _get_user_token(session, user)
+    if not token_row or not token_row.drive_folder_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="drive_not_connected",
+        )
+    db_user = await session.get(User, user.id)
+    db_user.analysis_interval_months = body.interval_months
+    db_user.next_analysis_at = first_of_month_ahead(
+        datetime.now(timezone.utc), body.interval_months
+    )
+    await session.commit()
+    return {
+        "interval_months": db_user.analysis_interval_months,
+        "next_analysis_at": db_user.next_analysis_at.isoformat(),
+    }
+
+
 async def _folder_files(session: AsyncSession, user: User) -> list[dict]:
     token_row = await _get_user_token(session, user)
     if not token_row or not token_row.drive_folder_id:
@@ -140,8 +178,31 @@ async def list_drive_files(
     user: User = Depends(get_current_user_dep),
     session: AsyncSession = Depends(get_db),
 ):
+    """연동 폴더의 Takeout 파일 목록 + 파일별 분석 상태.
+
+    status: new(미분석) | running(분석중) | completed(분석됨) | failed(실패)
+    """
+    from app.repositories.analysis_source_repository import (
+        fetch_user_source_status_map,
+    )
+
     files = await _folder_files(session, user)
-    return {"files": files}
+    status_map = await fetch_user_source_status_map(session, user.id)
+    items = []
+    for f in files:
+        info = status_map.get(drive_source_key(f["id"]))
+        items.append(
+            {
+                "id": f["id"],
+                "name": f.get("name"),
+                "modified_time": f.get("modifiedTime"),
+                "status": info["status"] if info else "new",
+                "stage": info["stage"] if info else None,
+            }
+        )
+    # 최신 수정순 정렬
+    items.sort(key=lambda f: f.get("modified_time") or "", reverse=True)
+    return {"files": items}
 
 
 @router.post("/drive/auto")
@@ -194,11 +255,18 @@ async def _trigger_drive_file(
                 str(row.profile_history_id) if row.profile_history_id else None
             ),
         }
-    if action == "skip_running":
+    if action in ("skip_running", "skip_pending"):
         return {"status": "already_running"}
 
+    # 유저별 직렬 큐에 등록 — 같은 유저는 하나씩 순차 인덱싱
     task_id = str(uuid.uuid4())
-    background_tasks.add_task(run_drive_takeout, task_id, file_id, user, str(row.id))
+    source_id = str(row.id)
+    indexer_service.enqueue(
+        str(user.id),
+        source_id,
+        user.email,
+        lambda: run_drive_takeout(task_id, file_id, user, source_id),
+    )
     return {"status": "started", "task_id": task_id}
 
 

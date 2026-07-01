@@ -19,7 +19,7 @@ export function UploadPage() {
 
       <div className="mt-6 flex justify-end">
         <Button type="button" className="gap-1.5" onClick={() => navigate(ROUTES.home)}>
-          완료
+          메인으로
           <ArrowRight size={16} />
         </Button>
       </div>

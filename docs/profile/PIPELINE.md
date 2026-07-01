@@ -51,7 +51,6 @@ flowchart TB
   subgraph external["외부 API"]
         GEM["Gemini — 의미분석·프로필"]
         OAI["OpenAI — embedding"]
-        YT["youtube-transcript-api"]
         MAIL["Resend — 이메일"]
     end
 
@@ -66,7 +65,6 @@ flowchart TB
     SEL --> SUM
     SUM --> EMB
     EMB --> STO
-    SEL -.-> YT
     SUM -.-> GEM
     EMB -.-> OAI
     STO --> VA
@@ -78,7 +76,7 @@ flowchart TB
 
 ```text
 [시작]
-  video_summary   영상 선별 · 자막 · Gemini 분석 · 임베딩 · video_analysis 저장
+  video_summary   영상 선별 · Gemini 분석(메타데이터) · 임베딩 · video_analysis 저장
   build_profile   catalog 통계 + 분석 샘플 → 21축 점수(2단계) + 해석 → user_profile_history
   notify          완료 이메일 (notify_email 있을 때)
 ```
@@ -124,7 +122,7 @@ stateDiagram-v2
 
 | 노드 | 파일 | 역할 |
 |------|------|------|
-| `select` | `nodes/select.py` | 분석 대상 catalog 선별 + YouTube 자막 fetch |
+| `select` | `nodes/select.py` | 분석 대상 catalog 선별 (메타데이터만, 자막 미수집) |
 | `summarize` | `nodes/summarize.py` | Gemini structured output — 브리프·톤·의도·가치 |
 | `embed` | `nodes/embed.py` | `embedding_text` → OpenAI `text-embedding-3-small` |
 | `store` | `nodes/store.py` | `profiler_repository.upsert_video_analysis` |
@@ -141,7 +139,7 @@ stateDiagram-v2
 - 롱폼 / 숏폼 각 **상위 채널 5개**당 대표 1편
 - 카테고리별 **상위 채널 5개**당 대표 1편 (중복 제거)
 
-선별 후 영상 URL마다 자막을 fetch (동시 4건). 결과는 `CatalogInput` 리스트로 `catalogs` state에 적재.
+선별 결과를 `CatalogInput` 리스트로 `catalogs` state에 적재한다. (자막은 youtube-transcript-api IP 차단으로 수집률 0%라 제거함 — 008. 제목·설명·태그·카테고리 메타데이터만으로 분석)
 
 ### 3.2 summarize — 의미 분석
 
@@ -208,7 +206,8 @@ flowchart LR
 - 인덱서/Drive 자동 큐잉도 `enqueue_for_user(user_id, user.email)`로 **이메일 전달함** (takeout·indexer 라우터 모두)
 - `RESEND_API_KEY` 없으면 발송 skipped
 
-> ⚠️ 자동 트리거(`enqueue_for_user`)는 `loop.create_task`로 fire-and-forget 실행 → 태스크 참조 미보관이라 부하 시 GC로 유실될 수 있음(메일 누락 원인). 수동 `POST /run`은 `BackgroundTasks` 사용(안정). job 상태도 인메모리라 재시작 시 유실.
+> 자동 트리거(`enqueue_for_user`)는 `loop.create_task`로 실행하되 **`ProfilerService._bg_tasks` set에 강한 참조를 보관**하므로 GC 수거로 인한 메일 누락은 방지된다(과거 이슈, 해결됨). 수동 `POST /run`은 `BackgroundTasks` 사용.
+> 유저가 보는 **진행 상태(분류중/분석중)는 DB 기반**(`user_analysis_source.status`+`stage`)이라 재시작에도 유지된다. 인메모리로 남는 건 `GET /profiler/jobs/{job_id}` 폴링용 캐시(`_jobs`)뿐이며, 그 산출물(프로필·running 상태)은 이미 DB에 있다.
 
 ---
 
@@ -302,9 +301,8 @@ backend/app/
       notify.py
     sub_agent/video_summary/
       graph.py
-      prompts.py             # 영상 의미분석 프롬프트
+      prompts.py             # 영상 의미분석 프롬프트 (메타데이터 기반)
       nodes/ select, summarize, embed, store
-      transcript.py          # 자막 fetch
     sub_agent/compare/        # 두 스냅샷 비교 (load→diff→summarize)
       graph.py · nodes/ · prompts.py · state.py · utils.py
     state/profiler.py
@@ -325,6 +323,7 @@ backend/app/
 
 ## 10. 알려진 제약
 
-- Job·video-summary task 상태는 **프로세스 메모리** (다중 워커/재시작 시 유실)
-- 자동 트리거(`enqueue_for_user`)는 `loop.create_task` fire-and-forget → **태스크 GC로 유실 가능**(메일 누락 원인). 수동 `POST /run`은 `BackgroundTasks`라 안정.
+- **진행 상태·결과는 DB 영속**: running/completed/failed·`stage`는 `user_analysis_source`, 프로필은 `user_profile_history`. 분석 목록(`list_analyses_async`)은 DB만 읽어 재시작에 안전.
+- 인메모리로 남는 것은 `GET /profiler/jobs/{job_id}` 폴링용 `_jobs` 캐시·video-summary task 상태뿐(재시작 시 그 단건 폴링만 `not_found`). 자동 트리거 태스크는 `_bg_tasks` 강한참조로 GC 유실 방지됨.
+- **크래시로 중단된 소스는 고아화**: 실행 중 프로세스가 죽으면 `user_analysis_source`가 `running`/`stage`인 채 남아 화면에 "분류/분석 중"이 계속 표시됨(재개·타임아웃·reconcile 없음).
 - Resend rate limit 시 메일 발송 실패해도 예외 없이 `sent=False` (조용히 스킵)

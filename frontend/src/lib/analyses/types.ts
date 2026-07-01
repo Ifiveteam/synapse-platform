@@ -1,11 +1,12 @@
 export type AnalysisStatus = "completed" | "pending" | "running";
 
-/** running일 때 세부 단계 — indexing(분류) | profiling(분석) */
-export type AnalysisStage = "indexing" | "profiling";
+/** running일 때 세부 단계 — indexing(분류) | indexed(분류완료) | profiling(분석) */
+export type AnalysisStage = "indexing" | "indexed" | "profiling";
 
 export interface AnalysisResultItem {
   id: string;
   title: string;
+  fileName: string | null;
   date: string;
   snapshotAt: string | null;
   status: AnalysisStatus;

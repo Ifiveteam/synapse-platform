@@ -7,8 +7,8 @@
 ## 0. 구현 현황 (2026-06-25)
 | 단계 | 내용 | 상태 |
 |---|---|---|
-| ① | DB 모델 `navigator_playlist` + 마이그레이션 002 | ✅ (라운드트립 검증) |
-| ② | `youtube_client.py` (search?type=channel · RSS) | ✅ |
+| ① | DB 모델 `navigator_playlist` (`001_initial_schema`에 통합) | ✅ (라운드트립 검증) |
+| ② | `sub_agent/youtube/client.py` (search?type=channel · RSS) | ✅ |
 | ③ | 에이전트 스키마 (PlaylistItem·Playlist·QuerySpec·ChannelPick·PlaylistCuration·EditSpec) | ✅ |
 | ④ | 서브에이전트 생성루프(discover→pick→collect→evaluate→curate) + 파사드 `generate_playlist` + repo store(grounding/watched) | ✅ (실 DB 생성 검증) |
 | ⑤ | 레포 CRUD (create·list·get·update·rename·delete) | ✅ |
@@ -95,6 +95,7 @@ LLM 검색어 작문 → search?type=channel&maxResults=25 (1콜=실재 채널 2
 | PATCH | `/playlists/{playlist_id}` | 제목 수정(`{title}`) | 사용자 rename |
 | DELETE | `/playlists/{playlist_id}` | 삭제 | |
 | POST | `/playlists/{playlist_id}/item/refresh` | 영상 1개 교체(`{video_id}`) | 저수지 우선 |
+| POST | `/playlists/{playlist_id}/regenerate` | 전체 재생성(채널 재발굴→큐레이션, 같은 행 갱신) | 구현됨 |
 | POST | `/playlists/{playlist_id}/chat` (SSE) | 채팅 부분수정(`{message}`) | status/playlist 이벤트 |
 | POST | `/playlists/{playlist_id}/save` | 실제 YouTube 저장 | youtube 쓰기 스코프 |
 
@@ -113,13 +114,13 @@ LLM 검색어 작문 → search?type=channel&maxResults=25 (1콜=실재 채널 2
 
 ### 백엔드
 - `agents/navigator/sub_agent/youtube/`
-  - `youtube_client.py` — **유튜브 호출 IO 헬퍼**(코드가 부르는 것, tool 아님): `search_channels`(type=channel) · `fetch_channel_uploads`(RSS) · `create_playlist`/`add_playlist_item`(Phase B)
+  - `client.py` — **유튜브 호출 IO 헬퍼**(코드가 부르는 것, tool 아님): `search_channels`(type=channel) · `fetch_channel_uploads`(RSS) · `create_playlist`/`add_playlist_item`(Phase B)
   - `constants.py` · `store.py`(Protocol: catalog 근거·watched·검색) · `state.py` · `prompts.py`
   > `tools/`(LLM 자율 함수호출 자리)는 안 씀 — 검색 횟수=쿼터를 코드가 통제해야 하므로 youtube IO는 **코드 호출 헬퍼**. LLM은 검색어·선택만 출력.
   - `nodes/` — `discover` · `pick` · `collect` · `evaluate` · `curate` · `interpret`(편집)
   - `graph.py` — 생성 그래프 + 편집 그래프(노드 공유), `run_playlist` / `edit_playlist`
 - `agents/navigator/schemas.py` — `PlaylistItem`·`Playlist`·`QuerySpec`·`ChannelPick`·`PlaylistCuration`·`EditSpec`
-- `agents/navigator/base.py` — 파사드 `generate_playlist` / `edit_playlist` / `refresh_item`(store 주입)
+- `agents/navigator/facade.py` — 파사드 `generate_playlist` / `edit_playlist` / `refresh_item`(store 주입)
 - `models/navigator_playlist.py` (테이블은 `001_initial_schema`에 통합)
 - `repositories/navigator_repository.py` — CRUD(`create_playlist`/`list_playlists`/`get_playlist`/`update_playlist`/`delete_playlist`) + catalog 근거 조회 + `fetch_watched_video_ids`
 - `schemas/navigator.py` — `PlaylistItemResponse`·`PlaylistResponse`·`PlaylistSummary`·`SavePlaylistResponse`
