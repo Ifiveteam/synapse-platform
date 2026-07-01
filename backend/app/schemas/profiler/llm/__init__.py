@@ -5,7 +5,11 @@ from app.schemas.profiler.llm.profile import (
     ProfileScoresOutput,
     ValuesTemperamentOutput,
 )
-from app.schemas.profiler.llm.video import VideoSemanticAnalysis
+from app.schemas.profiler.llm.video import (
+    VideoAnalysisItem,
+    VideoBatchAnalysis,
+    VideoSemanticAnalysis,
+)
 
 __all__ = [
     "BehaviorSpiderOutput",
@@ -13,5 +17,7 @@ __all__ = [
     "ProfileInsightOutput",
     "ProfileScoresOutput",
     "ValuesTemperamentOutput",
+    "VideoAnalysisItem",
+    "VideoBatchAnalysis",
     "VideoSemanticAnalysis",
 ]

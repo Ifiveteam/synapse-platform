@@ -85,3 +85,17 @@ class VideoSemanticAnalysis(BaseModel):
             if s not in seen:
                 seen.append(s)
         return seen[:3]
+
+
+class VideoAnalysisItem(VideoSemanticAnalysis):
+    """배치 분석 내 영상 1건 — index로 입력 영상([N])과 매핑."""
+
+    index: int = Field(..., description="입력 영상 번호 ([N]으로 표기된 그 번호)")
+
+
+class VideoBatchAnalysis(BaseModel):
+    """여러 영상 배치 분석 결과 — 입력한 각 영상마다 1건."""
+
+    items: list[VideoAnalysisItem] = Field(
+        ..., description="입력한 각 영상([N])마다 1건씩, index로 매핑"
+    )
