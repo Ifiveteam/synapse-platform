@@ -19,6 +19,8 @@ from app.schemas.profiler.llm import (
     ProfileInsightOutput,
     ProfileScoresOutput,
     ValuesTemperamentOutput,
+    VideoAnalysisItem,
+    VideoBatchAnalysis,
     VideoSemanticAnalysis,
 )
 
@@ -39,5 +41,7 @@ __all__ = [
     "TopCategoryItem",
     "TopChannelItem",
     "ValuesTemperamentOutput",
+    "VideoAnalysisItem",
+    "VideoBatchAnalysis",
     "VideoSemanticAnalysis",
 ]
