@@ -110,30 +110,41 @@ class ProfilerService:
 
     async def list_analyses_async(self, user_id: str) -> list[dict[str, Any]]:
         from app.core.database.session import AsyncSessionLocal
-        from app.models.user_analysis_source import AnalysisSourceStage
-        from app.repositories.analysis_source_repository import fetch_running_sources
+        from app.models.user_analysis_source import (
+            AnalysisSourceStage,
+            AnalysisSourceStatus,
+        )
+        from app.repositories.analysis_source_repository import fetch_active_sources
         from app.repositories.profiler_repository import fetch_profile_history_list
 
         uid = uuid.UUID(user_id)
         async with AsyncSessionLocal() as session:
-            running = await fetch_running_sources(session, uid)
+            active = await fetch_active_sources(session, uid)
             rows = await fetch_profile_history_list(session, uid)
 
         total = len(rows)
         items: list[dict[str, Any]] = []
-        # 진행 중 소스 — 분류중/분석중 (DB 기반이라 재시작에도 유지)
-        for src in running:
-            indexing = src.stage == AnalysisSourceStage.INDEXING
-            if indexing:
+        # 진행 중 소스 — 대기중/분류중/분석중 (DB 기반이라 재시작에도 유지)
+        for src in active:
+            if src.status == AnalysisSourceStatus.PENDING:
+                title = f"{src.file_name} 대기 중" if src.file_name else "분석 대기 중"
+                status = "pending"
+            elif src.stage == AnalysisSourceStage.INDEXING:
                 title = f"{src.file_name} 분류 중" if src.file_name else "파일 분류 중"
+                status = "running"
+            elif src.stage == AnalysisSourceStage.INDEXED:
+                title = f"{src.file_name} 분류 완료" if src.file_name else "분류 완료"
+                status = "running"
             else:
                 title = "프로파일 분석 중"
+                status = "running"
             items.append(
                 {
                     "id": str(src.id),
                     "title": title,
+                    "file_name": src.file_name,
                     "snapshot_date": None,
-                    "status": "running",
+                    "status": status,
                     "stage": src.stage,
                     "kind": "job",
                 }
@@ -186,11 +197,12 @@ class ProfilerService:
                 notification = final.get("notification")
                 if profile and analysis_source_id:
                     from app.services.analysis_source_service import (
-                        complete_source_async,
+                        complete_analysis_batch_async,
                     )
 
-                    await complete_source_async(
-                        analysis_source_id, profile.get("snapshot_id")
+                    # 트리거 소스 완료 + 배치의 '분류 완료' 형제들 일괄 완료
+                    await complete_analysis_batch_async(
+                        user_id, analysis_source_id, profile.get("snapshot_id")
                     )
                 with self._lock:
                     job = self._jobs[job_id]
@@ -203,9 +215,12 @@ class ProfilerService:
                 if analysis_source_id:
                     from app.services.analysis_source_service import (
                         fail_source_async,
+                        resolve_indexed_siblings_async,
                     )
 
                     await fail_source_async(analysis_source_id)
+                    # 분류만 성공한 형제들은 completed로 마무리 (분석만 실패)
+                    await resolve_indexed_siblings_async(user_id)
                 with self._lock:
                     job = self._jobs[job_id]
                     job.status = JobStatus.FAILED

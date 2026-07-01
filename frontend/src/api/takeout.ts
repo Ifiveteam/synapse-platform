@@ -49,13 +49,19 @@ export function getDriveConnection() {
   return apiFetchAuth<DriveConnection>("/api/v1/takeout/drive/connection");
 }
 
-export type DriveFileStatus = "new" | "running" | "completed" | "failed";
+export type DriveFileStatus =
+  | "new"
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed";
 
 export interface DriveFile {
   id: string;
   name: string | null;
   modified_time: string | null;
   status: DriveFileStatus;
+  stage: "indexing" | "indexed" | "profiling" | null;
 }
 
 /** 연동 폴더의 Takeout 파일 목록 + 파일별 분석 상태 */
@@ -68,5 +74,25 @@ export function triggerDriveFile(fileId: string) {
   return apiFetchAuth<{ status: string; task_id?: string }>(
     `/api/v1/takeout/drive/trigger/${fileId}`,
     { method: "POST" },
+  );
+}
+
+export interface ScheduleInfo {
+  connected: boolean;
+  folder_name: string | null;
+  interval_months: number;
+  next_analysis_at: string | null;
+}
+
+/** 자동분석 주기 설정 + Drive 연동 상태 조회 */
+export function getSchedule() {
+  return apiFetchAuth<ScheduleInfo>("/api/v1/takeout/schedule");
+}
+
+/** 자동분석 주기(1~12개월) 변경 */
+export function updateSchedule(intervalMonths: number) {
+  return apiFetchAuth<{ interval_months: number; next_analysis_at: string }>(
+    "/api/v1/takeout/schedule",
+    { method: "PUT", body: JSON.stringify({ interval_months: intervalMonths }) },
   );
 }

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   ChevronRight,
@@ -13,6 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/utils";
+import { connectDriveFolder } from "@/lib/google-picker";
+import { getSchedule, updateSchedule, type ScheduleInfo } from "@/api/takeout";
 
 type SettingsSection = "billing" | "permissions" | "account";
 
@@ -207,9 +209,108 @@ function BillingPanel() {
   );
 }
 
+function AutoAnalysisSetting() {
+  const [schedule, setSchedule] = useState<ScheduleInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setSchedule(await getSchedule());
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const handleConnect = useCallback(async () => {
+    setConnecting(true);
+    try {
+      await connectDriveFolder();
+      toast.success("Drive 폴더가 연동됐습니다.");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "폴더 연동 실패");
+    } finally {
+      setConnecting(false);
+    }
+  }, [load]);
+
+  const handleChange = useCallback(async (months: number) => {
+    setSaving(true);
+    try {
+      const r = await updateSchedule(months);
+      setSchedule((prev) =>
+        prev
+          ? {
+              ...prev,
+              interval_months: r.interval_months,
+              next_analysis_at: r.next_analysis_at,
+            }
+          : prev,
+      );
+      toast.success(`자동분석 주기를 ${months}개월로 설정했어요.`);
+    } catch {
+      toast.error("주기 변경에 실패했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  }, []);
+
+  const connected = schedule?.connected ?? false;
+
+  return (
+    <div className="border-border rounded-xl border bg-card px-4 py-3.5">
+      <div className="flex items-start justify-between gap-4">
+        <span className="min-w-0">
+          <span className="block text-sm font-medium">자동분석 주기</span>
+          <span className="text-muted-foreground mt-0.5 block text-xs">
+            {connected
+              ? `연동 폴더의 새 Takeout을 ${schedule?.interval_months}개월마다 자동 분석합니다.`
+              : "Drive 폴더를 연동하면 새 Takeout을 주기적으로 자동 분석합니다."}
+          </span>
+        </span>
+        {loading ? (
+          <span className="text-muted-foreground shrink-0 text-xs">불러오는 중…</span>
+        ) : connected ? (
+          <select
+            value={schedule?.interval_months ?? 2}
+            disabled={saving}
+            onChange={(e) => void handleChange(Number(e.target.value))}
+            className="border-border bg-background shrink-0 rounded-lg border px-3 py-1.5 text-sm disabled:opacity-50"
+          >
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+              <option key={m} value={m}>
+                {m}개월
+              </option>
+            ))}
+          </select>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={connecting}
+            onClick={() => void handleConnect()}
+            className="shrink-0"
+          >
+            {connecting ? "연동 중…" : "폴더 연동"}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PermissionsPanel() {
   return (
     <div className="space-y-3">
+      <AutoAnalysisSetting />
       <ToggleRow
         label="이메일 알림"
         description="분석 완료·트렌드 업데이트를 메일로 받습니다."

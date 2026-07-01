@@ -12,6 +12,7 @@ const PREFIX = "/api/v1/profiler";
 interface AnalysisListItemDto {
   id: string;
   title: string;
+  file_name?: string | null;
   snapshot_date: string | null;
   status: AnalysisStatus;
   stage?: AnalysisStage | null;
@@ -26,6 +27,7 @@ function mapListItem(dto: AnalysisListItemDto): AnalysisResultItem {
   return {
     id: dto.id,
     title: dto.title,
+    fileName: dto.file_name ?? null,
     date: formatAnalysisDate(dto.snapshot_date ?? undefined),
     snapshotAt: dto.snapshot_date,
     status: dto.status,

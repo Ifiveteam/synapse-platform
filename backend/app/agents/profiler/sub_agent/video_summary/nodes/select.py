@@ -28,9 +28,10 @@ def _rows_to_catalogs(rows) -> list[CatalogInput]:
 
 async def node_select(state: VideoSummaryState) -> VideoSummaryState:
     try:
+        from app.agents.shared.analysis_window import WATCH_CATALOG_WINDOW_DAYS
         from app.core.database.session import AsyncSessionLocal
         from app.repositories.profiler_repository import (
-            fetch_catalog_rows,
+            fetch_recent_catalog_rows,
             fetch_unanalyzed_catalog,
         )
         from app.services.profiler.sampling import select_analysis_sample
@@ -41,7 +42,10 @@ async def node_select(state: VideoSummaryState) -> VideoSummaryState:
                     session, state["user_id"], state.get("limit")
                 )
             else:
-                catalog_rows = await fetch_catalog_rows(session, state["user_id"])
+                # 최근 2달(WATCH_CATALOG_WINDOW_DAYS) 시청 기록만 샘플링 대상
+                catalog_rows = await fetch_recent_catalog_rows(
+                    session, state["user_id"], WATCH_CATALOG_WINDOW_DAYS
+                )
                 rows = select_analysis_sample(catalog_rows)
 
         return {**state, "catalogs": _rows_to_catalogs(rows), "error": None}

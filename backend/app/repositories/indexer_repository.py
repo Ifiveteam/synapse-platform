@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -226,14 +226,36 @@ async def fetch_subscriptions(
     return list(result.scalars().all())
 
 
+async def recent_watched_start(
+    session: AsyncSession, user_id: uuid.UUID, window_days: int
+) -> datetime | None:
+    """유저의 최근 시청(max watched_at) 기준 window_days 전 시각. 기록 없으면 None.
+
+    그래프 뷰 '마지막 시청일 기준 2달' 필터의 시작점. (프로파일러 채점 anchor와 동일 규칙)
+    """
+    anchor = (
+        await session.execute(
+            select(func.max(UserWatchCatalog.watched_at)).where(
+                UserWatchCatalog.user_id == user_id
+            )
+        )
+    ).scalar_one_or_none()
+    if anchor is None:
+        return None
+    return anchor - timedelta(days=window_days)
+
+
 async def count_catalog(
     session: AsyncSession,
     user_id: uuid.UUID,
+    *,
+    since: datetime | None = None,
 ) -> int:
+    conditions = [UserWatchCatalog.user_id == user_id]
+    if since is not None:
+        conditions.append(UserWatchCatalog.watched_at >= since)
     result = await session.execute(
-        select(func.count())
-        .select_from(UserWatchCatalog)
-        .where(UserWatchCatalog.user_id == user_id)
+        select(func.count()).select_from(UserWatchCatalog).where(*conditions)
     )
     return int(result.scalar() or 0)
 
@@ -263,11 +285,15 @@ async def fetch_top_categories(
     user_id: uuid.UUID,
     *,
     limit: int = 5,
+    since: datetime | None = None,
 ) -> list[dict[str, int | str]]:
     """user_watch_catalog GROUP BY youtube_category_id — 상위 N개."""
+    conditions = [UserWatchCatalog.user_id == user_id]
+    if since is not None:
+        conditions.append(UserWatchCatalog.watched_at >= since)
     rows = await session.execute(
         select(UserWatchCatalog.youtube_category_id, func.count())
-        .where(UserWatchCatalog.user_id == user_id)
+        .where(*conditions)
         .group_by(UserWatchCatalog.youtube_category_id)
         .order_by(func.count().desc())
         .limit(limit)
@@ -283,11 +309,15 @@ async def fetch_top_channels(
     user_id: uuid.UUID,
     *,
     limit: int = 5,
+    since: datetime | None = None,
 ) -> list[dict[str, int | str]]:
     """user_watch_catalog GROUP BY channel — 상위 N개."""
+    conditions = [UserWatchCatalog.user_id == user_id, *_listable_channel_conditions()]
+    if since is not None:
+        conditions.append(UserWatchCatalog.watched_at >= since)
     rows = await session.execute(
         select(UserWatchCatalog.channel, func.count())
-        .where(UserWatchCatalog.user_id == user_id, *_listable_channel_conditions())
+        .where(*conditions)
         .group_by(UserWatchCatalog.channel)
         .order_by(func.count().desc())
         .limit(limit)
@@ -304,21 +334,37 @@ async def fetch_graph_summary(
     *,
     category_limit: int = 8,
     channel_limit: int = 10,
+    window_days: int | None = None,
 ) -> dict:
-    """그래프 UI용 catalog 집계 — 전체 영상 목록 없이 상위 카테고리·채널만."""
-    total = await count_catalog(session, user_id)
-    categories = await fetch_top_categories(session, user_id, limit=category_limit)
-    top_channels = await fetch_top_channels(session, user_id, limit=channel_limit)
+    """그래프 UI용 catalog 집계 — 전체 영상 목록 없이 상위 카테고리·채널만.
+
+    window_days가 주어지면 '마지막 시청일 기준 N일' 이내만 집계.
+    """
+    since = (
+        await recent_watched_start(session, user_id, window_days)
+        if window_days
+        else None
+    )
+    total = await count_catalog(session, user_id, since=since)
+    categories = await fetch_top_categories(
+        session, user_id, limit=category_limit, since=since
+    )
+    top_channels = await fetch_top_channels(
+        session, user_id, limit=channel_limit, since=since
+    )
 
     channels: list[dict[str, int | str]] = []
     for item in top_channels:
         channel_name = str(item["channel"])
+        chan_conditions = [
+            UserWatchCatalog.user_id == user_id,
+            UserWatchCatalog.channel == channel_name,
+        ]
+        if since is not None:
+            chan_conditions.append(UserWatchCatalog.watched_at >= since)
         row = await session.execute(
             select(UserWatchCatalog.youtube_category_id, func.count())
-            .where(
-                UserWatchCatalog.user_id == user_id,
-                UserWatchCatalog.channel == channel_name,
-            )
+            .where(*chan_conditions)
             .group_by(UserWatchCatalog.youtube_category_id)
             .order_by(func.count().desc())
             .limit(1)
@@ -341,8 +387,9 @@ async def fetch_catalog_embedding_rows(
     *,
     before: datetime | None = None,
     after: datetime | None = None,
+    limit: int | None = None,
 ) -> list[dict]:
-    """임베딩 그래프용 catalog 행 (embedding 있는 것만)."""
+    """임베딩 그래프용 catalog 행 (embedding 있는 것만). 최신 시청순, limit 시 상한."""
     conditions = [
         UserWatchCatalog.user_id == user_id,
         UserWatchCatalog.embedding.isnot(None),
@@ -352,7 +399,7 @@ async def fetch_catalog_embedding_rows(
     if after:
         conditions.append(UserWatchCatalog.watched_at >= after)
 
-    rows = await session.execute(
+    query = (
         select(
             UserWatchCatalog.id,
             UserWatchCatalog.title,
@@ -364,6 +411,9 @@ async def fetch_catalog_embedding_rows(
         .where(*conditions)
         .order_by(UserWatchCatalog.watched_at.desc())
     )
+    if limit is not None:
+        query = query.limit(limit)
+    rows = await session.execute(query)
     result: list[dict] = []
     for row in rows.all():
         embedding = row.embedding

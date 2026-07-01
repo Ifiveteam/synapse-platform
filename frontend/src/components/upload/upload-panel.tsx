@@ -40,7 +40,7 @@ function DirectUploadTab({
   selectFileLabel: string;
 }) {
   const [dragOver, setDragOver] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectError, setSelectError] = useState("");
   // 업로드 POST 진행 중(서버 소스 생성 전) 임시 항목 — 나머지는 DB(analyses)가 정본
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
@@ -57,7 +57,9 @@ function DirectUploadTab({
   const refreshRunning = useCallback(async () => {
     try {
       const items = await fetchMyAnalyses();
-      setRunningItems(items.filter((it) => it.status === "running"));
+      setRunningItems(
+        items.filter((it) => it.status === "running" || it.status === "pending"),
+      );
     } catch {
       /* 일시적 오류 무시 — 다음 틱에 재시도 */
     }
@@ -69,72 +71,91 @@ function DirectUploadTab({
     return () => clearInterval(timer);
   }, [refreshRunning]);
 
-  const selectFile = useCallback((file: File) => {
-    if (!file.name.endsWith(".zip") && !file.name.endsWith(".json")) {
-      setSelectedFile(null);
-      setSelectError("ZIP 또는 JSON 파일만 업로드 가능합니다.");
-      return;
-    }
-    setSelectError("");
-    setSelectedFile(file);
+  // 여러 파일 선택 — 확장자 검증 후 (파일명+크기) 기준 중복 제거하여 추가
+  const addFiles = useCallback((incoming: File[]) => {
+    const valid = incoming.filter(
+      (f) => f.name.endsWith(".zip") || f.name.endsWith(".json"),
+    );
+    setSelectError(
+      valid.length < incoming.length
+        ? "ZIP 또는 JSON 파일만 업로드 가능합니다."
+        : "",
+    );
+    if (valid.length === 0) return;
+    setSelectedFiles((prev) => {
+      const key = (f: File) => `${f.name}:${f.size}`;
+      const seen = new Set(prev.map(key));
+      const merged = [...prev];
+      for (const f of valid) if (!seen.has(key(f))) merged.push(f);
+      return merged;
+    });
   }, []);
 
-  const startAnalysis = useCallback(
-    async (file: File) => {
-      const id = crypto.randomUUID();
-      // 확인 카드를 닫고 즉시 드롭존 복귀 → 다른 파일 계속 추가 가능
-      setSelectedFile(null);
-      setSelectError("");
-      setUploadingFiles((prev) => [...prev, { id, fileName: file.name }]);
+  const removeSelected = useCallback((idx: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
 
-      const form = new FormData();
-      form.append("file", file);
-      try {
-        const res = await fetch(`${API}/indexer/analyze`, {
-          method: "POST",
-          headers: authHeaders(),
-          body: form,
-        });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(
-            typeof body.detail === "string" ? body.detail : "업로드에 실패했습니다.",
-          );
-        }
-        const data = await res.json();
-        if (data.status === "already_completed") {
-          toast.info(`${file.name}은(는) 이미 분석된 파일입니다.`);
-        } else if (data.status === "already_running") {
-          toast.info(`${file.name}은(는) 이미 분석 중입니다.`);
-        } else if (!data.task_id) {
-          toast.error("분석을 시작하지 못했습니다.");
-        } else {
-          toast.success(`${file.name} 업로드 완료 — 분석을 시작했어요`);
-        }
-        // 서버에 소스가 생성됐으니 DB 목록 즉시 갱신
-        onSuccessRef.current();
-        void refreshRunning();
-      } catch (err) {
-        toast.error(
-          err instanceof Error
-            ? err.message
-            : "업로드 실패. 서버가 실행 중인지 확인하세요.",
+  // 파일 1건 업로드 (진행 중 임시 표시). 결과 상태 문자열 반환.
+  const uploadOne = useCallback(async (file: File): Promise<string | null> => {
+    const id = crypto.randomUUID();
+    setUploadingFiles((prev) => [...prev, { id, fileName: file.name }]);
+    const form = new FormData();
+    form.append("file", file);
+    try {
+      const res = await fetch(`${API}/indexer/analyze`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: form,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(
+          typeof body.detail === "string" ? body.detail : "업로드에 실패했습니다.",
         );
-      } finally {
-        setUploadingFiles((prev) => prev.filter((j) => j.id !== id));
       }
-    },
-    [refreshRunning],
-  );
+      const data = await res.json();
+      if (data.status === "already_completed") {
+        toast.info(`${file.name}은(는) 이미 분석된 파일입니다.`);
+      } else if (data.status === "already_running") {
+        toast.info(`${file.name}은(는) 이미 분석 중입니다.`);
+      } else if (!data.task_id) {
+        toast.error(`${file.name} 분석을 시작하지 못했습니다.`);
+      }
+      return data.status ?? null;
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : `${file.name} 업로드 실패`,
+      );
+      return null;
+    } finally {
+      setUploadingFiles((prev) => prev.filter((j) => j.id !== id));
+    }
+  }, []);
+
+  // 선택한 파일 전부 업로드 (동시 POST → 서버에서 유저별 순차 인덱싱)
+  const startAll = useCallback(async () => {
+    if (selectedFiles.length === 0) return;
+    const files = selectedFiles;
+    setSelectedFiles([]);
+    setSelectError("");
+    const results = await Promise.all(files.map((f) => uploadOne(f)));
+    const started = results.filter((r) => r === "started").length;
+    if (started > 0) {
+      toast.success(`${started}개 파일 업로드 완료 — 분석을 시작했어요`);
+    }
+    onSuccessRef.current();
+    void refreshRunning();
+  }, [selectedFiles, uploadOne, refreshRunning]);
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragOver(false);
-      const file = e.dataTransfer.files[0];
-      if (file) selectFile(file);
+      if (e.dataTransfer.files.length) {
+        addFiles(Array.from(e.dataTransfer.files));
+      }
     },
-    [selectFile],
+    [addFiles],
   );
 
   return (
@@ -143,42 +164,69 @@ function DirectUploadTab({
         ref={inputRef}
         type="file"
         accept=".zip,.json"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) selectFile(file);
+          if (e.target.files?.length) addFiles(Array.from(e.target.files));
           e.target.value = "";
         }}
       />
 
-      {selectedFile ? (
-        <div className="flex flex-col items-center gap-4 rounded-xl border-2 border-violet-200 bg-violet-50/50 py-10">
-          <div className="text-4xl">📄</div>
-          <div className="text-center">
-            <p className="text-sm font-semibold break-all text-gray-800">
-              {selectedFile.name}
+      {selectedFiles.length > 0 ? (
+        <div className="rounded-xl border-2 border-violet-200 bg-violet-50/50 p-5">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-semibold text-gray-700">
+              선택한 파일 {selectedFiles.length}개
             </p>
-            <p className="mt-0.5 text-xs text-gray-400">
-              {formatBytes(selectedFile.size)}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => void startAnalysis(selectedFile)}
+              onClick={() => inputRef.current?.click()}
+              className="text-xs font-medium text-violet-600 hover:underline"
+            >
+              + 파일 추가
+            </button>
+          </div>
+          <div className="max-h-64 space-y-1.5 overflow-y-auto">
+            {selectedFiles.map((f, i) => (
+              <div
+                key={`${f.name}:${f.size}:${i}`}
+                className="flex items-center gap-2 rounded-lg bg-white px-3 py-2"
+              >
+                <span className="text-lg">📄</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-gray-800">
+                    {f.name}
+                  </p>
+                  <p className="text-xs text-gray-400">{formatBytes(f.size)}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeSelected(i)}
+                  aria-label="제거"
+                  className="shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void startAll()}
               className="rounded-lg bg-violet-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-700"
             >
-              분석 시작
+              분석 시작 ({selectedFiles.length})
             </button>
             <button
               type="button"
               onClick={() => {
-                setSelectedFile(null);
+                setSelectedFiles([]);
                 setSelectError("");
               }}
               className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
             >
-              다른 파일
+              전체 취소
             </button>
           </div>
         </div>
@@ -199,9 +247,11 @@ function DirectUploadTab({
         >
           <div className="text-4xl text-gray-300">📁</div>
           <p className="text-sm font-medium text-gray-600">
-            Takeout ZIP을 여기에 끌어다 놓으세요
+            Takeout ZIP을 여기에 끌어다 놓으세요 (여러 개 가능)
           </p>
-          <p className="text-xs text-gray-400">모든 동영상과 파일 권장 · 최대 500MB</p>
+          <p className="text-xs text-gray-400">
+            여러 개 한 번에 선택 가능 · 파일당 최대 500MB
+          </p>
           <button
             type="button"
             className="mt-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-700"
@@ -243,7 +293,13 @@ function DirectUploadTab({
                 {it.title}
               </p>
               <span className="shrink-0 text-xs font-medium text-violet-600">
-                {it.stage === "indexing" ? "분류 중" : "분석 중"}
+                {it.status === "pending"
+                  ? "대기 중"
+                  : it.stage === "indexing"
+                    ? "분류 중"
+                    : it.stage === "indexed"
+                      ? "분류 완료"
+                      : "분석 중"}
               </span>
             </div>
           ))}
@@ -326,11 +382,11 @@ function DriveTab({
   const token = useAuthStore((s) => s.token);
   const [conn, setConn] = useState<DriveConnection | null>(null);
   const [connecting, setConnecting] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [files, setFiles] = useState<DriveFile[]>([]);
-  const [triggeringId, setTriggeringId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchRunning, setBatchRunning] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -345,12 +401,22 @@ function DriveTab({
     try {
       const r = await listDriveFiles();
       setFiles(r.files);
+      // 더 이상 선택 불가(분석 시작됨/완료)해진 파일은 선택 해제
+      const selectable = new Set(
+        r.files
+          .filter((f) => f.status === "new" || f.status === "failed")
+          .map((f) => f.id),
+      );
+      setSelectedIds((prev) => {
+        const next = new Set([...prev].filter((id) => selectable.has(id)));
+        return next.size === prev.size ? prev : next;
+      });
     } catch {
       /* 일시적 오류 무시 */
     }
   }, []);
 
-  // 연동됐으면 폴더 파일 목록 로드 + 상태 갱신 폴링 (분석중→분석됨 반영)
+  // 연동됐으면 폴더 파일 목록 로드 + 상태 갱신 폴링 (대기중→분류중→분석됨 반영)
   useEffect(() => {
     if (!token || !connected) return;
     void refreshFiles();
@@ -358,29 +424,38 @@ function DriveTab({
     return () => clearInterval(timer);
   }, [token, connected, refreshFiles]);
 
-  const handleTriggerFile = useCallback(
-    async (file: DriveFile) => {
-      setTriggeringId(file.id);
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // 여러 파일 한 번에 분석 큐에 등록 (유저별 직렬 처리라 안전)
+  const analyzeIds = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0 || batchRunning) return;
+      setBatchRunning(true);
       try {
-        const d = await triggerDriveFile(file.id);
-        if (d.status === "started") {
-          toast.success(`${file.name ?? "파일"} 분석을 시작했어요`);
+        const results = await Promise.all(
+          ids.map((id) => triggerDriveFile(id).catch(() => null)),
+        );
+        const started = results.filter((r) => r?.status === "started").length;
+        if (started > 0) {
+          toast.success(`${started}개 파일 분석을 시작했어요`);
           onSuccess();
-        } else if (d.status === "already_completed") {
-          toast.info("이미 분석된 파일입니다.");
-        } else if (d.status === "already_running") {
-          toast.info("이미 분석 중입니다.");
         } else {
-          toast.error("분석을 시작하지 못했습니다.");
+          toast.info("새로 시작한 분석이 없습니다.");
         }
+        setSelectedIds(new Set());
         void refreshFiles();
-      } catch {
-        toast.error("요청에 실패했습니다.");
       } finally {
-        setTriggeringId(null);
+        setBatchRunning(false);
       }
     },
-    [onSuccess, refreshFiles],
+    [batchRunning, onSuccess, refreshFiles],
   );
 
   const handleConnect = useCallback(async () => {
@@ -397,35 +472,6 @@ function DriveTab({
     }
   }, []);
 
-  const handleAnalyzeNow = useCallback(async () => {
-    setAnalyzing(true);
-    setError("");
-    setMessage("");
-    try {
-      const res = await fetch(`${API}/takeout/drive/auto`, {
-        method: "POST",
-        headers: authHeaders(),
-      });
-      const d = await res.json();
-      if (d.status === "started") {
-        setMessage("분석을 시작했습니다. 진행상황은 '개인성향 분석 목록'에서 확인하세요.");
-        onSuccess();
-      } else if (d.status === "no_files") {
-        setMessage("연동 폴더에 분석할 Takeout이 없습니다.");
-      } else if (d.status === "already_completed") {
-        setMessage("이미 분석된 파일입니다.");
-      } else if (d.status === "already_running") {
-        setMessage("이미 분석이 진행 중입니다.");
-      } else {
-        setError("분석을 시작하지 못했습니다.");
-      }
-    } catch {
-      setError("요청에 실패했습니다.");
-    } finally {
-      setAnalyzing(false);
-    }
-  }, [onSuccess]);
-
   if (!token) {
     return (
       <div className="flex flex-col items-center gap-4 py-14 text-center">
@@ -439,6 +485,11 @@ function DriveTab({
       </div>
     );
   }
+
+  // 아직 분석 안 한(새/실패) 파일 — "전체 분석" 대상
+  const newFiles = files.filter(
+    (f) => f.status === "new" || f.status === "failed",
+  );
 
   return (
     <div className="space-y-4 p-6">
@@ -460,16 +511,6 @@ function DriveTab({
           >
             {connecting ? "연동 중..." : conn?.connected ? "폴더 변경" : "폴더 연동"}
           </button>
-          {conn?.connected && (
-            <button
-              type="button"
-              onClick={() => void handleAnalyzeNow()}
-              disabled={analyzing}
-              className="rounded-lg border border-violet-300 bg-white px-4 py-2 text-sm font-semibold text-violet-700 transition-colors hover:bg-violet-100 disabled:opacity-50"
-            >
-              {analyzing ? "시작 중..." : "지금 분석"}
-            </button>
-          )}
         </div>
       </div>
 
@@ -478,32 +519,65 @@ function DriveTab({
 
       {connected && files.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-500">
-            폴더 내 Takeout 파일 · 새 파일을 눌러 분석
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-gray-500">
+              폴더 내 Takeout 파일 · 선택해서 분석
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={batchRunning || selectedIds.size === 0}
+                onClick={() => void analyzeIds([...selectedIds])}
+                className="rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                선택 분석{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
+              </button>
+              <button
+                type="button"
+                disabled={batchRunning || newFiles.length === 0}
+                onClick={() => void analyzeIds(newFiles.map((f) => f.id))}
+                className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-50"
+              >
+                {batchRunning ? "시작 중..." : `전체 분석${newFiles.length ? ` (${newFiles.length})` : ""}`}
+              </button>
+            </div>
+          </div>
           {files.map((f) => {
             const selectable = f.status === "new" || f.status === "failed";
-            const isTriggering = triggeringId === f.id;
+            const checked = selectedIds.has(f.id);
             const label =
               f.status === "completed"
-                ? "분석됨"
-                : f.status === "running"
-                  ? "분석 중"
-                  : f.status === "failed"
-                    ? "재시도"
-                    : "분석하기";
+                ? "완료"
+                : f.status === "pending"
+                  ? "대기 중"
+                  : f.status === "running"
+                    ? f.stage === "indexing"
+                      ? "분류 중"
+                      : f.stage === "indexed"
+                        ? "분류 완료"
+                        : "분석 중"
+                    : f.status === "failed"
+                      ? "재시도"
+                      : "새 파일";
             return (
-              <button
+              <div
                 key={f.id}
-                type="button"
-                disabled={!selectable || isTriggering}
-                onClick={() => void handleTriggerFile(f)}
-                className={`flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
+                role={selectable ? "button" : undefined}
+                onClick={() => selectable && toggleSelect(f.id)}
+                className={`flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors ${
                   selectable
                     ? "cursor-pointer border-violet-200 bg-white hover:bg-violet-50"
                     : "cursor-not-allowed border-gray-100 bg-gray-50 opacity-60"
-                }`}
+                } ${checked ? "ring-2 ring-violet-400" : ""}`}
               >
+                {selectable && (
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    readOnly
+                    className="h-4 w-4 shrink-0 accent-violet-600"
+                  />
+                )}
                 <div className="min-w-0 flex-1">
                   <p
                     className={`truncate text-sm font-medium ${
@@ -524,14 +598,16 @@ function DriveTab({
                       ? "bg-gray-100 text-gray-400"
                       : f.status === "running"
                         ? "bg-amber-50 text-amber-600"
-                        : f.status === "failed"
-                          ? "bg-red-50 text-red-600"
-                          : "bg-violet-100 text-violet-700"
+                        : f.status === "pending"
+                          ? "bg-amber-50 text-amber-600"
+                          : f.status === "failed"
+                            ? "bg-red-50 text-red-600"
+                            : "bg-violet-100 text-violet-700"
                   }`}
                 >
-                  {isTriggering ? "시작 중..." : label}
+                  {label}
                 </span>
-              </button>
+              </div>
             );
           })}
         </div>
