@@ -42,7 +42,13 @@ function historyToChatMessages(history: ArchiverChatMessage[]): ChatMessage[] {
   }))
 }
 
-function normalizeStatusPayload(payload: ArchiverStreamEventPayload): ArchiverStreamStatus {
+function isArchiverStreamStatus(
+  payload: ArchiverStreamEventPayload,
+): payload is ArchiverStreamStatus {
+  return typeof payload === 'string' || 'message' in payload
+}
+
+function normalizeStatusPayload(payload: ArchiverStreamStatus): ArchiverStreamStatus {
   if (typeof payload === 'string') {
     return payload.trim()
   }
@@ -195,15 +201,16 @@ export function useChat() {
     setMessages((prev) => [...prev, userMessage])
 
     const onEvent = (event: ArchiverStreamEventType, payload: ArchiverStreamEventPayload) => {
-      if (event === 'status' || event === 'need_dom' || event === 'action') {
-        if (event === 'action' && isWebScrapActionPayload(payload)) {
-          pendingScrapCategoryRef.current = payload.customCategory?.trim() || null
-          const categoryHint = pendingScrapCategoryRef.current
-            ? `「${pendingScrapCategoryRef.current}」 카테고리에 `
-            : ''
-          setCurrentStatus(`📌 현재 페이지를 ${categoryHint}스크랩 보관함에 저장하는 중입니다...`)
-          return
-        }
+      if (event === 'action' && isWebScrapActionPayload(payload)) {
+        pendingScrapCategoryRef.current = payload.customCategory?.trim() || null
+        const categoryHint = pendingScrapCategoryRef.current
+          ? `「${pendingScrapCategoryRef.current}」 카테고리에 `
+          : ''
+        setCurrentStatus(`📌 현재 페이지를 ${categoryHint}스크랩 보관함에 저장하는 중입니다...`)
+        return
+      }
+
+      if ((event === 'status' || event === 'need_dom') && isArchiverStreamStatus(payload)) {
         setCurrentStatus(normalizeStatusPayload(payload))
         return
       }
