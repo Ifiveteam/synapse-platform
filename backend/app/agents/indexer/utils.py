@@ -193,7 +193,8 @@ def parse_watch_history_html(html: str) -> list[dict]:
     """
     from bs4 import BeautifulSoup
 
-    soup = BeautifulSoup(html, "html.parser")
+    # lxml(C 파서) 사용 — 내장 html.parser는 4만 셀 규모 HTML에서 병적으로 느림.
+    soup = BeautifulSoup(html, "lxml")
     items: list[dict] = []
     for cell in soup.find_all("div", class_="content-cell"):
         links = cell.find_all("a")

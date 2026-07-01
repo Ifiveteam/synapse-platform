@@ -20,19 +20,10 @@ from sqlalchemy import select
 
 from app.core.database.session import AsyncSessionLocal
 from app.models.user import User
-from app.models.user_analysis_source import AnalysisSourceStage
 from app.models.user_token import UserToken
 from app.repositories.analysis_source_repository import begin_source
-from app.services.analysis_source_service import (
-    drive_source_key,
-    fail_source_async,
-    set_source_stage_async,
-)
-from app.services.takeout_service import (
-    download_drive_file,
-    find_takeout_in_folder,
-    run_takeout_pipeline,
-)
+from app.services.analysis_source_service import drive_source_key
+from app.services.takeout_service import find_takeout_in_folder
 
 logger = logging.getLogger("app.services.takeout_scheduler")
 
@@ -66,35 +57,32 @@ async def _due_users() -> list[tuple[User, str]]:
 
 
 async def _process_file(user: User, file_id: str, file_name: str | None) -> None:
+    """새 파일을 멱등 등록 후 유저별 직렬 큐에 넣는다.
+
+    수동 경로(직접/전체/선택 분석)와 **동일**하게 IndexerService를 태워,
+    새 파일 전체를 순차 분류한 뒤 마지막에 프로파일러를 1회만 돌린다(profile-once).
+    """
+    import uuid as uuid_mod
+
+    from app.api.v1.takeout import run_drive_takeout
+    from app.services.indexer_service import indexer_service
+
     source_key = drive_source_key(file_id)
     async with AsyncSessionLocal() as session:
         row, action = await begin_source(session, user.id, source_key, file_name)
         await session.commit()
         source_id = str(row.id)
-    if action != "run":
-        return  # 이미 처리됨/진행중 → 멱등 스킵
+    if action != "queued":
+        return  # 이미 완료/진행중/대기중 → 멱등 스킵
 
-    # 분류
-    path = await download_drive_file(file_id, user)
-    if not path:
-        await fail_source_async(source_id)
-        return
-    result = await run_takeout_pipeline(path, user_id=user.id)
-    if result.get("error"):
-        logger.warning(
-            "[scheduler] pipeline 오류 file=%s: %s", file_id, result["error"]
-        )
-        await fail_source_async(source_id)
-        return
-
-    # 분석
-    await set_source_stage_async(source_id, AnalysisSourceStage.PROFILING)
-    from app.services.profiler.service import profiler_service
-
-    profiler_service.enqueue_for_user(
-        str(user.id), user.email, analysis_source_id=source_id
+    task_id = str(uuid_mod.uuid4())
+    indexer_service.enqueue(
+        str(user.id),
+        source_id,
+        user.email,
+        lambda: run_drive_takeout(task_id, file_id, user, source_id),
     )
-    logger.info("[scheduler] 분석 시작 user=%s file=%s", user.id, file_name)
+    logger.info("[scheduler] 큐 등록 user=%s file=%s", user.id, file_name)
 
 
 async def _process_user(user: User, folder_id: str) -> None:
@@ -109,12 +97,13 @@ async def _process_user(user: User, folder_id: str) -> None:
 
 
 async def _bump_next(user_id) -> None:
-    """다음 분석 가능 시점 = 2개월 뒤 달의 1일."""
+    """다음 분석 가능 시점 = 유저 설정 주기(개월) 뒤 달의 1일."""
     async with AsyncSessionLocal() as session:
         db_user = await session.get(User, user_id)
         if db_user:
+            months = db_user.analysis_interval_months or ANALYSIS_INTERVAL_MONTHS
             db_user.next_analysis_at = first_of_month_ahead(
-                datetime.now(timezone.utc), ANALYSIS_INTERVAL_MONTHS
+                datetime.now(timezone.utc), months
             )
             await session.commit()
 

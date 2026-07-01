@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, String, Text, func, text
+from sqlalchemy import DateTime, Index, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,6 +30,10 @@ class User(Base):
 
     analysis_interval: Mapped[str] = mapped_column(
         String(50), nullable=False, server_default=text("'WEEKLY'")
+    )
+    # Drive 자동분석 주기(개월). 1~12. 스케줄러가 next_analysis_at 계산에 사용.
+    analysis_interval_months: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("2")
     )
     next_analysis_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

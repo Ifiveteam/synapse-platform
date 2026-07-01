@@ -50,7 +50,6 @@ async def node_summarize(state: VideoSummaryState) -> VideoSummaryState:
                 "tones": res.tones,
                 "intents": res.intents,
                 "value_signals": res.value_signals,
-                "transcript": c.get("transcript"),
                 "embedding_text": "",
                 "embedding": None,
             }

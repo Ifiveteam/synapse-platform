@@ -71,11 +71,11 @@ function AnalysisListItem({
 
       <Badge variant={pending ? "orange" : "secondary"} className="shrink-0">
         {pending
-          ? item.stage === "indexing"
-            ? "분류 중"
-            : item.status === "running"
-              ? "분석 중"
-              : "미완료"
+          ? item.status === "pending"
+            ? "대기 중"
+            : item.stage === "indexing"
+              ? "분류 중"
+              : "분석 중"
           : "완료"}
       </Badge>
 
@@ -121,6 +121,49 @@ function AnalysisListItem({
   );
 }
 
+/** 진행 중인 배치(같이 올린 파일들)를 한 박스로 — 파일별 상태 + 박스 레벨 단계. */
+function InProgressGroup({ items }: { items: AnalysisResultItem[] }) {
+  const isProfiling = items.some((it) => it.stage === "profiling");
+  const fileBadge = (it: AnalysisResultItem): string => {
+    if (isProfiling) return "분류 완료";
+    if (it.status === "pending") return "대기 중";
+    if (it.stage === "indexing") return "분류 중";
+    return "분류 완료";
+  };
+
+  return (
+    <div className="border-border rounded-2xl border bg-card px-4 py-4">
+      <div className="flex items-center gap-4">
+        <div className="bg-accent text-accent-foreground flex h-11 w-11 shrink-0 items-center justify-center rounded-full">
+          <CircleDot size={20} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold">개인성향 분석</p>
+          <p className="text-muted-foreground mt-0.5 text-xs">
+            {isProfiling ? "분류 완료 · 분석 중" : `파일 ${items.length}개 처리 중`}
+          </p>
+        </div>
+        <Badge variant="orange" className="shrink-0 gap-1">
+          {isProfiling && <Loader2 className="size-3 animate-spin" />}
+          {isProfiling ? "분석 중" : "진행 중"}
+        </Badge>
+      </div>
+      <div className="border-border mt-3 space-y-1.5 border-t pt-3">
+        {items.map((it) => (
+          <div key={it.id} className="flex items-center gap-2 pl-1">
+            <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
+              {it.fileName ?? "파일"}
+            </span>
+            <Badge variant="secondary" className="shrink-0 text-[10px]">
+              {fileBadge(it)}
+            </Badge>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function MyAnalysesPage() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterTab>("all");
@@ -162,17 +205,25 @@ export function MyAnalysesPage() {
     };
   }, []);
 
-  const filtered = useMemo(() => {
-    if (filter === "all") return items;
-    if (filter === "completed") {
-      return items.filter((item) => item.status === "completed");
-    }
-    return items.filter((item) => isAnalysisPending(item.status));
-  }, [filter, items]);
+  // 진행 중(job) 항목은 한 그룹 박스로, 완료 스냅샷만 개별 + 페이지네이션
+  const jobItems = useMemo(() => items.filter((i) => i.kind === "job"), [items]);
+  const snapshotItems = useMemo(
+    () => items.filter((i) => i.kind === "snapshot"),
+    [items],
+  );
+  const showJobGroup =
+    !compareMode && jobItems.length > 0 && filter !== "completed";
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ANALYSIS_PAGE_SIZE));
+  const filteredSnapshots = useMemo(
+    () => (filter === "pending" ? [] : snapshotItems),
+    [filter, snapshotItems],
+  );
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredSnapshots.length / ANALYSIS_PAGE_SIZE),
+  );
   const currentPage = Math.min(page, totalPages);
-  const pageItems = filtered.slice(
+  const pageSnapshots = filteredSnapshots.slice(
     (currentPage - 1) * ANALYSIS_PAGE_SIZE,
     currentPage * ANALYSIS_PAGE_SIZE,
   );
@@ -310,22 +361,22 @@ export function MyAnalysesPage() {
 
       {!loading && !error && (
         <div className="flex flex-1 flex-col gap-3">
-          {pageItems.length > 0 ? (
-            pageItems.map((item) => (
-              <AnalysisListItem
-                key={item.id}
-                item={item}
-                compareMode={compareMode}
-                selected={selectedIds.includes(item.id)}
-                selectionDisabled={
-                  compareMode &&
-                  selectedIds.length >= 2 &&
-                  !selectedIds.includes(item.id)
-                }
-                onToggleSelect={toggleSelect}
-              />
-            ))
-          ) : (
+          {showJobGroup && <InProgressGroup items={jobItems} />}
+          {pageSnapshots.map((item) => (
+            <AnalysisListItem
+              key={item.id}
+              item={item}
+              compareMode={compareMode}
+              selected={selectedIds.includes(item.id)}
+              selectionDisabled={
+                compareMode &&
+                selectedIds.length >= 2 &&
+                !selectedIds.includes(item.id)
+              }
+              onToggleSelect={toggleSelect}
+            />
+          ))}
+          {!showJobGroup && pageSnapshots.length === 0 && (
             <div className="border-border text-muted-foreground rounded-2xl border border-dashed px-6 py-16 text-center text-sm">
               {items.length === 0
                 ? "아직 분석 결과가 없습니다. 시청 기록을 업로드한 뒤 프로파일러가 완료되면 여기에 표시됩니다."
