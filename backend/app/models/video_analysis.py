@@ -43,7 +43,6 @@ class VideoAnalysis(TimestampMixin, Base):
     tones: Mapped[list] = mapped_column(JSONB, nullable=False)
     intents: Mapped[list] = mapped_column(JSONB, nullable=False)
     value_signals: Mapped[list] = mapped_column(JSONB, nullable=False)
-    transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
     embedding_text: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list[float]] = mapped_column(
         Vector(EMBEDDING_DIM), nullable=False

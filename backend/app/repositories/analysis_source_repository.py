@@ -84,6 +84,18 @@ async def fetch_running_sources(
     return list(result.scalars().all())
 
 
+async def fetch_user_source_status_map(
+    session: AsyncSession, user_id: uuid.UUID
+) -> dict[str, str]:
+    """유저의 모든 소스 {source_key: status} 매핑 (Drive 파일 목록 상태 표시용)."""
+    result = await session.execute(
+        select(UserAnalysisSource.source_key, UserAnalysisSource.status).where(
+            UserAnalysisSource.user_id == user_id
+        )
+    )
+    return {key: status for key, status in result.all()}
+
+
 async def mark_source_completed(
     session: AsyncSession,
     source_id: uuid.UUID,

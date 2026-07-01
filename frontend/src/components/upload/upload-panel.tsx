@@ -1,19 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { useAuthStore } from "@/stores/auth";
-import { uploadLocalStorage } from "@/lib/upload-local-storage";
 import { API_BASE_URL } from "@/lib/env";
 import { connectDriveFolder } from "@/lib/google-picker";
-import { getDriveConnection, type DriveConnection } from "@/api/takeout";
+import {
+  getDriveConnection,
+  listDriveFiles,
+  triggerDriveFile,
+  type DriveConnection,
+  type DriveFile,
+} from "@/api/takeout";
+import { fetchMyAnalyses } from "@/api/analyses";
+import type { AnalysisResultItem } from "@/lib/analyses/types";
 
 const API = `${API_BASE_URL}/api/v1`;
 
 type Tab = "upload" | "drive" | "guide";
-type UploadStatus = "idle" | "uploading" | "polling" | "success" | "error";
+
+/** 업로드 POST 진행 중(서버 소스 생성 전) 임시 표시 항목. */
+type UploadingFile = { id: string; fileName: string };
 
 function authHeaders(): HeadersInit {
   const token = useAuthStore.getState().token;
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function DirectUploadTab({
@@ -23,59 +39,56 @@ function DirectUploadTab({
   onSuccess: () => void;
   selectFileLabel: string;
 }) {
-  const [status, setStatus] = useState<UploadStatus>("idle");
-  const [message, setMessage] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectError, setSelectError] = useState("");
+  // 업로드 POST 진행 중(서버 소스 생성 전) 임시 항목 — 나머지는 DB(analyses)가 정본
+  const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+  // DB 기반 진행 중 분석 (분류/분석) — /me/analyses와 동일 소스
+  const [runningItems, setRunningItems] = useState<AnalysisResultItem[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const onSuccessRef = useRef(onSuccess);
   useEffect(() => {
-    const saved = localStorage.getItem(uploadLocalStorage.directUploadTask);
-    if (!saved) return;
-    const { taskId } = JSON.parse(saved);
-    setStatus("polling");
-    setMessage("분석 중... (수분 소요)");
-
-    pollingRef.current = setInterval(async () => {
-      try {
-        const r = await fetch(`${API}/indexer/analyze/${taskId}`);
-        const d = await r.json();
-        if (d.status === "success") {
-          clearInterval(pollingRef.current!);
-          localStorage.removeItem(uploadLocalStorage.directUploadTask);
-          setStatus("success");
-          setMessage(`완료! ${d.processed}개 영상 저장됨`);
-          onSuccess();
-        } else if (d.status === "error") {
-          clearInterval(pollingRef.current!);
-          localStorage.removeItem(uploadLocalStorage.directUploadTask);
-          setStatus("error");
-          setMessage(d.message || "분석 중 오류 발생");
-        }
-      } catch {
-        /* 일시적 오류 무시 */
-      }
-    }, 3000);
-
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
+    onSuccessRef.current = onSuccess;
   }, [onSuccess]);
 
-  const handleFile = useCallback(
-    async (file: File) => {
-      if (!file.name.endsWith(".zip") && !file.name.endsWith(".json")) {
-        setStatus("error");
-        setMessage("ZIP 또는 JSON 파일만 업로드 가능합니다.");
-        return;
-      }
+  // DB에서 진행 중(running) 분석을 폴링 — 영속 정본이라 새로고침·재시작에도 유지
+  const refreshRunning = useCallback(async () => {
+    try {
+      const items = await fetchMyAnalyses();
+      setRunningItems(items.filter((it) => it.status === "running"));
+    } catch {
+      /* 일시적 오류 무시 — 다음 틱에 재시도 */
+    }
+  }, []);
 
-      setStatus("uploading");
-      setMessage("업로드 중...");
+  useEffect(() => {
+    void refreshRunning();
+    const timer = setInterval(() => void refreshRunning(), 3000);
+    return () => clearInterval(timer);
+  }, [refreshRunning]);
+
+  const selectFile = useCallback((file: File) => {
+    if (!file.name.endsWith(".zip") && !file.name.endsWith(".json")) {
+      setSelectedFile(null);
+      setSelectError("ZIP 또는 JSON 파일만 업로드 가능합니다.");
+      return;
+    }
+    setSelectError("");
+    setSelectedFile(file);
+  }, []);
+
+  const startAnalysis = useCallback(
+    async (file: File) => {
+      const id = crypto.randomUUID();
+      // 확인 카드를 닫고 즉시 드롭존 복귀 → 다른 파일 계속 추가 가능
+      setSelectedFile(null);
+      setSelectError("");
+      setUploadingFiles((prev) => [...prev, { id, fileName: file.name }]);
 
       const form = new FormData();
       form.append("file", file);
-
       try {
         const res = await fetch(`${API}/indexer/analyze`, {
           method: "POST",
@@ -89,42 +102,29 @@ function DirectUploadTab({
           );
         }
         const data = await res.json();
-        const taskId = data.task_id;
-
-        localStorage.setItem(
-          uploadLocalStorage.directUploadTask,
-          JSON.stringify({ taskId }),
-        );
-        setStatus("polling");
-        setMessage("분석 중... (수분 소요)");
-
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        pollingRef.current = setInterval(async () => {
-          try {
-            const r = await fetch(`${API}/indexer/analyze/${taskId}`);
-            const d = await r.json();
-            if (d.status === "success") {
-              clearInterval(pollingRef.current!);
-              localStorage.removeItem(uploadLocalStorage.directUploadTask);
-              setStatus("success");
-              setMessage(`완료! ${d.processed}개 영상 저장됨`);
-              onSuccess();
-            } else if (d.status === "error") {
-              clearInterval(pollingRef.current!);
-              localStorage.removeItem(uploadLocalStorage.directUploadTask);
-              setStatus("error");
-              setMessage(d.message || "분석 중 오류 발생");
-            }
-          } catch {
-            /* 일시적 오류 무시 */
-          }
-        }, 3000);
+        if (data.status === "already_completed") {
+          toast.info(`${file.name}은(는) 이미 분석된 파일입니다.`);
+        } else if (data.status === "already_running") {
+          toast.info(`${file.name}은(는) 이미 분석 중입니다.`);
+        } else if (!data.task_id) {
+          toast.error("분석을 시작하지 못했습니다.");
+        } else {
+          toast.success(`${file.name} 업로드 완료 — 분석을 시작했어요`);
+        }
+        // 서버에 소스가 생성됐으니 DB 목록 즉시 갱신
+        onSuccessRef.current();
+        void refreshRunning();
       } catch (err) {
-        setStatus("error");
-        setMessage(err instanceof Error ? err.message : "업로드 실패. 서버가 실행 중인지 확인하세요.");
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "업로드 실패. 서버가 실행 중인지 확인하세요.",
+        );
+      } finally {
+        setUploadingFiles((prev) => prev.filter((j) => j.id !== id));
       }
     },
-    [onSuccess],
+    [refreshRunning],
   );
 
   const onDrop = useCallback(
@@ -132,9 +132,9 @@ function DirectUploadTab({
       e.preventDefault();
       setDragOver(false);
       const file = e.dataTransfer.files[0];
-      if (file) handleFile(file);
+      if (file) selectFile(file);
     },
-    [handleFile],
+    [selectFile],
   );
 
   return (
@@ -144,63 +144,109 @@ function DirectUploadTab({
         type="file"
         accept=".zip,.json"
         className="hidden"
-        onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) selectFile(file);
+          e.target.value = "";
+        }}
       />
 
-      {status === "idle" || status === "error" ? (
-        <>
-          <div
-            onDrop={onDrop}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onClick={() => inputRef.current?.click()}
-            className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed py-14 transition-colors ${
-              dragOver
-                ? "border-violet-400 bg-violet-50"
-                : "border-gray-200 hover:border-violet-300 hover:bg-gray-50"
-            }`}
-          >
-            <div className="text-4xl text-gray-300">📁</div>
-            <p className="text-sm font-medium text-gray-600">
-              Takeout ZIP을 여기에 끌어다 놓으세요
+      {selectedFile ? (
+        <div className="flex flex-col items-center gap-4 rounded-xl border-2 border-violet-200 bg-violet-50/50 py-10">
+          <div className="text-4xl">📄</div>
+          <div className="text-center">
+            <p className="text-sm font-semibold break-all text-gray-800">
+              {selectedFile.name}
             </p>
-            <p className="text-xs text-gray-400">
-              모든 동영상과 파일 권장 · 최대 500MB
+            <p className="mt-0.5 text-xs text-gray-400">
+              {formatBytes(selectedFile.size)}
             </p>
+          </div>
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              className="mt-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-700"
+              onClick={() => void startAnalysis(selectedFile)}
+              className="rounded-lg bg-violet-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-700"
             >
-              {selectFileLabel}
+              분석 시작
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedFile(null);
+                setSelectError("");
+              }}
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
+            >
+              다른 파일
             </button>
           </div>
-          {status === "error" && (
-            <p className="mt-3 text-center text-sm text-red-600">{message}</p>
-          )}
-        </>
+        </div>
       ) : (
-        <div className="flex flex-col items-center justify-center gap-4 py-14">
-          {status === "success" ? (
-            <>
-              <div className="text-4xl">✅</div>
-              <p className="text-sm font-semibold text-emerald-700">{message}</p>
-              <button
-                type="button"
-                onClick={() => setStatus("idle")}
-                className="text-xs text-gray-400 underline"
-              >
-                다시 업로드
-              </button>
-            </>
-          ) : (
-            <>
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
-              <p className="text-sm text-gray-500">{message}</p>
-            </>
-          )}
+        <div
+          onDrop={onDrop}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onClick={() => inputRef.current?.click()}
+          className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed py-14 transition-colors ${
+            dragOver
+              ? "border-violet-400 bg-violet-50"
+              : "border-gray-200 hover:border-violet-300 hover:bg-gray-50"
+          }`}
+        >
+          <div className="text-4xl text-gray-300">📁</div>
+          <p className="text-sm font-medium text-gray-600">
+            Takeout ZIP을 여기에 끌어다 놓으세요
+          </p>
+          <p className="text-xs text-gray-400">모든 동영상과 파일 권장 · 최대 500MB</p>
+          <button
+            type="button"
+            className="mt-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-700"
+          >
+            {selectFileLabel}
+          </button>
+        </div>
+      )}
+
+      {selectError && (
+        <p className="mt-3 text-center text-sm text-red-600">{selectError}</p>
+      )}
+
+      {/* 진행 중 목록 — DB(analyses) 정본 + 업로드 POST 중 임시 항목.
+          완료되면 자동으로 사라지고 결과는 '활동 이력'에서 확인. */}
+      {(uploadingFiles.length > 0 || runningItems.length > 0) && (
+        <div className="mt-5 space-y-2">
+          {uploadingFiles.map((f) => (
+            <div
+              key={f.id}
+              className="flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3"
+            >
+              <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-violet-200 border-t-violet-600" />
+              <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-700">
+                {f.fileName}
+              </p>
+              <span className="shrink-0 text-xs font-medium text-violet-600">
+                업로드 중...
+              </span>
+            </div>
+          ))}
+          {runningItems.map((it) => (
+            <div
+              key={it.id}
+              className="flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3"
+            >
+              <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-violet-200 border-t-violet-600" />
+              <p className="min-w-0 flex-1 truncate text-sm font-medium text-gray-700">
+                {it.title}
+              </p>
+              <span className="shrink-0 text-xs font-medium text-violet-600">
+                {it.stage === "indexing" ? "분류 중" : "분석 중"}
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -283,6 +329,8 @@ function DriveTab({
   const [analyzing, setAnalyzing] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [files, setFiles] = useState<DriveFile[]>([]);
+  const [triggeringId, setTriggeringId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -290,6 +338,50 @@ function DriveTab({
       .then(setConn)
       .catch(() => setConn({ connected: false, folder_name: null }));
   }, [token]);
+
+  const connected = Boolean(conn?.connected);
+
+  const refreshFiles = useCallback(async () => {
+    try {
+      const r = await listDriveFiles();
+      setFiles(r.files);
+    } catch {
+      /* 일시적 오류 무시 */
+    }
+  }, []);
+
+  // 연동됐으면 폴더 파일 목록 로드 + 상태 갱신 폴링 (분석중→분석됨 반영)
+  useEffect(() => {
+    if (!token || !connected) return;
+    void refreshFiles();
+    const timer = setInterval(() => void refreshFiles(), 5000);
+    return () => clearInterval(timer);
+  }, [token, connected, refreshFiles]);
+
+  const handleTriggerFile = useCallback(
+    async (file: DriveFile) => {
+      setTriggeringId(file.id);
+      try {
+        const d = await triggerDriveFile(file.id);
+        if (d.status === "started") {
+          toast.success(`${file.name ?? "파일"} 분석을 시작했어요`);
+          onSuccess();
+        } else if (d.status === "already_completed") {
+          toast.info("이미 분석된 파일입니다.");
+        } else if (d.status === "already_running") {
+          toast.info("이미 분석 중입니다.");
+        } else {
+          toast.error("분석을 시작하지 못했습니다.");
+        }
+        void refreshFiles();
+      } catch {
+        toast.error("요청에 실패했습니다.");
+      } finally {
+        setTriggeringId(null);
+      }
+    },
+    [onSuccess, refreshFiles],
+  );
 
   const handleConnect = useCallback(async () => {
     setConnecting(true);
@@ -383,6 +475,67 @@ function DriveTab({
 
       {message && <p className="text-sm text-emerald-700">{message}</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
+
+      {connected && files.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-gray-500">
+            폴더 내 Takeout 파일 · 새 파일을 눌러 분석
+          </p>
+          {files.map((f) => {
+            const selectable = f.status === "new" || f.status === "failed";
+            const isTriggering = triggeringId === f.id;
+            const label =
+              f.status === "completed"
+                ? "분석됨"
+                : f.status === "running"
+                  ? "분석 중"
+                  : f.status === "failed"
+                    ? "재시도"
+                    : "분석하기";
+            return (
+              <button
+                key={f.id}
+                type="button"
+                disabled={!selectable || isTriggering}
+                onClick={() => void handleTriggerFile(f)}
+                className={`flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
+                  selectable
+                    ? "cursor-pointer border-violet-200 bg-white hover:bg-violet-50"
+                    : "cursor-not-allowed border-gray-100 bg-gray-50 opacity-60"
+                }`}
+              >
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`truncate text-sm font-medium ${
+                      selectable ? "text-gray-800" : "text-gray-500"
+                    }`}
+                  >
+                    {f.name ?? "(이름 없음)"}
+                  </p>
+                  {f.modified_time && (
+                    <p className="text-xs text-gray-400">
+                      {new Date(f.modified_time).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    f.status === "completed"
+                      ? "bg-gray-100 text-gray-400"
+                      : f.status === "running"
+                        ? "bg-amber-50 text-amber-600"
+                        : f.status === "failed"
+                          ? "bg-red-50 text-red-600"
+                          : "bg-violet-100 text-violet-700"
+                  }`}
+                >
+                  {isTriggering ? "시작 중..." : label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <p className="text-xs text-gray-400">
         분석 진행상황과 결과는 좌측 '개인성향 분석 목록'에서 확인할 수 있어요.

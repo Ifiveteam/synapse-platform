@@ -110,7 +110,7 @@ sequenceDiagram
 Indexer                    Profiler
 ────────                   ────────
 user_watch_catalog  ──→    video_analysis (선별 catalog만)
-전체 ~수백건               LLM · transcript · embedding
+전체 ~수백건               LLM(메타데이터) · embedding
 GPT 분류 없음              catalog JOIN으로 description/tags
 ```
 

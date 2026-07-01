@@ -48,3 +48,25 @@ export function saveDriveFolder(folderId: string, folderName: string | null) {
 export function getDriveConnection() {
   return apiFetchAuth<DriveConnection>("/api/v1/takeout/drive/connection");
 }
+
+export type DriveFileStatus = "new" | "running" | "completed" | "failed";
+
+export interface DriveFile {
+  id: string;
+  name: string | null;
+  modified_time: string | null;
+  status: DriveFileStatus;
+}
+
+/** 연동 폴더의 Takeout 파일 목록 + 파일별 분석 상태 */
+export function listDriveFiles() {
+  return apiFetchAuth<{ files: DriveFile[] }>("/api/v1/takeout/drive/files");
+}
+
+/** 특정 Drive 파일 분석 트리거 */
+export function triggerDriveFile(fileId: string) {
+  return apiFetchAuth<{ status: string; task_id?: string }>(
+    `/api/v1/takeout/drive/trigger/${fileId}`,
+    { method: "POST" },
+  );
+}

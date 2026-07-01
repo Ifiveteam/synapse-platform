@@ -13,7 +13,6 @@ class CatalogInput(TypedDict):
     title: str | None
     channel: str
     description: str | None
-    transcript: str | None
     tags: list | None
     youtube_category_id: str | None
     thumbnail_url: str | None
@@ -26,7 +25,6 @@ class AnalyzedVideo(TypedDict, total=False):
     tones: list[str]
     intents: list[str]
     value_signals: list[str]
-    transcript: str | None
     embedding_text: str
     embedding: list[float] | None
 

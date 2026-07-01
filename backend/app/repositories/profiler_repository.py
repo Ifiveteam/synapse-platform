@@ -131,7 +131,6 @@ async def upsert_video_analysis(
             "tones": row["tones"],
             "intents": row["intents"],
             "value_signals": row["value_signals"],
-            "transcript": row.get("transcript"),
             "embedding_text": row["embedding_text"],
             "embedding": embedding,
         }
@@ -145,7 +144,6 @@ async def upsert_video_analysis(
                     "tones": values["tones"],
                     "intents": values["intents"],
                     "value_signals": values["value_signals"],
-                    "transcript": values["transcript"],
                     "embedding_text": values["embedding_text"],
                     "embedding": values["embedding"],
                     "updated_at": func.now(),
@@ -156,17 +154,6 @@ async def upsert_video_analysis(
         saved += 1
 
     return saved
-
-
-async def fetch_analysis_for_catalog_ids(
-    session: AsyncSession, catalog_ids: list[uuid.UUID]
-) -> list[VideoAnalysis]:
-    if not catalog_ids:
-        return []
-    result = await session.execute(
-        select(VideoAnalysis).where(VideoAnalysis.catalog_id.in_(catalog_ids))
-    )
-    return list(result.scalars().all())
 
 
 async def fetch_video_analyses_for_user(

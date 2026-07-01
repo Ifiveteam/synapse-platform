@@ -140,8 +140,28 @@ async def list_drive_files(
     user: User = Depends(get_current_user_dep),
     session: AsyncSession = Depends(get_db),
 ):
+    """연동 폴더의 Takeout 파일 목록 + 파일별 분석 상태.
+
+    status: new(미분석) | running(분석중) | completed(분석됨) | failed(실패)
+    """
+    from app.repositories.analysis_source_repository import (
+        fetch_user_source_status_map,
+    )
+
     files = await _folder_files(session, user)
-    return {"files": files}
+    status_map = await fetch_user_source_status_map(session, user.id)
+    items = [
+        {
+            "id": f["id"],
+            "name": f.get("name"),
+            "modified_time": f.get("modifiedTime"),
+            "status": status_map.get(drive_source_key(f["id"]), "new"),
+        }
+        for f in files
+    ]
+    # 최신 수정순 정렬
+    items.sort(key=lambda f: f.get("modified_time") or "", reverse=True)
+    return {"files": items}
 
 
 @router.post("/drive/auto")
