@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { applyIdeal, listIdeals } from "@/api/navigator";
 import type { IdealResponse } from "@/api/types/navigator";
 import { IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
+import { cn } from "@/lib/utils";
 import { ROUTES } from "@/routes";
 import { useSidebarStore } from "@/stores/sidebar";
 
@@ -112,7 +113,9 @@ function IdealList({
   );
 }
 
-export function IdealManagementPage() {
+export function IdealManagementPage({
+  embedded = false,
+}: { embedded?: boolean } = {}) {
   const [ideals, setIdeals] = useState<IdealResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -154,9 +157,28 @@ export function IdealManagementPage() {
   };
 
   return (
-    <div className="mx-auto flex min-h-full max-w-3xl flex-col px-6 py-8">
+    <div
+      className={cn(
+        "flex flex-col",
+        embedded ? "" : "mx-auto min-h-full max-w-3xl px-6 py-8",
+      )}
+    >
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold tracking-tight">이상향 관리</h1>
+        <div className="flex items-center gap-3">
+          {embedded ? (
+            <h2 className="text-lg font-semibold tracking-tight">이상향 관리</h2>
+          ) : (
+            <h1 className="text-2xl font-semibold tracking-tight">이상향 관리</h1>
+          )}
+          {embedded && (
+            <Link
+              to={ROUTES.idealManagement}
+              className="text-muted-foreground hover:text-foreground text-xs underline-offset-2 hover:underline"
+            >
+              전체 보기
+            </Link>
+          )}
+        </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button size="sm" variant="outline" className="gap-1.5" asChild>
             <Link to={ROUTES.playlists}>
