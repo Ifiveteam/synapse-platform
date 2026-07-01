@@ -164,7 +164,7 @@ function InProgressGroup({ items }: { items: AnalysisResultItem[] }) {
   );
 }
 
-export function MyAnalysesPage() {
+export function MyAnalysesPage({ embedded = false }: { embedded?: boolean } = {}) {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterTab>("all");
   const [page, setPage] = useState(1);
@@ -277,14 +277,33 @@ export function MyAnalysesPage() {
   };
 
   return (
-    <div className="mx-auto flex min-h-full max-w-3xl flex-col px-6 py-8">
+    <div
+      className={cn(
+        "flex flex-col",
+        embedded ? "" : "mx-auto min-h-full max-w-3xl px-6 py-8",
+      )}
+    >
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              개인성향 분석 목록
-            </h1>
+            {embedded ? (
+              <h2 className="text-lg font-semibold tracking-tight">
+                개인성향 분석 목록
+              </h2>
+            ) : (
+              <h1 className="text-2xl font-semibold tracking-tight">
+                개인성향 분석 목록
+              </h1>
+            )}
             <span className="text-muted-foreground text-sm">최신순 정렬</span>
+            {embedded && (
+              <Link
+                to={ROUTES.myAnalyses}
+                className="text-muted-foreground hover:text-foreground text-xs underline-offset-2 hover:underline"
+              >
+                전체 보기
+              </Link>
+            )}
           </div>
 
           {compareMode ? (

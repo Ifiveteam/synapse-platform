@@ -16,7 +16,7 @@ import type { AnalysisResultItem } from "@/lib/analyses/types";
 
 const API = `${API_BASE_URL}/api/v1`;
 
-type Tab = "upload" | "drive" | "guide";
+type Tab = "upload" | "drive";
 
 /** 업로드 POST 진행 중(서버 소스 생성 전) 임시 표시 항목. */
 type UploadingFile = { id: string; fileName: string };
@@ -159,7 +159,7 @@ function DirectUploadTab({
   );
 
   return (
-    <div className="p-6">
+    <div>
       <input
         ref={inputRef}
         type="file"
@@ -309,41 +309,30 @@ function DirectUploadTab({
   );
 }
 
-function GuideTab() {
+type GuideStep = { num: number; title: string; desc: string; url?: string };
+
+/** 탭 오른쪽에 붙는 가이드 본문 (인트로 + 단계 카드 + 팁). */
+function GuideSteps({
+  intro,
+  steps,
+  tip,
+}: {
+  intro: { title: string; body: string };
+  steps: GuideStep[];
+  tip: string;
+}) {
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-5">
       <div>
-        <p className="mb-1 text-sm font-semibold text-gray-800">Google Takeout이란?</p>
-        <p className="text-xs leading-relaxed text-gray-500">
-          구글이 제공하는 데이터보내기 서비스입니다. YouTube 시청 기록을 ZIP 파일로보내
-          Synapse에 연결하면 시청 패턴을 분석할 수 있습니다.
-        </p>
+        <p className="mb-1 text-sm font-semibold text-gray-800">{intro.title}</p>
+        <p className="text-xs leading-relaxed text-gray-500">{intro.body}</p>
       </div>
       <div className="space-y-3">
-        {[
-          {
-            num: 1,
-            title: "takeout.google.com 접속",
-            desc: "구글 계정으로 로그인 후 Takeout 페이지로 이동합니다.",
-            url: "https://takeout.google.com",
-          },
-          {
-            num: 2,
-            title: "YouTube만 선택 + 형식 JSON 권장",
-            desc: '"모두 선택 해제" 후 "YouTube 및 YouTube Music"만 체크하세요. → "여러 형식" 버튼에서 "기록(시청 기록)"을 JSON으로 바꾸면 가장 정확합니다. (HTML도 지원하지만 시각 정확도는 JSON이 더 좋아요.)',
-          },
-          {
-            num: 3,
-            title: "받는 방법 → Google Drive",
-            desc: 'ZIP 형식 + "Drive에 추가"로 설정합니다. 정기 분석을 원하면 "2개월마다 1년 동안"으로 설정하면 새 기록이 폴더에 자동으로 쌓입니다.',
-          },
-          {
-            num: 4,
-            title: "Drive 폴더 1회 연동",
-            desc: '[Drive 연동] 탭에서 "폴더 연동"으로 Takeout 폴더를 선택하세요. 이후 새 Takeout이 쌓일 때마다 자동으로 분석됩니다. 전체 드라이브 권한은 필요 없어요.',
-          },
-        ].map((s) => (
-          <div key={s.num} className="flex gap-4 rounded-xl border border-gray-100 bg-gray-50 p-4">
+        {steps.map((s) => (
+          <div
+            key={s.num}
+            className="flex gap-4 rounded-xl border border-gray-100 bg-gray-50 p-4"
+          >
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100 text-xs font-bold text-violet-700">
               {s.num}
             </div>
@@ -365,9 +354,98 @@ function GuideTab() {
         ))}
       </div>
       <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-700">
-        내보내기 완료까지 수 분~수 시간 걸릴 수 있어요. 폴더를 한 번 연동해두면 새 파일이
-        쌓일 때마다 자동 분석되고, 급하면 [직접 업로드] 탭으로 ZIP을 바로 올릴 수도 있어요.
+        {tip}
       </div>
+    </div>
+  );
+}
+
+/** 파일 직접 업로드 탭 가이드 — Takeout ZIP을 내려받아 직접 올리는 흐름. */
+function UploadGuide() {
+  return (
+    <GuideSteps
+      intro={{
+        title: "Takeout ZIP 준비하기",
+        body: "YouTube 시청 기록을 Google Takeout에서 ZIP(또는 JSON)으로 내려받아 왼쪽에 올리면 시청 패턴을 분석합니다.",
+      }}
+      steps={[
+        {
+          num: 1,
+          title: "takeout.google.com 접속",
+          desc: "구글 계정으로 로그인 후 Takeout 페이지로 이동합니다.",
+          url: "https://takeout.google.com",
+        },
+        {
+          num: 2,
+          title: "YouTube만 선택 + 형식 JSON 권장",
+          desc: '"모두 선택 해제" 후 "YouTube 및 YouTube Music"만 체크하세요. → "여러 형식"에서 "기록(시청 기록)"을 JSON으로 바꾸면 가장 정확합니다. (HTML도 지원하지만 시각 정확도는 JSON이 더 좋아요.)',
+        },
+        {
+          num: 3,
+          title: "내보내기 → ZIP 다운로드",
+          desc: '받는 방법을 "다운로드 링크 전송", 형식을 ZIP으로 두고 내보냅니다. 완료되면 ZIP 파일을 내려받으세요.',
+        },
+      ]}
+      tip="내려받은 ZIP(또는 JSON)을 왼쪽 영역에 끌어다 놓거나 '파일 직접 선택'으로 올리면 바로 분석이 시작돼요. 여러 개도 한 번에 가능합니다."
+    />
+  );
+}
+
+/** Drive 연동 탭 가이드 — Takeout을 Drive에 쌓고 폴더를 1회 연동하는 흐름. */
+function DriveGuide() {
+  return (
+    <GuideSteps
+      intro={{
+        title: "Google Takeout이란?",
+        body: "구글이 제공하는 데이터 내보내기 서비스입니다. Takeout을 Drive에 쌓이게 하고 폴더를 1회 연동하면 새 기록이 생길 때마다 자동으로 분석됩니다.",
+      }}
+      steps={[
+        {
+          num: 1,
+          title: "takeout.google.com 접속",
+          desc: "구글 계정으로 로그인 후 Takeout 페이지로 이동합니다.",
+          url: "https://takeout.google.com",
+        },
+        {
+          num: 2,
+          title: "YouTube만 선택 + 형식 JSON 권장",
+          desc: '"모두 선택 해제" 후 "YouTube 및 YouTube Music"만 체크하세요. → "여러 형식"에서 "기록(시청 기록)"을 JSON으로 바꾸면 가장 정확합니다.',
+        },
+        {
+          num: 3,
+          title: "받는 방법 → Google Drive",
+          desc: 'ZIP 형식 + "Drive에 추가"로 설정합니다. 정기 분석을 원하면 "2개월마다 1년 동안"으로 설정하면 새 기록이 폴더에 자동으로 쌓입니다.',
+        },
+        {
+          num: 4,
+          title: "Drive 폴더 1회 연동",
+          desc: '왼쪽 "폴더 연동"으로 Takeout 폴더를 선택하세요. 이후 새 Takeout이 쌓일 때마다 자동으로 분석됩니다. 전체 드라이브 권한은 필요 없어요.',
+        },
+      ]}
+      tip="내보내기 완료까지 수 분~수 시간 걸릴 수 있어요. 폴더를 한 번 연동해두면 이후 새 파일이 쌓일 때마다 자동 분석됩니다."
+    />
+  );
+}
+
+/** 탭 콘텐츠(좌) + 해당 탭 가이드(우) 2단 레이아웃. showGuides=false면 콘텐츠만. */
+function TabWithGuide({
+  showGuides,
+  guide,
+  children,
+}: {
+  showGuides: boolean;
+  guide: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  if (!showGuides) {
+    return <div className="p-6">{children}</div>;
+  }
+  return (
+    <div className="grid lg:h-[34rem] lg:grid-cols-[20rem_minmax(0,1fr)]">
+      <aside className="border-border border-b p-6 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-b-0">
+        {guide}
+      </aside>
+      <div className="p-6 lg:h-full lg:min-h-0 lg:overflow-y-auto">{children}</div>
     </div>
   );
 }
@@ -492,7 +570,7 @@ function DriveTab({
   );
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="space-y-4">
       <div className="rounded-2xl border border-violet-100 bg-violet-50 p-5">
         <p className="text-sm font-semibold text-violet-800">
           {conn?.connected ? "Takeout 폴더 연동됨" : "Takeout 폴더 연동"}
@@ -622,7 +700,8 @@ function DriveTab({
 
 export interface UploadPanelProps {
   onSuccess?: () => void;
-  showGuideTab?: boolean;
+  /** 각 탭 오른쪽에 해당 탭 전용 가이드를 표시. */
+  showGuides?: boolean;
   uploadTabLabel?: string;
   driveTabLabel?: string;
   selectFileLabel?: string;
@@ -631,22 +710,19 @@ export interface UploadPanelProps {
 
 export function UploadPanel({
   onSuccess,
-  showGuideTab = false,
+  showGuides = false,
   uploadTabLabel = "파일 직접 업로드",
   driveTabLabel = "Drive 연동",
   selectFileLabel = "파일 직접 선택",
   className,
 }: UploadPanelProps) {
-  const [tab, setTab] = useState<Tab>(showGuideTab ? "guide" : "upload");
+  const [tab, setTab] = useState<Tab>("upload");
 
   const handleSuccess = () => {
     onSuccess?.();
   };
 
   const tabs = [
-    ...(showGuideTab
-      ? [{ id: "guide" as const, icon: "?", label: "Takeout 가이드" }]
-      : []),
     { id: "upload" as const, icon: "📁", label: uploadTabLabel },
     { id: "drive" as const, icon: "☁", label: driveTabLabel },
   ];
@@ -666,15 +742,7 @@ export function UploadPanel({
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
-              <span
-                className={
-                  t.id === "guide"
-                    ? "flex h-4 w-4 items-center justify-center rounded-full border border-current text-[10px] font-bold"
-                    : ""
-                }
-              >
-                {t.icon}
-              </span>
+              <span>{t.icon}</span>
               {t.label}
             </button>
           ))}
@@ -682,16 +750,18 @@ export function UploadPanel({
       </div>
 
       {tab === "upload" && (
-        <DirectUploadTab onSuccess={handleSuccess} selectFileLabel={selectFileLabel} />
+        <TabWithGuide showGuides={showGuides} guide={<UploadGuide />}>
+          <DirectUploadTab
+            onSuccess={handleSuccess}
+            selectFileLabel={selectFileLabel}
+          />
+        </TabWithGuide>
       )}
       {tab === "drive" && (
-        <DriveTab
-          resetKey={0}
-          onSuccess={handleSuccess}
-          showGuideHint={showGuideTab}
-        />
+        <TabWithGuide showGuides={showGuides} guide={<DriveGuide />}>
+          <DriveTab resetKey={0} onSuccess={handleSuccess} showGuideHint={showGuides} />
+        </TabWithGuide>
       )}
-      {tab === "guide" && showGuideTab && <GuideTab />}
     </div>
   );
 }
