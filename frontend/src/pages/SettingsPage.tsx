@@ -76,15 +76,15 @@ const PLAN_AMOUNT = 19900;
 
 function BillingPanel() {
   const user = useAuthStore((s) => s.user);
-  const token = useAuthStore((s) => s.token);
   const setUser = useAuthStore((s) => s.setUser);
   const isPro = user?.plan === "pro";
   const [paying, setPaying] = useState(false);
   const [subModalOpen, setSubModalOpen] = useState(false);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
   async function handlePayment() {
-    if (!token || !user) return;
+    if (!user) return;
     setPaying(true);
     try {
       const { loadTossPayments } = await import("@tosspayments/tosspayments-sdk");
@@ -106,14 +106,15 @@ function BillingPanel() {
   }
 
   async function handleCancel() {
-    if (!token || !user) return;
+    if (!user) return;
     setCancelling(true);
     try {
       const { cancelSubscription } = await import("@/api/payment");
-      const updated = await cancelSubscription(token);
+      const updated = await cancelSubscription();
       if (updated) {
         setUser({ ...user, plan: updated.plan });
         toast.success("구독이 취소되었습니다");
+        setCancelConfirmOpen(false);
         setSubModalOpen(false);
       } else {
         toast.error("구독 취소에 실패했습니다");
@@ -166,10 +167,47 @@ function BillingPanel() {
                 size="sm"
                 variant="outline"
                 className="text-destructive hover:text-destructive"
+                onClick={() => setCancelConfirmOpen(true)}
+                disabled={cancelling}
+              >
+                구독 취소
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 구독 취소 재확인 모달 */}
+      {cancelConfirmOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="닫기"
+            className="absolute inset-0 bg-slate-900/30 backdrop-blur-[2px]"
+            onClick={() => !cancelling && setCancelConfirmOpen(false)}
+          />
+          <div className="relative w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl">
+            <h2 className="mb-2 text-base font-semibold">정말 취소하시겠습니까?</h2>
+            <p className="text-muted-foreground text-sm">
+              구독을 취소하면 Pro 플랜 혜택이 즉시 종료됩니다. 이 작업은 되돌릴 수 없습니다.
+            </p>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setCancelConfirmOpen(false)}
+                disabled={cancelling}
+              >
+                아니오
+              </Button>
+              <Button
+                size="sm"
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 onClick={handleCancel}
                 disabled={cancelling}
               >
-                {cancelling ? "취소 중..." : "구독 취소"}
+                {cancelling ? "취소 중..." : "예, 취소합니다"}
               </Button>
             </div>
           </div>
@@ -185,14 +223,21 @@ function BillingPanel() {
             </p>
           </div>
           {isPro ? (
-            <button type="button" onClick={() => setSubModalOpen(true)}>
-              <Badge variant="indigo" className="cursor-pointer rounded-full hover:opacity-80 transition-opacity">구독 중</Badge>
-            </button>
+            <Badge variant="indigo" className="rounded-full">구독 중</Badge>
           ) : (
             <Badge variant="outline" className="rounded-full">Free</Badge>
           )}
         </div>
-        {!isPro && (
+        {isPro ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-4"
+            onClick={() => setSubModalOpen(true)}
+          >
+            구독 관리
+          </Button>
+        ) : (
           <Button
             size="sm"
             className="mt-4"
@@ -235,18 +280,17 @@ function PermissionsPanel() {
 
 function AccountPanel() {
   const user = useAuthStore((s) => s.user);
-  const token = useAuthStore((s) => s.token);
   const logout = useAuthStore((s) => s.logout);
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   async function handleDeleteAccount() {
-    if (!token) return;
+    if (!user) return;
     setDeleting(true);
     try {
       const { deleteMe } = await import("@/api/auth");
-      const ok = await deleteMe(token);
+      const ok = await deleteMe();
       if (ok) {
         toast.success("계정이 탈퇴 처리되었습니다");
         logout();

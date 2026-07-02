@@ -7,11 +7,11 @@ import { useAuthStore } from "@/stores/auth";
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
 
   useEffect(() => {
-    if (token) navigate(ROUTES.home, { replace: true });
-  }, [token, navigate]);
+    if (user) navigate(ROUTES.home, { replace: true });
+  }, [user, navigate]);
 
   return (
     <main className="bg-background flex min-h-screen items-center justify-center p-4">

@@ -11,11 +11,6 @@ const API = `${API_BASE_URL}/api/v1`;
 type Tab = "upload" | "drive" | "guide";
 type UploadStatus = "idle" | "uploading" | "polling" | "success" | "error";
 
-function authHeaders(): HeadersInit {
-  const token = useAuthStore.getState().token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 function DirectUploadTab({
   onSuccess,
   selectFileLabel,
@@ -79,7 +74,7 @@ function DirectUploadTab({
       try {
         const res = await fetch(`${API}/indexer/analyze`, {
           method: "POST",
-          headers: authHeaders(),
+          credentials: "include",
           body: form,
         });
         if (!res.ok) {
@@ -277,7 +272,7 @@ function DriveTab({
   resetKey: number;
   showGuideHint: boolean;
 }) {
-  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
   const [conn, setConn] = useState<DriveConnection | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -285,11 +280,11 @@ function DriveTab({
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!token) return;
+    if (!user) return;
     getDriveConnection()
       .then(setConn)
       .catch(() => setConn({ connected: false, folder_name: null }));
-  }, [token]);
+  }, [user]);
 
   const handleConnect = useCallback(async () => {
     setConnecting(true);
@@ -312,7 +307,7 @@ function DriveTab({
     try {
       const res = await fetch(`${API}/takeout/drive/auto`, {
         method: "POST",
-        headers: authHeaders(),
+        credentials: "include",
       });
       const d = await res.json();
       if (d.status === "started") {
@@ -334,7 +329,7 @@ function DriveTab({
     }
   }, [onSuccess]);
 
-  if (!token) {
+  if (!user) {
     return (
       <div className="flex flex-col items-center gap-4 py-14 text-center">
         <p className="text-sm text-gray-500">Google 계정 연동이 필요합니다</p>

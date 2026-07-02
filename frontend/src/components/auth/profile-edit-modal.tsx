@@ -14,7 +14,6 @@ interface ProfileEditModalProps {
 
 export function ProfileEditModal({ open, onClose }: ProfileEditModalProps) {
   const user = useAuthStore((s) => s.user);
-  const token = useAuthStore((s) => s.token);
   const setUser = useAuthStore((s) => s.setUser);
 
   const [nickname, setNickname] = useState(user?.name ?? "");
@@ -52,11 +51,11 @@ export function ProfileEditModal({ open, onClose }: ProfileEditModalProps) {
   }
 
   async function handleSave() {
-    if (!token) return;
+    if (!user) return;
     setSaving(true);
     setError(null);
     try {
-      const updated = await updateMe(token, {
+      const updated = await updateMe({
         nickname,
         picture: picturePreview ?? undefined,
       });
