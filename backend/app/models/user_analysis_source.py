@@ -11,6 +11,7 @@ from app.core.database.mixin import TimestampMixin
 
 
 class AnalysisSourceStatus:
+    PENDING = "pending"  # 큐 대기 중 (유저별 직렬 실행 대기)
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -20,6 +21,7 @@ class AnalysisSourceStage:
     """status=running 동안의 세부 단계 (표시용)."""
 
     INDEXING = "indexing"  # 분류 중
+    INDEXED = "indexed"  # 분류 완료 (배치 분석 대기)
     PROFILING = "profiling"  # 분석 중
 
 

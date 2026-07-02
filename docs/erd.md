@@ -1,10 +1,25 @@
 # Synapse DB 스키마
 
-PostgreSQL 17 · `pgvector` · `pgcrypto`  
-마이그레이션 (실제 파일):
-`001_initial_schema` → `002_create_scraps` → `003_user_subscription` (**현재 head**)
+PostgreSQL 17 · `pgvector` · `pgcrypto`
 
-> 초기 스키마는 `001_initial_schema` **한 파일에 통합**돼 있다(과거 007~013 등 개별 마이그레이션은 통합됨, 실파일 없음). 이후 `scraps`(002), `user_subscription`(003)만 별도 추가. 새 마이그레이션은 `down_revision`을 직전 head로 지정.
+마이그레이션 (실제 파일 · 분기/병합 있음):
+
+```text
+001_initial_schema → 002_create_scraps → 003_user_subscription
+                                             ├─ 004_drive_folder → 005_analysis_stage ─┐
+                                             └─ 004_scrap_embeddings ─────────────────┴─ 006_merge_heads → 007_user_behavior_logs → 008_drop_transcript  (현재 head)
+```
+
+> 초기 스키마는 `001_initial_schema` **한 파일에 통합**돼 있다(과거 007~013 등 개별 마이그레이션은 통합됨, 실파일 없음). 이후 `scraps`(002) → `user_subscription`(003)까지 선형. 003에서 **두 갈래로 분기**(`004_drive_folder`+`005_analysis_stage` / `004_scrap_embeddings`)했다가 `006_merge_heads`로 병합, 이후 `007_user_behavior_logs` → `008_drop_transcript`가 현재 head. 새 마이그레이션은 `down_revision`을 **`008_drop_transcript`**로 지정.
+
+| 리비전 | 추가/변경 |
+|--------|-----------|
+| `004_drive_folder` | `user_token`에 `drive_folder_id`·`drive_folder_name` 추가 (Takeout 자동분석용 Picker 폴더) |
+| `004_scrap_embeddings` | `scrap_embeddings` 테이블 신설 (scraps 1:1 pgvector) |
+| `005_analysis_stage` | `user_analysis_source`에 `stage` 컬럼 추가 (indexing/profiling) |
+| `006_merge_heads` | 위 두 갈래 병합 (no-op) |
+| `007_user_behavior_logs` | `user_behavior_logs` 테이블 신설 (익스텐션 체류시간) |
+| `008_drop_transcript` | `video_analysis.transcript` 컬럼 제거 (자막 IP 차단으로 미사용) |
 
 ---
 
@@ -13,7 +28,7 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | 테이블 | 설명 | 관계 |
 |--------|------|------|
 | `users` | 사용자 | `user_token` 1:1 |
-| `user_token` | 로그인·Google·익스텐션 토큰 | → `users` |
+| `user_token` | 로그인·Google·익스텐션 토큰 + Drive 폴더(004) | → `users` |
 | `extension_auth_code` | 웹→익스텐션 1회용 연동 코드 | → `users` |
 | `user_watch_catalog` | 시청 기록 정본 (인덱서) | → `users`, ← `video_analysis` 0~1 |
 | `user_subscription` | 구독 채널 스냅샷 (인덱서, 003) | → `users` |
@@ -24,7 +39,9 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `navigator_proposal_cache` | 이상향 제안 3안 캐시 (네비게이터) | → `users`, → `user_profile_history` |
 | `navigator_playlist` | 이상향 기반 YouTube 재생목록 (네비게이터) | → `users`, → `user_ideal_persona` |
 | `scraps` | 웹·채팅 스크랩 요약 (아카이버·큐레이터, 002) | → `users` |
+| `scrap_embeddings` | 스크랩 본문 임베딩 (아카이버, 004) | → `scraps` 1:1 |
 | `ai_chat_logs` | 통합 AI 채팅 로그 (Archiver·Curator) | → `users` |
+| `user_behavior_logs` | 익스텐션 체류시간·URL 로그 (Tracking, 007) | → `users` |
 
 ---
 
@@ -60,8 +77,10 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `refresh_token` | VARCHAR(512) | N | 서비스 자체 refresh token |
 | `google_refresh_token` | VARCHAR(512) | Y | Google OAuth refresh token |
 | `expires_at` | TIMESTAMPTZ | N | 서비스 refresh token 만료 시각 |
-| `extension_refresh_token` | VARCHAR(512) | Y | 익스텐션 세션 refresh token (006) |
-| `extension_expires_at` | TIMESTAMPTZ | Y | 익스텐션 refresh token 만료 시각 (006) |
+| `extension_refresh_token` | VARCHAR(512) | Y | 익스텐션 세션 refresh token |
+| `extension_expires_at` | TIMESTAMPTZ | Y | 익스텐션 refresh token 만료 시각 |
+| `drive_folder_id` | VARCHAR(255) | Y | Picker로 1회 선택한 Takeout Drive 폴더 ID. 스케줄러는 이 값 있는 유저만 처리 (004_drive_folder) |
+| `drive_folder_name` | VARCHAR(512) | Y | 연동 폴더 표시명 (004_drive_folder) |
 | `created_at` | TIMESTAMPTZ | N | |
 | `updated_at` | TIMESTAMPTZ | N | |
 
@@ -144,11 +163,12 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `source_key` | VARCHAR(512) | N | `drive:{file_id}` 또는 `upload:{sha256}` |
 | `file_name` | TEXT | Y | UI 표시용 파일명 |
 | `status` | VARCHAR(20) | N | `running` · `completed` · `failed` |
+| `stage` | VARCHAR(20) | N | `status=running` 중 세부단계: `indexing`(분류) · `profiling`(분석). 기본 `indexing` (005_analysis_stage) |
 | `profile_history_id` | UUID | Y | FK → `user_profile_history.id` ON DELETE SET NULL |
 | `created_at` | TIMESTAMPTZ | N | |
 | `updated_at` | TIMESTAMPTZ | N | |
 
-**UK:** `(user_id, source_key)`  
+**UK:** `(user_id, source_key)` — `uq_uas_user_source`  
 **인덱스:** `(user_id, created_at DESC)`
 
 `source_key` 규칙:
@@ -170,13 +190,12 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `tones` | JSONB | N | 톤 분석 결과 |
 | `intents` | JSONB | N | 의도 분석 결과 |
 | `value_signals` | JSONB | N | 가치 신호 분석 결과 |
-| `transcript` | TEXT | Y | 자막 텍스트. 프로파일러가 수집 (youtube-transcript-api) |
 | `embedding_text` | TEXT | N | 임베딩에 사용한 원문 |
 | `embedding` | VECTOR(1536) | N | 요약 기반 의미 벡터 |
 | `created_at` | TIMESTAMPTZ | N | |
 | `updated_at` | TIMESTAMPTZ | N | |
 
-> `description`, `tags`, `thumbnail_url`는 catalog에 있음. `transcript`는 video_analysis에 저장. 조회 시 catalog JOIN.
+> `description`, `tags`, `thumbnail_url`는 catalog에 있음. 조회 시 catalog JOIN. 자막(`transcript`)은 youtube-transcript-api IP 차단으로 수집률 0%라 제거함(008). 의미분석은 제목·설명·태그·카테고리 메타데이터만 사용.
 
 **인덱스:** `(user_id)`, HNSW on `embedding`
 
@@ -320,6 +339,21 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 
 ---
 
+## scrap_embeddings
+
+스크랩 본문의 **OpenAI 임베딩** (1536차원). `scraps`와 1:1. 스크랩 시맨틱 그래프(코사인 유사도) 조회용. (004_scrap_embeddings)
+
+| 컬럼 | 타입 | NULL | 설명 |
+|------|------|:----:|------|
+| `scrap_id` | UUID | N | PK **이자** FK → `scraps.id` ON DELETE CASCADE (1:1) |
+| `embedding_text` | TEXT | N | 임베딩 입력 원문 |
+| `embedding` | VECTOR(1536) | N | 본문 임베딩 |
+| `created_at` / `updated_at` | TIMESTAMPTZ | N | |
+
+**인덱스:** HNSW on `embedding` (`vector_cosine_ops`, `ix_scrap_embeddings_embedding`)
+
+---
+
 ## ai_chat_logs
 
 에이전트 통합 **AI 채팅 로그**. Archiver(패시브 웹 맥락)·Curator(챗봇 세션)가 공유한다. `session_id`로 세션 묶음. (005)
@@ -338,6 +372,24 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `created_at` | TIMESTAMPTZ | N | |
 
 **인덱스:** `(session_id)`, `(user_id)`, `(agent_type)`
+
+---
+
+## user_behavior_logs
+
+익스텐션이 수집하는 **브라우저 탭 체류 세션** 정산 이벤트. 페이지 이탈·탭 전환·포커스 변경 시 1행. 대시보드(`/me/activity`)의 오늘 총 체류시간·도메인 TOP5 집계 원본. (007_user_behavior_logs)
+
+| 컬럼 | 타입 | NULL | 설명 |
+|------|------|:----:|------|
+| `id` | INTEGER | N | PK. autoincrement |
+| `user_id` | UUID | N | FK → `users.id` ON DELETE CASCADE. index |
+| `url` | VARCHAR(2048) | N | 정규화된 페이지 URL (쿼리·fragment 제거) |
+| `domain` | VARCHAR(255) | N | hostname. index |
+| `page_title` | VARCHAR(500) | Y | 페이지 제목 |
+| `duration_seconds` | INTEGER | N | 체류 시간(초). 기본 `0`, 최소 1초 이상만 적재 |
+| `timestamp` | TIMESTAMPTZ | N | 세션 시각. index |
+
+**인덱스:** `ix_user_behavior_logs_user_timestamp (user_id, timestamp)`, `(domain)`, `(user_id)`, `(timestamp)`
 
 ---
 

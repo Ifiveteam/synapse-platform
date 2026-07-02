@@ -11,13 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.indexer.graph import graph
 from app.api.v1.auth import get_current_user_dep
 from app.core.database.session import get_db
-from app.models.user_analysis_source import AnalysisSourceStage
 from app.repositories.analysis_source_repository import begin_source
 from app.services.analysis_source_service import (
     fail_source_async,
-    set_source_stage_async,
     upload_source_key,
 )
+from app.services.indexer_service import indexer_service
 
 router = APIRouter(prefix="/indexer", tags=["indexer"])
 
@@ -32,18 +31,6 @@ def _temp_upload_path(file: UploadFile) -> str:
         return tmp.name
 
 
-async def _enqueue_profiler(
-    user_id: UUID, user_email: str, analysis_source_id: str
-) -> None:
-    from app.services.profiler.service import profiler_service
-
-    profiler_service.enqueue_for_user(
-        str(user_id),
-        user_email,
-        analysis_source_id=analysis_source_id,
-    )
-
-
 async def run_analysis(
     task_id: str,
     tmp_path: str,
@@ -51,7 +38,7 @@ async def run_analysis(
     user_email: str,
     analysis_source_id: str,
 ):
-    """백그라운드 분석 실행 — 인덱서 후 프로파일러 자동 큐."""
+    """백그라운드 인덱싱 실행 (프로파일러는 IndexerService가 profile-once로 트리거)."""
     try:
         analysis_status[task_id] = {"status": "running"}
 
@@ -92,8 +79,7 @@ async def run_analysis(
             "category_stats": category_stats,
         }
 
-        await set_source_stage_async(analysis_source_id, AnalysisSourceStage.PROFILING)
-        await _enqueue_profiler(user_id, user_email, analysis_source_id)
+        # 프로파일러 트리거는 IndexerService가 profile-once 정책으로 처리.
     except Exception as e:
         analysis_status[task_id] = {"status": "error", "message": str(e)}
         await fail_source_async(analysis_source_id)
@@ -121,18 +107,19 @@ async def _start_upload_analysis(
                 str(row.profile_history_id) if row.profile_history_id else None
             ),
         }
-    if action == "skip_running":
+    if action in ("skip_running", "skip_pending"):
         os.unlink(tmp_path)
         return {"status": "already_running"}
 
+    # 유저별 직렬 큐에 등록 — 같은 유저는 하나씩 순차 인덱싱 (동시 교착 방지)
     task_id = str(uuid_mod.uuid4())
-    background_tasks.add_task(
-        run_analysis,
-        task_id,
-        tmp_path,
-        user.id,
-        user.email,
-        str(row.id),
+    source_id = str(row.id)
+    uid, email = user.id, user.email
+    indexer_service.enqueue(
+        str(uid),
+        source_id,
+        email,
+        lambda: run_analysis(task_id, tmp_path, uid, email, source_id),
     )
     payload = {"status": "started", "task_id": task_id}
     if mode:
@@ -224,10 +211,13 @@ async def get_videos(
 async def get_graph_summary(
     session: AsyncSession = Depends(get_db), user=Depends(get_current_user_dep)
 ):
-    """시청 그래프 UI용 catalog 집계 (상위 카테고리·채널, 경량)."""
+    """시청 그래프 UI용 catalog 집계 (상위 카테고리·채널, 경량). 최근 2달 시청분만."""
+    from app.agents.shared.analysis_window import WATCH_CATALOG_WINDOW_DAYS
     from app.repositories.indexer_repository import fetch_graph_summary
 
-    return await fetch_graph_summary(session, user.id)
+    return await fetch_graph_summary(
+        session, user.id, window_days=WATCH_CATALOG_WINDOW_DAYS
+    )
 
 
 @router.get("/embedding-graph")
@@ -237,10 +227,14 @@ async def get_embedding_graph(
     session: AsyncSession = Depends(get_db),
     user=Depends(get_current_user_dep),
 ):
-    """영상별 임베딩 PCA 2D 투영 그래프. before/after: ISO 날짜 문자열 (선택)."""
+    """영상별 임베딩 PCA 2D 투영 그래프. before/after 미지정 시 최근 2달(시청일 기준)."""
     from datetime import datetime, timezone
 
-    from app.repositories.indexer_repository import fetch_catalog_embedding_rows
+    from app.agents.shared.analysis_window import WATCH_CATALOG_WINDOW_DAYS
+    from app.repositories.indexer_repository import (
+        fetch_catalog_embedding_rows,
+        recent_watched_start,
+    )
     from app.services.catalog_embedding_graph import build_embedding_graph_payload
 
     def _parse(s: str | None):
@@ -252,8 +246,16 @@ async def get_embedding_graph(
         except ValueError:
             return None
 
+    # after 미지정이면 '마지막 시청일 기준 2달'로 기본 필터
+    parsed_after = _parse(after)
+    if parsed_after is None:
+        parsed_after = await recent_watched_start(
+            session, user.id, WATCH_CATALOG_WINDOW_DAYS
+        )
+
+    # 그래프 과밀 방지 — 최근 2달 내에서도 최신 시청순 최대 2000개만
     rows = await fetch_catalog_embedding_rows(
-        session, user.id, before=_parse(before), after=_parse(after)
+        session, user.id, before=_parse(before), after=parsed_after, limit=2000
     )
     return build_embedding_graph_payload(rows)
 

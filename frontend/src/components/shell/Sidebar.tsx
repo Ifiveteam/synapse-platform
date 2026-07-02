@@ -22,6 +22,7 @@ import { useShellStore } from "@/stores/shell";
 import { useScrapDetailPanelStore } from "@/stores/scrap-detail-panel";
 import { useSidebarStore } from "@/stores/sidebar";
 import { useThemeStore } from "@/stores/theme";
+import logoUrl from "@/assets/logo.png";
 
 function ThemeToggle({ expanded }: { expanded: boolean }) {
   const { theme, toggle } = useThemeStore();
@@ -69,7 +70,7 @@ function BrandLogo({ expanded }: { expanded: boolean }) {
   const { theme } = useThemeStore();
   return (
     <img
-      src="/src/assets/logo.png"
+      src={logoUrl}
       alt="Synapse"
       className={cn(
         "shrink-0 object-contain",
@@ -280,12 +281,12 @@ export function Sidebar() {
         <div className={cn("shrink-0", expanded ? "px-2 pt-2" : "")}>
           {user ? (
             <Link
-              to={ROUTES.myAnalyses}
-              title="내 분석 목록"
+              to={ROUTES.ME.HOME}
+              title="내 정보"
               className={cn(
                 "hover:bg-secondary flex w-full items-center rounded-xl transition-colors",
                 expanded ? "gap-3 px-3 py-2" : "h-9 w-9 justify-center",
-                pathname === ROUTES.myAnalyses && "bg-accent text-accent-foreground",
+                pathname === ROUTES.ME.HOME && "bg-accent text-accent-foreground",
               )}
             >
               {user.picture ? (
@@ -302,15 +303,21 @@ export function Sidebar() {
                 </div>
               )}
               {expanded && (
-                <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">
-                  <span className="truncate text-left text-sm font-medium">
-                    {user.name}
-                  </span>
-                  {user.plan === "pro" && (
-                    <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
-                      Pro
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="flex items-center gap-1.5 truncate">
+                    <span className="truncate text-left text-sm font-medium">
+                      {user.name}
                     </span>
-                  )}
+                    {user.plan === "pro" && (
+                      <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
+                        Pro
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-muted-foreground flex items-center gap-1 truncate text-xs">
+                    <Target size={11} className="shrink-0" />
+                    <span className="truncate">{idealLabel}</span>
+                  </span>
                 </span>
               )}
             </Link>
@@ -332,21 +339,13 @@ export function Sidebar() {
           )}
         </div>
 
-        {/* 적용 중 이상향 · 활동 이력 */}
+        {/* 활동 이력 */}
         <div
           className={cn(
             "shrink-0 flex flex-col gap-0.5",
             expanded ? "px-2 pt-1" : "items-center",
           )}
         >
-          <SidebarRow
-            expanded={expanded}
-            icon={Target}
-            label={idealLabel}
-            sublabel={expanded ? "현재 적용 중" : undefined}
-            href={ROUTES.idealManagement}
-            active={pathname === ROUTES.idealManagement}
-          />
           <SidebarRow
             expanded={expanded}
             icon={Activity}
@@ -496,7 +495,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* 설정 */}
+      {/* 설정 · 테마 */}
       <div
         className={cn(
           "border-border shrink-0 border-t px-2 py-3",
@@ -504,13 +503,18 @@ export function Sidebar() {
         )}
       >
         <div className={cn(expanded ? "flex-1" : "")}>
-          <SidebarRow
-            expanded={expanded}
-            icon={Settings}
-            label="설정"
-            href={ROUTES.settings}
-            active={pathname.startsWith(ROUTES.settings)}
-          />
+          <Link
+            to={ROUTES.settings}
+            title="설정"
+            className={cn(
+              "flex h-9 w-9 items-center justify-center rounded-xl transition-colors",
+              pathname.startsWith(ROUTES.settings)
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+            )}
+          >
+            <Settings size={15} className="shrink-0" />
+          </Link>
         </div>
         <ThemeToggle expanded={expanded} />
       </div>
