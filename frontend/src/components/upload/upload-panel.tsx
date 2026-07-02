@@ -7,6 +7,7 @@ import { connectDriveFolder } from "@/lib/google-picker";
 import {
   getDriveConnection,
   listDriveFiles,
+  sealBatch,
   triggerDriveFile,
   type DriveConnection,
   type DriveFile,
@@ -96,11 +97,13 @@ function DirectUploadTab({
   }, []);
 
   // 파일 1건 업로드 (진행 중 임시 표시). 결과 상태 문자열 반환.
-  const uploadOne = useCallback(async (file: File): Promise<string | null> => {
+  const uploadOne = useCallback(
+    async (file: File, batchId: string): Promise<string | null> => {
     const id = crypto.randomUUID();
     setUploadingFiles((prev) => [...prev, { id, fileName: file.name }]);
     const form = new FormData();
     form.append("file", file);
+    form.append("batch_id", batchId);
     try {
       const res = await fetch(`${API}/indexer/analyze`, {
         method: "POST",
@@ -138,7 +141,14 @@ function DirectUploadTab({
     const files = selectedFiles;
     setSelectedFiles([]);
     setSelectError("");
-    const results = await Promise.all(files.map((f) => uploadOne(f)));
+    // 이 클릭 = 한 배치. 업로드 응답을 다 받은 뒤 seal("다 보냄")로 배치를 닫는다.
+    const batchId = crypto.randomUUID();
+    const results = await Promise.all(files.map((f) => uploadOne(f, batchId)));
+    try {
+      await sealBatch(batchId);
+    } catch {
+      // seal 실패 시 서버 자동-seal 안전망이 배치를 마무리한다
+    }
     const started = results.filter((r) => r === "started").length;
     if (started > 0) {
       toast.success(`${started}개 파일 업로드 완료 — 분석을 시작했어요`);
@@ -517,9 +527,16 @@ function DriveTab({
       if (ids.length === 0 || batchRunning) return;
       setBatchRunning(true);
       try {
+        // 이 클릭 = 한 배치. 트리거를 모두 보낸 뒤 seal로 닫는다.
+        const batchId = crypto.randomUUID();
         const results = await Promise.all(
-          ids.map((id) => triggerDriveFile(id).catch(() => null)),
+          ids.map((id) => triggerDriveFile(id, batchId).catch(() => null)),
         );
+        try {
+          await sealBatch(batchId);
+        } catch {
+          // seal 실패 시 서버 자동-seal 안전망이 처리
+        }
         const started = results.filter((r) => r?.status === "started").length;
         if (started > 0) {
           toast.success(`${started}개 파일 분석을 시작했어요`);

@@ -7,10 +7,10 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 ```text
 001_initial_schema → 002_create_scraps → 003_user_subscription
                                              ├─ 004_drive_folder → 005_analysis_stage ─┐
-                                             └─ 004_scrap_embeddings ─────────────────┴─ 006_merge_heads → 007_user_behavior_logs → 008_drop_transcript  (현재 head)
+                                             └─ 004_scrap_embeddings ─────────────────┴─ 006_merge_heads → 007_user_behavior_logs → 008_drop_transcript → 009_interval_months → 010_batch_source_catalog  (현재 head)
 ```
 
-> 초기 스키마는 `001_initial_schema` **한 파일에 통합**돼 있다(과거 007~013 등 개별 마이그레이션은 통합됨, 실파일 없음). 이후 `scraps`(002) → `user_subscription`(003)까지 선형. 003에서 **두 갈래로 분기**(`004_drive_folder`+`005_analysis_stage` / `004_scrap_embeddings`)했다가 `006_merge_heads`로 병합, 이후 `007_user_behavior_logs` → `008_drop_transcript`가 현재 head. 새 마이그레이션은 `down_revision`을 **`008_drop_transcript`**로 지정.
+> 초기 스키마는 `001_initial_schema` **한 파일에 통합**돼 있다(과거 007~013 등 개별 마이그레이션은 통합됨, 실파일 없음). 이후 `scraps`(002) → `user_subscription`(003)까지 선형. 003에서 **두 갈래로 분기**(`004_drive_folder`+`005_analysis_stage` / `004_scrap_embeddings`)했다가 `006_merge_heads`로 병합, 이후 `007_user_behavior_logs` → `008_drop_transcript` → `009_interval_months` → `010_batch_source_catalog`가 현재 head. 새 마이그레이션은 `down_revision`을 **`010_batch_source_catalog`**로 지정.
 
 | 리비전 | 추가/변경 |
 |--------|-----------|
@@ -20,6 +20,8 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `006_merge_heads` | 위 두 갈래 병합 (no-op) |
 | `007_user_behavior_logs` | `user_behavior_logs` 테이블 신설 (익스텐션 체류시간) |
 | `008_drop_transcript` | `video_analysis.transcript` 컬럼 제거 (자막 IP 차단으로 미사용) |
+| `009_interval_months` | `users.analysis_interval_months` 추가 (Drive 자동분석 주기) |
+| `010_batch_source_catalog` | `analysis_batch`·`analysis_source_catalog` 신설 + `user_analysis_source`·`user_profile_history`에 `batch_id` (요청 단위 배치 스코프 분석) |
 
 ---
 
@@ -30,11 +32,13 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `users` | 사용자 | `user_token` 1:1 |
 | `user_token` | 로그인·Google·익스텐션 토큰 + Drive 폴더(004) | → `users` |
 | `extension_auth_code` | 웹→익스텐션 1회용 연동 코드 | → `users` |
-| `user_watch_catalog` | 시청 기록 정본 (인덱서) | → `users`, ← `video_analysis` 0~1 |
+| `user_watch_catalog` | 시청 기록 정본 (인덱서) | → `users`, ← `video_analysis` 0~1, ← `analysis_source_catalog` N |
 | `user_subscription` | 구독 채널 스냅샷 (인덱서, 003) | → `users` |
-| `user_analysis_source` | 업로드 소스별 분석 이력 (중복 방지) | → `users`, → `user_profile_history` 0~1 |
+| `analysis_batch` | 분석 요청(클릭) 단위 묶음. seal되면 그 배치로 프로파일 1회 (010) | → `users` |
+| `user_analysis_source` | 업로드 소스별 분석 이력 (중복 방지). `batch_id`로 배치 소속 | → `users`, → `analysis_batch` 0~1, → `user_profile_history` 0~1 |
+| `analysis_source_catalog` | 소스(파일)↔시청영상 다대다 소속. 배치 스코프 분석용 (010) | → `user_analysis_source`, → `user_watch_catalog` |
 | `video_analysis` | 영상 LLM 분석 (프로파일러) | → `users`, → `user_watch_catalog` 1:1 |
-| `user_profile_history` | 성향 점수 + LLM 해석 스냅샷 | → `users` |
+| `user_profile_history` | 성향 점수 + LLM 해석 스냅샷. `batch_id`로 유발 배치 박제 | → `users`, → `analysis_batch` 0~1 |
 | `user_ideal_persona` | 이상 자아 (네비게이터) | → `users`, → `user_profile_history` 0~1 |
 | `navigator_proposal_cache` | 이상향 제안 3안 캐시 (네비게이터) | → `users`, → `user_profile_history` |
 | `navigator_playlist` | 이상향 기반 YouTube 재생목록 (네비게이터) | → `users`, → `user_ideal_persona` |

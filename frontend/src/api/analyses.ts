@@ -17,6 +17,7 @@ interface AnalysisListItemDto {
   status: AnalysisStatus;
   stage?: AnalysisStage | null;
   kind: "snapshot" | "job";
+  batch_id?: string | null;
 }
 
 interface AnalysisListResponseDto {
@@ -33,6 +34,7 @@ function mapListItem(dto: AnalysisListItemDto): AnalysisResultItem {
     status: dto.status,
     stage: dto.stage ?? null,
     kind: dto.kind,
+    batchId: dto.batch_id ?? null,
   };
 }
 

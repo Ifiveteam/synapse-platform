@@ -30,6 +30,8 @@ class IndexerState(TypedDict):
     error: str | None
     saved_count: int | None
     user_id: uuid.UUID | None
+    # 배치: 이 파일의 소스 id (저장 시 소속 짝 기록용). 스크립트 실행 등에선 없음.
+    analysis_source_id: NotRequired[str | None]
     # 증분 인덱싱
     existing_items: NotRequired[list[VideoItem]]  # 기존 = watched_at·watch_count만 갱신
     skipped_existing: NotRequired[int]

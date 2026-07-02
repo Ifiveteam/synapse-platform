@@ -32,3 +32,5 @@ class DbProfileResponse(BaseModel):
     tone_of_user: str | None = None
     top_categories: list[TopCategoryItem] = []
     top_channels: list[TopChannelItem] = []
+    top_channels_long: list[TopChannelItem] = []
+    top_channels_short: list[TopChannelItem] = []

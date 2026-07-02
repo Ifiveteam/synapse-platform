@@ -205,8 +205,19 @@ export function MyAnalysesPage({ embedded = false }: { embedded?: boolean } = {}
     };
   }, []);
 
-  // 진행 중(job) 항목은 한 그룹 박스로, 완료 스냅샷만 개별 + 페이지네이션
+  // 진행 중(job) 항목은 **배치별로** 그룹 박스 하나씩, 완료 스냅샷만 개별 + 페이지네이션
   const jobItems = useMemo(() => items.filter((i) => i.kind === "job"), [items]);
+  const jobGroups = useMemo(() => {
+    const map = new Map<string, AnalysisResultItem[]>();
+    for (const it of jobItems) {
+      // 배치가 다르면 다른 박스. batch_id 없으면(구/자동 단일) 각자 독립 박스.
+      const key = it.batchId ?? `solo:${it.id}`;
+      const arr = map.get(key);
+      if (arr) arr.push(it);
+      else map.set(key, [it]);
+    }
+    return Array.from(map.values());
+  }, [jobItems]);
   const snapshotItems = useMemo(
     () => items.filter((i) => i.kind === "snapshot"),
     [items],
@@ -380,7 +391,13 @@ export function MyAnalysesPage({ embedded = false }: { embedded?: boolean } = {}
 
       {!loading && !error && (
         <div className="flex flex-1 flex-col gap-3">
-          {showJobGroup && <InProgressGroup items={jobItems} />}
+          {showJobGroup &&
+            jobGroups.map((group) => (
+              <InProgressGroup
+                key={group[0].batchId ?? group[0].id}
+                items={group}
+              />
+            ))}
           {pageSnapshots.map((item) => (
             <AnalysisListItem
               key={item.id}

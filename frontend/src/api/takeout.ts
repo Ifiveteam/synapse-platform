@@ -69,10 +69,19 @@ export function listDriveFiles() {
   return apiFetchAuth<{ files: DriveFile[] }>("/api/v1/takeout/drive/files");
 }
 
-/** 특정 Drive 파일 분석 트리거 */
-export function triggerDriveFile(fileId: string) {
+/** 특정 Drive 파일 분석 트리거 (batchId 있으면 그 배치에 소속) */
+export function triggerDriveFile(fileId: string, batchId?: string) {
+  const query = batchId ? `?batch_id=${encodeURIComponent(batchId)}` : "";
   return apiFetchAuth<{ status: string; task_id?: string }>(
-    `/api/v1/takeout/drive/trigger/${fileId}`,
+    `/api/v1/takeout/drive/trigger/${fileId}${query}`,
+    { method: "POST" },
+  );
+}
+
+/** 배치 '다 보냄'(seal) — 업로드/트리거를 모두 보낸 뒤 호출 → 배치 닫고 트리거 */
+export function sealBatch(batchId: string) {
+  return apiFetchAuth<{ status: string }>(
+    `/api/v1/indexer/batch/${batchId}/seal`,
     { method: "POST" },
   );
 }

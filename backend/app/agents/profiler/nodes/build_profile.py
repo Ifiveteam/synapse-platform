@@ -468,20 +468,32 @@ def _aggregate_semantic_evidence(rows, analyses) -> dict[str, float]:
 
 async def _load_context(
     user_id: uuid.UUID,
+    analysis_source_ids: list[str] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     from app.core.database.session import AsyncSessionLocal
     from app.repositories.profiler_repository import (
+        fetch_catalog_rows_by_sources,
         fetch_recent_catalog_rows,
+        fetch_video_analyses_by_catalog_ids,
         fetch_video_analyses_for_user,
     )
 
     async with AsyncSessionLocal() as session:
-        # 누적 catalog 전체가 아니라 최근 윈도우(인덱서와 공유 상수)만 채점에 사용.
-        rows = await fetch_recent_catalog_rows(
-            session, user_id, WATCH_CATALOG_WINDOW_DAYS
-        )
+        if analysis_source_ids:
+            # 배치 스코프: 그 파일들 소속 영상 합집합의 최근 윈도우(2달 재컷)
+            rows = await fetch_catalog_rows_by_sources(
+                session, user_id, analysis_source_ids, WATCH_CATALOG_WINDOW_DAYS
+            )
+            analyses = await fetch_video_analyses_by_catalog_ids(
+                session, [row.id for row in rows], limit=50
+            )
+        else:
+            # 통합본: 누적 catalog 전체의 최근 윈도우(수동 재분석 등)
+            rows = await fetch_recent_catalog_rows(
+                session, user_id, WATCH_CATALOG_WINDOW_DAYS
+            )
+            analyses = await fetch_video_analyses_for_user(session, user_id, limit=50)
         stats = _build_catalog_stats(rows)
-        analyses = await fetch_video_analyses_for_user(session, user_id, limit=50)
 
     # 영상 의미라벨 근거를 stats에 실어 _axis_evidence_strength가 결합하게 함
     stats["semantic_evidence"] = _aggregate_semantic_evidence(rows, analyses)
@@ -603,10 +615,12 @@ async def _llm_insight(
 
 async def build_profile_node(state: ProfilerState) -> dict[str, Any]:
     user_id = uuid.UUID(str(state["user_id"]))
+    analysis_source_ids = state.get("analysis_source_ids")
+    batch_id = state.get("batch_id")
     log = list(state.get("investigation_log") or [])
 
     try:
-        stats, samples = await _load_context(user_id)
+        stats, samples = await _load_context(user_id, analysis_source_ids)
         analyzed_in_samples = sum(1 for s in samples if s.get("summary_kr"))
         log.append(
             f"build_profile: catalog={stats['total']} "
@@ -672,7 +686,7 @@ async def build_profile_node(state: ProfilerState) -> dict[str, Any]:
 
         async with AsyncSessionLocal() as session:
             snapshot_id = await insert_profile_snapshot(
-                session, user_id, scores, insight, supporting
+                session, user_id, scores, insight, supporting, batch_id=batch_id
             )
             await session.commit()
         log.append(f"build_profile: stored snapshot={snapshot_id}")

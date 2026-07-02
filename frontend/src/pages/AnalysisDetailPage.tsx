@@ -6,6 +6,7 @@ import { ApiError } from "@/api/client";
 import { fetchEmbeddingGraph, type EmbeddingGraphData } from "@/api/indexer";
 import type { DbProfileResponse } from "@/api/types/profiler";
 import { EmbeddingCatalogGraph } from "@/components/analyses/embedding-catalog-graph";
+import { ProfileV2View } from "@/components/analyses/profile-v2-view";
 import { BehaviorSpiderChart } from "@/components/analyses/behavior-spider-chart";
 import { TemperamentBars } from "@/components/analyses/temperament-bars";
 import { ValuesBars } from "@/components/analyses/values-bars";
@@ -16,6 +17,41 @@ import { ROUTES } from "@/routes";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { Link, useParams } from "react-router-dom";
 
+function ChannelCard({
+  title,
+  items,
+}: {
+  title: string;
+  items: { channel: string; count: number }[];
+}) {
+  return (
+    <div className="rounded-2xl border bg-card p-4">
+      <p className="mb-3 text-sm font-semibold">{title}</p>
+      {items.length > 0 ? (
+        <ol className="space-y-2.5">
+          {items.map((item, i) => (
+            <li key={`${item.channel}-${i}`} className="flex items-start gap-2 text-sm">
+              <span className="bg-accent text-accent-foreground flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[10px] font-semibold">
+                {i + 1}
+              </span>
+              <span className="min-w-0 flex-1 leading-snug break-words">
+                {item.channel}
+                <span className="text-muted-foreground ml-1 text-xs">
+                  ({item.count})
+                </span>
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="text-muted-foreground text-xs">
+          해당 형식의 채널 데이터가 없습니다.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function AnalysisDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [profile, setProfile] = useState<DbProfileResponse | null>(null);
@@ -23,6 +59,7 @@ export function AnalysisDetailPage() {
   const [previousSnapshotId, setPreviousSnapshotId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [tab, setTab] = useState<"v1" | "v2">("v1");
 
   useEffect(() => {
     if (!id) {
@@ -40,7 +77,7 @@ export function AnalysisDetailPage() {
 
         let graph: EmbeddingGraphData | null = null;
         try {
-          graph = await fetchEmbeddingGraph();
+          graph = await fetchEmbeddingGraph({ snapshotId: id });
         } catch {
           graph = null;
         }
@@ -94,12 +131,13 @@ export function AnalysisDetailPage() {
 
   const tags = profile.dominant_traits ?? [];
   const categories = mapTopCategories(profile.top_categories);
-  const channels = profile.top_channels ?? [];
+  const longChannels = profile.top_channels_long ?? [];
+  const shortChannels = profile.top_channels_short ?? [];
   const personaTitle = profile.persona_label || "개인성향 분석 결과";
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mx-auto flex w-full max-w-5xl min-h-0 flex-1 flex-col overflow-y-auto px-6 py-6 pb-4">
+      <div className="flex w-full min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
         <nav className="text-muted-foreground mb-4 flex flex-wrap items-center gap-1.5 text-xs">
           <Link to={ROUTES.home} className="hover:text-foreground transition-colors">
             홈
@@ -142,6 +180,24 @@ export function AnalysisDetailPage() {
           </div>
         </div>
 
+        <div className="mb-5 flex gap-4 border-b border-border">
+          {(["v1", "v2"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              className={`-mb-px border-b-2 pb-2 text-sm font-medium transition-colors ${
+                tab === t
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t === "v1" ? "기존" : "V2 (실험)"}
+            </button>
+          ))}
+        </div>
+
+        {tab === "v1" ? (
         <div className="flex min-h-0 flex-1 flex-col gap-6">
           <EmbeddingCatalogGraph data={embeddingGraph} />
 
@@ -154,7 +210,7 @@ export function AnalysisDetailPage() {
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col gap-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="rounded-2xl border bg-card p-4">
                   <p className="mb-3 text-sm font-semibold">상위 카테고리</p>
                   {categories.length > 0 ? (
@@ -180,30 +236,8 @@ export function AnalysisDetailPage() {
                   )}
                 </div>
 
-                <div className="rounded-2xl border bg-card p-4">
-                  <p className="mb-3 text-sm font-semibold">상위 채널</p>
-                  {channels.length > 0 ? (
-                    <ol className="space-y-2.5">
-                      {channels.map((item, i) => (
-                        <li key={`${item.channel}-${i}`} className="flex items-start gap-2 text-sm">
-                          <span className="bg-accent text-accent-foreground flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[10px] font-semibold">
-                            {i + 1}
-                          </span>
-                          <span className="min-w-0 flex-1 leading-snug break-words">
-                            {item.channel}
-                            <span className="text-muted-foreground ml-1 text-xs">
-                              ({item.count})
-                            </span>
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <p className="text-muted-foreground text-xs">
-                      시청 catalog에 채널 데이터가 없습니다.
-                    </p>
-                  )}
-                </div>
+                <ChannelCard title="롱폼 상위 채널" items={longChannels} />
+                <ChannelCard title="숏폼 상위 채널" items={shortChannels} />
               </div>
 
               <div className="border-border min-h-0 flex-1 rounded-2xl border bg-card p-4">
@@ -242,10 +276,13 @@ export function AnalysisDetailPage() {
             )}
           </div>
         </div>
+        ) : (
+          <ProfileV2View />
+        )}
       </div>
 
       <div className="border-border bg-background shrink-0 border-t px-6 py-4">
-        <div className="border-border mx-auto flex max-w-5xl items-center gap-3 rounded-2xl border bg-card px-4 py-3 shadow-sm">
+        <div className="border-border flex items-center gap-3 rounded-2xl border bg-card px-4 py-3 shadow-sm">
           <input
             type="text"
             placeholder="이 분석에 대해 물어보세요..."

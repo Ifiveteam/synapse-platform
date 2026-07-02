@@ -10,6 +10,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.analysis_source_catalog import AnalysisSourceCatalog
 from app.models.user_profile_history import UserProfileHistory
 from app.models.user_watch_catalog import UserWatchCatalog
 from app.models.video_analysis import VideoAnalysis
@@ -89,6 +90,66 @@ async def fetch_recent_catalog_rows(
             UserWatchCatalog.watched_at >= start,
         )
         .order_by(desc(UserWatchCatalog.watched_at))
+    )
+    return list(result.scalars().all())
+
+
+async def fetch_catalog_rows_by_sources(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    source_ids: list[uuid.UUID | str],
+    window_days: int,
+) -> list[UserWatchCatalog]:
+    """배치 소스들에 소속된 catalog 행 중 최근 window_days (합집합 후 2달 재컷).
+
+    앵커(기준점)는 그 배치 집합 내 가장 최근 시청 시각. 소속은 analysis_source_catalog
+    조인으로 판정(catalog_id DISTINCT)한다. source_ids 없으면 빈 목록.
+    """
+    if not source_ids:
+        return []
+    sids = [uuid.UUID(str(s)) for s in source_ids]
+    catalog_ids_subq = (
+        select(AnalysisSourceCatalog.catalog_id)
+        .where(AnalysisSourceCatalog.analysis_source_id.in_(sids))
+        .distinct()
+    )
+    anchor = (
+        await session.execute(
+            select(func.max(UserWatchCatalog.watched_at)).where(
+                UserWatchCatalog.user_id == user_id,
+                UserWatchCatalog.id.in_(catalog_ids_subq),
+            )
+        )
+    ).scalar_one_or_none()
+    if anchor is None:
+        return []
+    start = anchor - timedelta(days=window_days)
+    result = await session.execute(
+        select(UserWatchCatalog)
+        .where(
+            UserWatchCatalog.user_id == user_id,
+            UserWatchCatalog.id.in_(catalog_ids_subq),
+            UserWatchCatalog.watched_at >= start,
+        )
+        .order_by(desc(UserWatchCatalog.watched_at))
+    )
+    return list(result.scalars().all())
+
+
+async def fetch_video_analyses_by_catalog_ids(
+    session: AsyncSession,
+    catalog_ids: list[uuid.UUID],
+    *,
+    limit: int = 50,
+) -> list[VideoAnalysis]:
+    """주어진 catalog 행들의 video_analysis (배치 스코프 샘플용)."""
+    if not catalog_ids:
+        return []
+    result = await session.execute(
+        select(VideoAnalysis)
+        .where(VideoAnalysis.catalog_id.in_(catalog_ids))
+        .order_by(desc(VideoAnalysis.updated_at))
+        .limit(limit)
     )
     return list(result.scalars().all())
 
@@ -178,6 +239,7 @@ def profile_snapshot_from_outputs(
     scores: ProfileScoresOutput,
     insight: ProfileInsightOutput,
     supporting_evidence: dict[str, Any],
+    batch_id: uuid.UUID | None = None,
 ) -> UserProfileHistory:
     return UserProfileHistory(
         user_id=user_id,
@@ -189,6 +251,7 @@ def profile_snapshot_from_outputs(
         dominant_traits=insight.dominant_traits,
         supporting_evidence=supporting_evidence,
         tone_of_user=insight.tone_of_user,
+        batch_id=batch_id,
     )
 
 
@@ -200,10 +263,12 @@ async def insert_profile_snapshot(
     supporting_evidence: dict[str, Any],
     *,
     snapshot_date: datetime | None = None,
+    batch_id: uuid.UUID | str | None = None,
 ) -> uuid.UUID:
     when = snapshot_date or datetime.now(UTC)
+    bid = uuid.UUID(str(batch_id)) if batch_id else None
     row = profile_snapshot_from_outputs(
-        user_id, when, scores, insight, supporting_evidence
+        user_id, when, scores, insight, supporting_evidence, bid
     )
     session.add(row)
     await session.flush()

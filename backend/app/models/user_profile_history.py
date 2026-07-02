@@ -65,6 +65,13 @@ class UserProfileHistory(TimestampMixin, Base):
     supporting_evidence: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     tone_of_user: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # 이 스냅샷을 만든 배치(불변 박제) — 네비게이터가 근거를 배치로 좁힐 때 사용.
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("analysis_batch.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     __table_args__ = (
         Index("ix_uph_user_date", text("user_id"), text("snapshot_date DESC")),
     )
