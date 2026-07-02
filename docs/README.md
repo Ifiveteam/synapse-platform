@@ -16,3 +16,4 @@
 | `navigator/` | Navigator |
 | `aggregator/` | Aggregator |
 | `archiver/` | Archiver — [README](./archiver/README.md), [ARCHITECTURE](./archiver/ARCHITECTURE.md) |
+| `curator/` | Curator — [README](./curator/README.md) |

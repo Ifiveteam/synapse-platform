@@ -37,6 +37,7 @@ class CuratorService:
                 AIChatLog.session_id == session_id,
                 AIChatLog.user_id == user_id,
                 AIChatLog.agent_type == CURATOR_AGENT_TYPE,
+                AIChatLog.role.in_(["user", "assistant"]),
             )
             .order_by(AIChatLog.created_at.desc())
             .limit(HISTORY_MESSAGE_LIMIT)
@@ -56,7 +57,17 @@ class CuratorService:
 
         rows = (await self.db.execute(
             text("""
-                WITH session_first AS (
+                WITH session_title AS (
+                    SELECT DISTINCT ON (session_id)
+                        session_id,
+                        content AS title
+                    FROM ai_chat_logs
+                    WHERE user_id = :uid
+                      AND agent_type = :agent_type
+                      AND role = 'session_title'
+                    ORDER BY session_id, created_at ASC
+                ),
+                session_first AS (
                     SELECT DISTINCT ON (session_id)
                         session_id,
                         content AS title
@@ -72,9 +83,13 @@ class CuratorService:
                     WHERE user_id = :uid AND agent_type = :agent_type
                     GROUP BY session_id
                 )
-                SELECT sf.session_id, sf.title, sl.updated_at
+                SELECT
+                    sf.session_id,
+                    COALESCE(st.title, sf.title) AS title,
+                    sl.updated_at
                 FROM session_first sf
                 JOIN session_last sl ON sf.session_id = sl.session_id
+                LEFT JOIN session_title st ON sf.session_id = st.session_id
                 ORDER BY sl.updated_at DESC
                 LIMIT 30
             """),
@@ -112,14 +127,55 @@ class CuratorService:
         )
         await self.db.commit()
 
+    async def _generate_title(self, user_message: str, assistant_message: str) -> str:
+        """첫 턴을 기반으로 세션 제목을 생성한다."""
+        from app.agents.curator.constants import GEMINI_MODEL
+        from app.agents.curator.gemini import get_client
+        try:
+            from google.genai import types
+            response = await get_client().aio.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=f"유저: {user_message}\n어시스턴트: {assistant_message[:200]}",
+                config=types.GenerateContentConfig(
+                    system_instruction=(
+                        "대화 내용을 보고 채팅 세션 제목을 한국어로 15자 이내로 만들어줘. "
+                        "명사형으로 간결하게. 예: '게임 시청 패턴 분석', '최근 본 영상 요약', '점심 메뉴 추천'. "
+                        "제목만 출력하고 다른 말은 하지 마."
+                    ),
+                    temperature=0.0,
+                ),
+            )
+            raw = response.text if hasattr(response, "text") else None
+            if not raw:
+                # thinking 모드: candidates에서 직접 추출
+                try:
+                    raw = response.candidates[0].content.parts[-1].text
+                except Exception:
+                    raw = None
+            title = (raw or "").strip().strip('"').strip("'")
+            return title if title else user_message[:15]
+        except Exception:
+            logger.exception("Title generation failed")
+            return user_message[:15]
+
     async def _save_turn(
         self,
         session_id: str,
         user_id: uuid.UUID,
         user_message: str,
         assistant_message: str,
+        is_first_turn: bool = False,
     ) -> None:
         """유저·어시스턴트 한 턴을 DB에 저장한다."""
+        if is_first_turn:
+            title = await self._generate_title(user_message, assistant_message)
+            self.db.add(AIChatLog(
+                session_id=session_id,
+                user_id=user_id,
+                agent_type=CURATOR_AGENT_TYPE,
+                role="session_title",
+                content=title,
+            ))
         self.db.add(AIChatLog(
             session_id=session_id,
             user_id=user_id,
@@ -142,14 +198,31 @@ class CuratorService:
         message: str,
         user_id: uuid.UUID,
         session_id: str,
+        image_base64: str | None = None,
+        image_mime_type: str | None = None,
     ) -> AsyncGenerator[str, None]:
         history = await self._load_history(session_id, user_id)
 
+        if image_base64 and image_mime_type:
+            content: list[dict] = [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{image_mime_type};base64,{image_base64}"},
+                }
+            ]
+            if message:
+                content.append({"type": "text", "text": message})
+            human_msg = HumanMessage(content=content)
+        else:
+            human_msg = HumanMessage(content=message)
+
         initial_state = CuratorEngine.build_initial_state(
-            messages=history + [HumanMessage(content=message)],
+            messages=history + [human_msg],
             user_id=user_id,
             session_id=session_id,
         )
+
+        is_first_turn = len(history) == 0
 
         response_tokens: list[str] = []
         try:
@@ -164,7 +237,13 @@ class CuratorService:
 
         assistant_response = "".join(response_tokens)
         if assistant_response:
+            saved_message = message if message else "[이미지]"
+            if image_base64 and message:
+                saved_message = f"[이미지] {message}"
             try:
-                await self._save_turn(session_id, user_id, message, assistant_response)
+                await self._save_turn(
+                    session_id, user_id, saved_message, assistant_response,
+                    is_first_turn=is_first_turn,
+                )
             except Exception:
                 logger.error("Failed to save chat history — history will not accumulate for session %s", session_id, exc_info=True)

@@ -12,17 +12,18 @@ class UserResponse(BaseModel):
     email: str
     name: str
     picture: str | None
+    plan: str
 
     model_config = {"from_attributes": True}
 
 
 class DevLoginResponse(BaseModel):
-    access_token: str
+    # access_token은 응답 바디에 안 담는다 — HttpOnly 쿠키로만 전달돼 JS가 읽을 수 없다.
     user: UserResponse
 
 
 class RefreshResponse(BaseModel):
-    access_token: str
+    # access_token은 응답 바디에 안 담는다 — HttpOnly 쿠키로만 전달돼 JS가 읽을 수 없다.
     user: UserResponse
 
 
