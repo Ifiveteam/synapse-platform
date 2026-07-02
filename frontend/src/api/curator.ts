@@ -37,6 +37,8 @@ export interface CuratorSSEEvent {
 export async function* streamCurator(
   message: string,
   sessionId?: string,
+  imageBase64?: string,
+  imageMimeType?: string,
 ): AsyncGenerator<CuratorSSEEvent> {
   const token = useAuthStore.getState().token;
 
@@ -47,7 +49,12 @@ export async function* streamCurator(
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ message, session_id: sessionId }),
+    body: JSON.stringify({
+      message,
+      session_id: sessionId,
+      image_base64: imageBase64,
+      image_mime_type: imageMimeType,
+    }),
   });
 
   if (!response.ok || !response.body) {

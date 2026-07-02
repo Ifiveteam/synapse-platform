@@ -16,7 +16,7 @@ export function HomeHeader() {
     <header className="flex shrink-0 items-center justify-between gap-4 px-6 pt-4 pb-2">
       <p className="text-muted-foreground text-xs">
         {user
-          ? `${user.name}님, 오케스트레이터와 대화를 시작해 보세요.`
+          ? `${user.name}님, 큐레이터와 대화를 시작해 보세요.`
           : "로그인이 필요합니다. 시작하려면 로그인해 주세요."}
       </p>
 
