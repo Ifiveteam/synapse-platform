@@ -1,6 +1,11 @@
-import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Bar, BarChart, Cell, Legend,
+  PolarAngleAxis, PolarGrid, PolarRadiusAxis,
+  Radar, RadarChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from "recharts";
 
-import type { ChartEntry, RankItem, VideoItem } from "@/stores/chat";
+import type { ChartEntry, RadarItem, RankItem, VideoItem } from "@/stores/chat";
 
 const BAR_COLORS = [
   "hsl(220, 70%, 55%)",
@@ -62,6 +67,57 @@ function HorizontalBarChart({ items, title }: { items: RankItem[]; title: string
   );
 }
 
+function PersonaRadarChart({ items, title }: { items: RadarItem[]; title: string }) {
+  const hasIdeal = items.some((item) => item.ideal !== null);
+  return (
+    <div>
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {title}
+      </p>
+      <div className="h-[240px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <RadarChart data={items} cx="50%" cy="50%" outerRadius="65%">
+            <PolarGrid gridType="polygon" stroke="#d4d4d8" strokeWidth={1} />
+            <PolarAngleAxis dataKey="axis" tick={{ fontSize: 11, fill: "#71717a" }} />
+            <PolarRadiusAxis
+              angle={90}
+              domain={[0, 100]}
+              axisLine={false}
+              tick={false}
+            />
+            <Radar
+              name="현재"
+              dataKey="current"
+              stroke="#7c3aed"
+              fill="#7c3aed"
+              fillOpacity={0.22}
+              strokeWidth={2.5}
+              dot={{ r: 3, fill: "#7c3aed", strokeWidth: 0 }}
+            />
+            {hasIdeal && (
+              <Radar
+                name="이상향"
+                dataKey="ideal"
+                stroke="#f59e0b"
+                fill="#f59e0b"
+                fillOpacity={0.1}
+                strokeWidth={2}
+                strokeDasharray="4 3"
+                dot={{ r: 3, fill: "#f59e0b", strokeWidth: 0 }}
+              />
+            )}
+            {hasIdeal && <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />}
+            <Tooltip
+              formatter={(v: number) => [`${v}점`, ""]}
+              contentStyle={{ fontSize: 11, borderRadius: 8 }}
+            />
+          </RadarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 export function ChartBlock({ charts }: { charts: ChartEntry[] }) {
   if (!charts.length) return null;
 
@@ -70,6 +126,9 @@ export function ChartBlock({ charts }: { charts: ChartEntry[] }) {
       {charts.map((chart, i) => {
         if (chart.type === "video_list" || chart.type === "shorts_list") {
           return <VideoList key={i} items={chart.items} title={chart.title} />;
+        }
+        if (chart.type === "persona_radar") {
+          return <PersonaRadarChart key={i} items={chart.items} title={chart.title} />;
         }
         return (
           <HorizontalBarChart key={i} items={chart.items} title={chart.title} />
