@@ -33,6 +33,7 @@ export interface DbProfileResponse {
   top_channels: TopChannelItem[];
   top_channels_long: TopChannelItem[];
   top_channels_short: TopChannelItem[];
+  portrait: Record<string, unknown> | null;
 }
 
 export interface Synapse8Axes {

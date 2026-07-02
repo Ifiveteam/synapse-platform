@@ -685,11 +685,31 @@ async def build_profile_node(state: ProfilerState) -> dict[str, Any]:
         from app.repositories.profiler_repository import insert_profile_snapshot
 
         async with AsyncSessionLocal() as session:
+            # 초상(portrait) 프로파일 산출 (실패해도 스냅샷 저장엔 영향 없음)
+            portrait_payload = None
+            try:
+                from app.services.profiler.portrait import build_portrait
+
+                portrait_payload = await build_portrait(
+                    session, user_id, analysis_source_ids
+                )
+            except Exception:
+                log.append("build_profile: portrait 산출 실패(스킵)")
+
             snapshot_id = await insert_profile_snapshot(
-                session, user_id, scores, insight, supporting, batch_id=batch_id
+                session,
+                user_id,
+                scores,
+                insight,
+                supporting,
+                batch_id=batch_id,
+                portrait=portrait_payload,
             )
             await session.commit()
-        log.append(f"build_profile: stored snapshot={snapshot_id}")
+        log.append(
+            f"build_profile: stored snapshot={snapshot_id} "
+            f"(portrait={'O' if portrait_payload else 'X'})"
+        )
         return {
             "catalog_stats": stats,
             "analysis_samples": samples,

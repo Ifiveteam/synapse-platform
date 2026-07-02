@@ -36,6 +36,7 @@ def profile_to_dict(row: UserProfileHistory) -> dict[str, Any]:
         "tone_of_user": row.tone_of_user,
         "top_categories": [],
         "top_channels": [],
+        "portrait": row.portrait,
     }
 
 
@@ -175,7 +176,9 @@ class ProfilerService:
 
         for index, row in enumerate(rows):
             number = total - index
-            title = row.persona_label or f"개인성향 분석 #{number}"
+            title = (row.portrait or {}).get(
+                "persona_label"
+            ) or f"개인성향 분석 #{number}"
             items.append(
                 {
                     "id": str(row.id),

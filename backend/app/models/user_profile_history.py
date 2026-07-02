@@ -72,6 +72,9 @@ class UserProfileHistory(TimestampMixin, Base):
         nullable=True,
     )
 
+    # 프로파일 초상(portrait): 관심사·성향·소비스타일·키워드·별칭 — 통째로 JSONB
+    portrait: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     __table_args__ = (
         Index("ix_uph_user_date", text("user_id"), text("snapshot_date DESC")),
     )

@@ -44,7 +44,7 @@ def _snapshot_summary(row: UserProfileHistory) -> dict[str, Any]:
     return {
         "snapshot_id": str(row.id),
         "snapshot_date": row.snapshot_date,
-        "persona_label": row.persona_label,
+        "persona_label": (row.portrait or {}).get("persona_label"),
         "summary_text": row.summary_text or "",
         "scores": history_scores_dict(row),
         "habits": habit_metrics_from_catalog_stats(stats),

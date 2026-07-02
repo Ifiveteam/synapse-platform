@@ -2,8 +2,11 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { fetchArchiverSessions } from "@/api/archiver";
+import { fetchMyAnalyses } from "@/api/analyses";
 import { fetchCuratorSessions } from "@/api/curator";
+import { listIdeals } from "@/api/navigator";
 import { fetchScraps } from "@/api/scraps";
+import { IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
 import { buildSidebarScraps } from "@/lib/sidebar/build-sidebar-scraps";
 import {
   MOCK_ACTIVE_IDEAL_LABEL,
@@ -29,6 +32,8 @@ interface SidebarStore {
   scraps: SidebarScrap[];
   chats: SidebarChat[];
   setActiveIdealLabel: (label: string | null) => void;
+  /** 적용 중 이상향의 페르소나 → 없으면 최신 분석 페르소나로 라벨 해석 */
+  loadIdealPersona: () => Promise<void>;
   loadChats: () => Promise<void>;
   loadScraps: () => Promise<void>;
   renameChat: (id: string, title: string) => void;
@@ -44,6 +49,26 @@ export const useSidebarStore = create<SidebarStore>()(
       scraps: [],
       chats: [],
       setActiveIdealLabel: (activeIdealLabel) => set({ activeIdealLabel }),
+
+      loadIdealPersona: async () => {
+        try {
+          const ideals = await listIdeals();
+          const active = ideals.find((i) => i.is_active);
+          if (active) {
+            set({
+              activeIdealLabel:
+                active.persona_label || IDEAL_TYPE_LABEL[active.ideal_type],
+            });
+            return;
+          }
+          // 적용 이상향 없음 → 가장 최근 분석 페르소나(스냅샷 제목=portrait 별칭)
+          const analyses = await fetchMyAnalyses();
+          const latest = analyses.find((a) => a.status === "completed");
+          set({ activeIdealLabel: latest?.title ?? null });
+        } catch {
+          // 로그인 안 됨 등 무시
+        }
+      },
       renameChat: (id, title) =>
         set((s) => ({ chats: s.chats.map((c) => (c.id === id ? { ...c, title } : c)) })),
 

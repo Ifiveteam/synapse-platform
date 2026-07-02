@@ -220,7 +220,6 @@ export function Sidebar() {
   const latestScraps = scraps.slice(0, 3);
   const isScrapsSection =
     pathname === ROUTES.scraps || pathname.startsWith(`${ROUTES.scraps}/`);
-  const idealLabel = activeIdealLabel ?? "이상향 미설정";
 
   const handleBrandClick = () => {
     if (!expanded) {
@@ -303,21 +302,21 @@ export function Sidebar() {
                 </div>
               )}
               {expanded && (
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="flex items-center gap-1.5 truncate">
-                    <span className="truncate text-left text-sm font-medium">
-                      {user.name}
+                <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                  {activeIdealLabel && (
+                    <Target
+                      size={12}
+                      className="text-muted-foreground shrink-0"
+                    />
+                  )}
+                  <span className="truncate text-left text-sm font-medium">
+                    {activeIdealLabel ?? user.name}
+                  </span>
+                  {user.plan === "pro" && (
+                    <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
+                      Pro
                     </span>
-                    {user.plan === "pro" && (
-                      <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
-                        Pro
-                      </span>
-                    )}
-                  </span>
-                  <span className="text-muted-foreground flex items-center gap-1 truncate text-xs">
-                    <Target size={11} className="shrink-0" />
-                    <span className="truncate">{idealLabel}</span>
-                  </span>
+                  )}
                 </span>
               )}
             </Link>

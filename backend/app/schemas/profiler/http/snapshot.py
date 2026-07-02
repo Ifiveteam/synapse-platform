@@ -34,3 +34,4 @@ class DbProfileResponse(BaseModel):
     top_channels: list[TopChannelItem] = []
     top_channels_long: list[TopChannelItem] = []
     top_channels_short: list[TopChannelItem] = []
+    portrait: dict | None = None

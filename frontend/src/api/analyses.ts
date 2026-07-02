@@ -49,6 +49,23 @@ export async function fetchMyAnalysisSnapshot(
   return apiFetchAuth<DbProfileResponse>(`${PREFIX}/me/analyses/${snapshotId}`);
 }
 
+export interface PortraitAxis {
+  axis: string;
+  value: number;
+}
+export interface PortraitStyle {
+  label: string;
+  value: number;
+}
+export interface Portrait {
+  persona_label: string;
+  keywords: string[];
+  interest: PortraitAxis[];
+  disposition: PortraitAxis[];
+  style: PortraitStyle[];
+  reasoning: string;
+}
+
 export async function fetchAnalysisCompare(
   fromId: string,
   toId: string,

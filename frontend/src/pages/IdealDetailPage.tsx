@@ -107,7 +107,7 @@ export function IdealDetailPage() {
   const handleApply = async () => {
     await applyIdeal(ideal.id);
     setIdeal({ ...ideal, is_active: true });
-    setActiveIdealLabel(IDEAL_TYPE_LABEL[ideal.ideal_type]);
+    setActiveIdealLabel(ideal.persona_label || IDEAL_TYPE_LABEL[ideal.ideal_type]);
   };
 
   const handleRegenerateGuide = async () => {

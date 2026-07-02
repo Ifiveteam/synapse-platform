@@ -1,12 +1,18 @@
 import { ArrowUp, ArrowLeftRight, Bookmark, Loader2, Share2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { fetchMyAnalyses, fetchMyAnalysisSnapshot, mapTopCategories } from "@/api/analyses";
+import {
+  fetchMyAnalyses,
+  fetchMyAnalysisSnapshot,
+  mapTopCategories,
+  type Portrait,
+} from "@/api/analyses";
 import { ApiError } from "@/api/client";
 import { fetchEmbeddingGraph, type EmbeddingGraphData } from "@/api/indexer";
 import type { DbProfileResponse } from "@/api/types/profiler";
 import { EmbeddingCatalogGraph } from "@/components/analyses/embedding-catalog-graph";
-import { ProfileV2View } from "@/components/analyses/profile-v2-view";
+import { InterestPie } from "@/components/analyses/interest-pie";
+import { AxisRadar } from "@/components/analyses/axis-radar";
 import { BehaviorSpiderChart } from "@/components/analyses/behavior-spider-chart";
 import { TemperamentBars } from "@/components/analyses/temperament-bars";
 import { ValuesBars } from "@/components/analyses/values-bars";
@@ -59,7 +65,7 @@ export function AnalysisDetailPage() {
   const [previousSnapshotId, setPreviousSnapshotId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [tab, setTab] = useState<"v1" | "v2">("v1");
+  const [portrait, setPortrait] = useState<Portrait | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -85,6 +91,9 @@ export function AnalysisDetailPage() {
         if (!cancelled) {
           setProfile(data);
           setEmbeddingGraph(graph);
+          // 업로드 시 저장된 portrait가 스냅샷에 함께 옴 → 바로 사용
+          if (data.portrait)
+            setPortrait(data.portrait as unknown as Portrait);
         }
 
         try {
@@ -133,7 +142,7 @@ export function AnalysisDetailPage() {
   const categories = mapTopCategories(profile.top_categories);
   const longChannels = profile.top_channels_long ?? [];
   const shortChannels = profile.top_channels_short ?? [];
-  const personaTitle = profile.persona_label || "개인성향 분석 결과";
+  const personaTitle = portrait?.persona_label || "개인성향 분석 결과";
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -180,26 +189,87 @@ export function AnalysisDetailPage() {
           </div>
         </div>
 
-        <div className="mb-5 flex gap-4 border-b border-border">
-          {(["v1", "v2"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={`-mb-px border-b-2 pb-2 text-sm font-medium transition-colors ${
-                tab === t
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {t === "v1" ? "기존" : "V2 (실험)"}
-            </button>
-          ))}
-        </div>
+        {portrait && portrait.keywords.length > 0 && (
+          <div className="mb-6 -mt-2 flex flex-wrap gap-2">
+            {portrait.keywords.map((k) => (
+              <Badge
+                key={k}
+                variant="secondary"
+                className="rounded-full px-3 py-1 text-sm"
+              >
+                #{k}
+              </Badge>
+            ))}
+          </div>
+        )}
 
-        {tab === "v1" ? (
         <div className="flex min-h-0 flex-1 flex-col gap-6">
-          <EmbeddingCatalogGraph data={embeddingGraph} />
+          {portrait && (
+            <div className="border-border rounded-2xl border bg-card p-5">
+              <p className="text-muted-foreground mb-2 text-xs font-medium">
+                이런 사람이에요
+              </p>
+              {portrait.reasoning && (
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  {portrait.reasoning}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-4 lg:flex-row">
+            {portrait && (
+              <div className="border-border rounded-2xl border bg-card p-5 lg:w-[380px] lg:shrink-0">
+                <p className="mb-1 text-sm font-semibold">관심사</p>
+                <InterestPie data={portrait.interest} />
+              </div>
+            )}
+            <EmbeddingCatalogGraph
+              data={embeddingGraph}
+              className="min-w-0 flex-1"
+            />
+          </div>
+
+          {portrait && (
+            <div className="flex flex-col gap-4 lg:flex-row">
+              <div className="border-border flex-1 rounded-2xl border bg-card p-5">
+                <div className="mb-1 flex items-baseline justify-between">
+                  <p className="text-sm font-semibold">성향 스파이더</p>
+                  <span className="text-muted-foreground text-[10px]">0~100</span>
+                </div>
+                <AxisRadar data={portrait.disposition} color="#0ea5e9" />
+                <div className="text-muted-foreground mt-2 space-y-0.5 text-[10px] leading-relaxed">
+                  <p>· 몰입도: 한 대상에 깊게 파고듦</p>
+                  <p>· 탐험성: 여러 주제를 넓게 소비</p>
+                  <p>· 팬심: 특정 인물·팀·그룹에 열광</p>
+                  <p>· 트렌드민감: 유행·숏폼 즉시성</p>
+                  <p>· 정보추구: 학습·전문 지향 (↔ 순수 오락)</p>
+                  <p>· 감성지향: 정서·위로 추구</p>
+                </div>
+              </div>
+              <div className="border-border rounded-2xl border bg-card p-5 lg:w-[380px] lg:shrink-0">
+                <p className="mb-3 text-sm font-semibold">소비 스타일</p>
+                <div className="space-y-2.5">
+                  {portrait.style.map((s) => (
+                    <div key={s.label}>
+                      <div className="mb-1 flex justify-between text-xs">
+                        <span>{s.label}</span>
+                        <span className="text-muted-foreground tabular-nums">
+                          {s.value}
+                        </span>
+                      </div>
+                      <div className="bg-muted h-2 rounded-full">
+                        <div
+                          className="bg-primary h-2 rounded-full"
+                          style={{ width: `${Math.min(100, s.value)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col items-stretch gap-4 lg:flex-row">
             <div className="border-border w-full shrink-0 rounded-2xl border bg-card p-5 lg:w-[400px]">
@@ -276,9 +346,6 @@ export function AnalysisDetailPage() {
             )}
           </div>
         </div>
-        ) : (
-          <ProfileV2View />
-        )}
       </div>
 
       <div className="border-border bg-background shrink-0 border-t px-6 py-4">

@@ -136,6 +136,49 @@ async def fetch_catalog_rows_by_sources(
     return list(result.scalars().all())
 
 
+async def fetch_catalog_signal_rows(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    source_ids: list[uuid.UUID | str] | None,
+    window_days: int,
+):
+    """포트레이트용 경량 신호 조회 — 카테고리·채널·태그·포맷만 (임베딩 등 제외).
+
+    source_ids 있으면 그 배치 소속 영상, 없으면 전체 catalog. 둘 다 최근 window_days.
+    """
+    cols = (
+        UserWatchCatalog.youtube_category_id,
+        UserWatchCatalog.channel,
+        UserWatchCatalog.tags,
+        UserWatchCatalog.is_shorts,
+        UserWatchCatalog.watch_count,
+        UserWatchCatalog.duration_sec,
+        UserWatchCatalog.title,
+    )
+    base = [UserWatchCatalog.user_id == user_id]
+    if source_ids:
+        sids = [uuid.UUID(str(s)) for s in source_ids]
+        member = (
+            select(AnalysisSourceCatalog.catalog_id)
+            .where(AnalysisSourceCatalog.analysis_source_id.in_(sids))
+            .distinct()
+        )
+        base.append(UserWatchCatalog.id.in_(member))
+
+    anchor = (
+        await session.execute(
+            select(func.max(UserWatchCatalog.watched_at)).where(*base)
+        )
+    ).scalar_one_or_none()
+    if anchor is None:
+        return []
+    start = anchor - timedelta(days=window_days)
+    result = await session.execute(
+        select(*cols).where(*base, UserWatchCatalog.watched_at >= start)
+    )
+    return list(result.all())
+
+
 async def fetch_video_analyses_by_catalog_ids(
     session: AsyncSession,
     catalog_ids: list[uuid.UUID],
@@ -240,6 +283,7 @@ def profile_snapshot_from_outputs(
     insight: ProfileInsightOutput,
     supporting_evidence: dict[str, Any],
     batch_id: uuid.UUID | None = None,
+    portrait: dict[str, Any] | None = None,
 ) -> UserProfileHistory:
     return UserProfileHistory(
         user_id=user_id,
@@ -252,6 +296,7 @@ def profile_snapshot_from_outputs(
         supporting_evidence=supporting_evidence,
         tone_of_user=insight.tone_of_user,
         batch_id=batch_id,
+        portrait=portrait,
     )
 
 
@@ -264,11 +309,12 @@ async def insert_profile_snapshot(
     *,
     snapshot_date: datetime | None = None,
     batch_id: uuid.UUID | str | None = None,
+    portrait: dict[str, Any] | None = None,
 ) -> uuid.UUID:
     when = snapshot_date or datetime.now(UTC)
     bid = uuid.UUID(str(batch_id)) if batch_id else None
     row = profile_snapshot_from_outputs(
-        user_id, when, scores, insight, supporting_evidence, bid
+        user_id, when, scores, insight, supporting_evidence, bid, portrait
     )
     session.add(row)
     await session.flush()
