@@ -200,7 +200,7 @@ function StepGuide({ onNext }: { onNext: () => void }) {
 // ── Step 3: Drive 자동 감지 ───────────────────
 
 function StepWait({ onDone }: { onDone: () => void }) {
-  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
   const [files, setFiles] = useState<{ id: string; name: string; modifiedTime?: string }[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
@@ -208,12 +208,12 @@ function StepWait({ onDone }: { onDone: () => void }) {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startAnalysis = useCallback(async (file: { id: string; name: string }) => {
-    if (!token) return;
+    if (!user) return;
     setTaskStatus("downloading");
 
     const res = await fetch(`${API}/takeout/drive/trigger/${file.id}`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
     const { task_id } = await res.json();
     if (pollingRef.current) clearInterval(pollingRef.current);
@@ -230,14 +230,14 @@ function StepWait({ onDone }: { onDone: () => void }) {
         pollingRef.current = null;
       }
     }, 3000);
-  }, [token, onDone]);
+  }, [user, onDone]);
 
   const checkDrive = useCallback(async () => {
-    if (!token) return;
+    if (!user) return;
     setChecking(true);
     try {
       const data = await (await fetch(`${API}/takeout/drive/files`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       })).json();
       const list: { id: string; name: string; modifiedTime?: string }[] = data.files || [];
       const sorted = [...list].sort((a, b) =>
@@ -250,7 +250,7 @@ function StepWait({ onDone }: { onDone: () => void }) {
     } finally {
       setChecking(false);
     }
-  }, [token, selectedId]);
+  }, [user, selectedId]);
 
   useEffect(() => {
     void checkDrive();
@@ -332,14 +332,14 @@ function StepWait({ onDone }: { onDone: () => void }) {
 
 export function SetupPage() {
   const navigate = useNavigate();
-  const { token, user, logout } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const [step, setStep] = useState(0);
   const [path, setPath] = useState<Path>("none");
 
   // OAuth 콜백 후 ShellLayout이 refresh 쿠키로 access 발급
   useEffect(() => {
-    if (token && step === 0) setStep(1);
-  }, [token, step]);
+    if (user && step === 0) setStep(1);
+  }, [user, step]);
 
   const handleChoose = (p: Path) => { setPath(p); setStep(2); };
   const handleDone = () => navigate("/upload");

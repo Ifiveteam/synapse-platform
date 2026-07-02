@@ -14,7 +14,6 @@ import type {
   ProposalsResponse,
 } from "@/api/types/navigator";
 import { API_BASE_URL } from "@/lib/env";
-import { useAuthStore } from "@/stores/auth";
 
 // ── REST ─────────────────────────────────────────────────────────
 const P = "/api/v1/navigator";
@@ -118,7 +117,6 @@ export async function streamPlaylistChat(
   handlers: PlaylistChatHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
-  const token = useAuthStore.getState().token;
   const res = await fetch(`${API_BASE_URL}${P}/playlists/${playlistId}/chat`, {
     method: "POST",
     credentials: "include",
@@ -126,7 +124,6 @@ export async function streamPlaylistChat(
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ message }),
   });
@@ -181,7 +178,6 @@ export async function streamChat(
   handlers: ChatStreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
-  const token = useAuthStore.getState().token;
   const res = await fetch(`${API_BASE_URL}${P}/chat/stream`, {
     method: "POST",
     credentials: "include",
@@ -189,7 +185,6 @@ export async function streamChat(
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
   });

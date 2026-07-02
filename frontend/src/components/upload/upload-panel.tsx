@@ -21,11 +21,6 @@ type Tab = "upload" | "drive";
 /** 업로드 POST 진행 중(서버 소스 생성 전) 임시 표시 항목. */
 type UploadingFile = { id: string; fileName: string };
 
-function authHeaders(): HeadersInit {
-  const token = useAuthStore.getState().token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -104,7 +99,7 @@ function DirectUploadTab({
     try {
       const res = await fetch(`${API}/indexer/analyze`, {
         method: "POST",
-        headers: authHeaders(),
+        credentials: "include",
         body: form,
       });
       if (!res.ok) {
@@ -457,7 +452,7 @@ function DriveTab({
   resetKey: number;
   showGuideHint: boolean;
 }) {
-  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
   const [conn, setConn] = useState<DriveConnection | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [message, setMessage] = useState("");
@@ -467,11 +462,11 @@ function DriveTab({
   const [batchRunning, setBatchRunning] = useState(false);
 
   useEffect(() => {
-    if (!token) return;
+    if (!user) return;
     getDriveConnection()
       .then(setConn)
       .catch(() => setConn({ connected: false, folder_name: null }));
-  }, [token]);
+  }, [user]);
 
   const connected = Boolean(conn?.connected);
 
@@ -496,11 +491,11 @@ function DriveTab({
 
   // 연동됐으면 폴더 파일 목록 로드 + 상태 갱신 폴링 (대기중→분류중→분석됨 반영)
   useEffect(() => {
-    if (!token || !connected) return;
+    if (!user || !connected) return;
     void refreshFiles();
     const timer = setInterval(() => void refreshFiles(), 5000);
     return () => clearInterval(timer);
-  }, [token, connected, refreshFiles]);
+  }, [user, connected, refreshFiles]);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -550,7 +545,7 @@ function DriveTab({
     }
   }, []);
 
-  if (!token) {
+  if (!user) {
     return (
       <div className="flex flex-col items-center gap-4 py-14 text-center">
         <p className="text-sm text-gray-500">Google 계정 연동이 필요합니다</p>
