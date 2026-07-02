@@ -20,6 +20,10 @@ class ProfilerState(TypedDict):
     notify_email: str
     current_step: str
     analysis_limit: NotRequired[int | None]
+    # 배치 스코프: 이 분석이 대상으로 삼는 소스 id들 (없으면 통합본=최근 2달 전체)
+    analysis_source_ids: NotRequired[list[str] | None]
+    # 이 분석을 유발한 배치 id (스냅샷에 박제 → 네비게이터가 근거 스코프에 활용)
+    batch_id: NotRequired[str | None]
 
     video_summary_saved_count: NotRequired[int | None]
     video_summary_skipped_count: NotRequired[int | None]

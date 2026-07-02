@@ -44,7 +44,9 @@ async def run_drive_takeout(
             return
 
         takeout_status[task_id] = {"status": "processing"}
-        result = await run_takeout_pipeline(file_path, user_id=user.id)
+        result = await run_takeout_pipeline(
+            file_path, user_id=user.id, analysis_source_id=analysis_source_id
+        )
 
         if result.get("error"):
             print(f"[Pipeline] 오류: {result['error']}")
@@ -226,6 +228,7 @@ async def auto_trigger(
 async def trigger_drive_file(
     file_id: str,
     background_tasks: BackgroundTasks,
+    batch_id: str | None = None,
     user: User = Depends(get_current_user_dep),
     session: AsyncSession = Depends(get_db),
 ):
@@ -233,7 +236,7 @@ async def trigger_drive_file(
     match = next((f for f in files if f.get("id") == file_id), None)
     file_name = match.get("name") if match else None
     return await _trigger_drive_file(
-        file_id, file_name, background_tasks, user, session
+        file_id, file_name, background_tasks, user, session, batch_id=batch_id
     )
 
 
@@ -243,9 +246,12 @@ async def _trigger_drive_file(
     background_tasks: BackgroundTasks,
     user: User,
     session: AsyncSession,
+    batch_id: str | None = None,
 ) -> dict:
     source_key = drive_source_key(file_id)
-    row, action = await begin_source(session, user.id, source_key, file_name)
+    row, action = await begin_source(
+        session, user.id, source_key, file_name, batch_id=batch_id
+    )
     await session.commit()
 
     if action == "skip_completed":

@@ -1,5 +1,7 @@
 """SQLAlchemy models."""
 
+from app.models.analysis_batch import AnalysisBatch
+from app.models.analysis_source_catalog import AnalysisSourceCatalog
 from app.models.behavior import UserBehaviorLog
 from app.models.chat import AIChatLog
 from app.models.extension_auth_code import ExtensionAuthCode
@@ -18,6 +20,8 @@ from app.models.video_analysis import VideoAnalysis
 
 __all__ = [
     "AIChatLog",
+    "AnalysisBatch",
+    "AnalysisSourceCatalog",
     "ExtensionAuthCode",
     "NavigatorPlaylist",
     "NavigatorProposalCache",

@@ -84,11 +84,13 @@ function IdealList({
   loading,
   error,
   onApply,
+  activeOnly = false,
 }: {
   ideals: IdealResponse[];
   loading: boolean;
   error: string | null;
   onApply: (id: string) => void;
+  activeOnly?: boolean;
 }) {
   if (loading) {
     return <p className="text-muted-foreground text-sm">불러오는 중…</p>;
@@ -96,6 +98,27 @@ function IdealList({
   if (error) {
     return <p className="text-destructive text-sm">{error}</p>;
   }
+
+  if (activeOnly) {
+    const active = ideals.find((item) => item.is_active);
+    if (!active) {
+      return (
+        <Link
+          to={ROUTES.idealSetup}
+          className="border-border text-muted-foreground hover:border-primary/40 hover:text-foreground flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed transition-colors"
+        >
+          <Plus size={20} />
+          <span className="text-sm font-medium">적용 중인 이상향이 없습니다</span>
+        </Link>
+      );
+    }
+    return (
+      <div className="flex flex-col gap-4">
+        <IdealCard item={active} onApply={onApply} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {ideals.map((item) => (
@@ -115,18 +138,27 @@ function IdealList({
 
 export function IdealManagementPage({
   embedded = false,
-}: { embedded?: boolean } = {}) {
+  activeOnly = false,
+}: { embedded?: boolean; activeOnly?: boolean } = {}) {
   const [ideals, setIdeals] = useState<IdealResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const setActiveIdealLabel = useSidebarStore((s) => s.setActiveIdealLabel);
+  const loadIdealPersona = useSidebarStore((s) => s.loadIdealPersona);
 
   const syncSidebar = useCallback(
     (list: IdealResponse[]) => {
       const active = list.find((x) => x.is_active);
-      setActiveIdealLabel(active ? IDEAL_TYPE_LABEL[active.ideal_type] : null);
+      if (active) {
+        setActiveIdealLabel(
+          active.persona_label || IDEAL_TYPE_LABEL[active.ideal_type],
+        );
+      } else {
+        // 적용 이상향 없음 → 최신 분석 페르소나로 폴백
+        void loadIdealPersona();
+      }
     },
-    [setActiveIdealLabel],
+    [setActiveIdealLabel, loadIdealPersona],
   );
 
   const load = useCallback(async () => {
@@ -160,7 +192,7 @@ export function IdealManagementPage({
     <div
       className={cn(
         "flex flex-col",
-        embedded ? "" : "mx-auto min-h-full max-w-3xl px-6 py-8",
+        embedded ? "" : "min-h-full px-4 py-5 sm:px-6 sm:py-6",
       )}
     >
       <div className="mb-6 flex items-center justify-between gap-4">
@@ -200,6 +232,7 @@ export function IdealManagementPage({
         loading={loading}
         error={error}
         onApply={handleApply}
+        activeOnly={activeOnly}
       />
     </div>
   );

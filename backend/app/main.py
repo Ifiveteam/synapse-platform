@@ -34,6 +34,10 @@ async def lifespan(app: FastAPI):
     """앱 수명주기 — 고아 인덱싱 소스 정리 + Takeout 자동분석 스케줄러 기동/종료."""
     from app.core.database.session import AsyncSessionLocal
     from app.repositories.analysis_source_repository import fail_orphan_sources
+    from app.services.analysis_source_service import (
+        batch_reconcile_loop,
+        reconcile_stuck_batches,
+    )
     from app.services.takeout_scheduler import scheduler_loop
 
     # 재시작으로 인메모리 큐가 비었으므로, 이전 프로세스의 진행 중(pending/running)
@@ -46,15 +50,21 @@ async def lifespan(app: FastAPI):
             "[startup] 고아 인덱싱 소스 %d건 failed 처리", orphaned
         )
 
+    # seal 미도착으로 멈춘 배치 자동 마감 (기동 1회 + 주기 루프)
+    await reconcile_stuck_batches()
+
     task = asyncio.create_task(scheduler_loop())
+    reconcile_task = asyncio.create_task(batch_reconcile_loop())
     try:
         yield
     finally:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        for t in (task, reconcile_task):
+            t.cancel()
+        for t in (task, reconcile_task):
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(

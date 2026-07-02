@@ -194,7 +194,8 @@ class NavigatorService:
                 ideal_type=p.ideal_type.value,
                 scores=AxisScores8(**p.scores8),
                 values_temperament=AxisScores13(**p.values13),
-                persona_label=persona_from_scores(p.values13, p.scores8),
+                persona_label=p.persona_label
+                or persona_from_scores(p.values13, p.scores8),
                 reasoning=p.reasoning,
             )
             for p in proposals
@@ -300,7 +301,9 @@ class NavigatorService:
             values13 = None
             scores8 = clamp_scores(request.scores.model_dump())
 
-        persona_label = persona_from_scores(values13 or {}, scores8)
+        persona_label = request.persona_label or persona_from_scores(
+            values13 or {}, scores8
+        )
         persona = await self.repo.create_ideal(
             user_id=user_id,
             scores8=scores8,

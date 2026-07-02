@@ -1,14 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  ArrowLeft,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  MessageSquare,
-  RefreshCw,
-  Send,
-} from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, RefreshCw, Send } from "lucide-react";
 
 import { fetchMyAnalyses, fetchMyAnalysisSnapshot } from "@/api/analyses";
 import type { DbProfileResponse } from "@/api/types/profiler";
@@ -175,84 +167,6 @@ function SelectAnalysis({
   );
 }
 
-function ProposalCard({
-  proposal,
-  current,
-  expanded,
-  onToggle,
-  onConfirm,
-  onRefine,
-  busy,
-}: {
-  proposal: ProposalItem;
-  current: AxisScores8;
-  expanded: boolean;
-  onToggle: () => void;
-  onConfirm: () => void;
-  onRefine: () => void;
-  busy: boolean;
-}) {
-  return (
-    <div className="border-border rounded-2xl border bg-card transition-all">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
-      >
-        <div className="min-w-0">
-          <Badge variant="outline" className="rounded-full">
-            {IDEAL_TYPE_LABEL[proposal.ideal_type]}
-          </Badge>
-          {proposal.persona_label && (
-            <p className="mt-2 text-base font-semibold">
-              {proposal.persona_label}
-            </p>
-          )}
-          <p className="text-muted-foreground mt-1 line-clamp-2 text-sm">
-            {proposal.reasoning}
-          </p>
-        </div>
-        <ChevronDown
-          size={18}
-          className={cn(
-            "text-muted-foreground shrink-0 transition-transform",
-            expanded && "rotate-180",
-          )}
-        />
-      </button>
-
-      {expanded && (
-        <div className="border-border flex flex-col gap-4 border-t px-5 py-5 sm:flex-row sm:items-start">
-          <div className="shrink-0 self-center">
-            <RadarCompareChart
-              axes={buildAxes(current, proposal.scores)}
-              size={220}
-            />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm leading-relaxed">{proposal.reasoning}</p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Button onClick={onConfirm} disabled={busy} className="gap-1.5">
-                <Check size={16} />
-                확정하기
-              </Button>
-              <Button
-                variant="outline"
-                onClick={onRefine}
-                disabled={busy}
-                className="gap-1.5"
-              >
-                <MessageSquare size={16} />
-                채팅으로 세부조정
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
@@ -262,15 +176,17 @@ function RefineChat({
   proposal,
   current,
   snapshot,
-  onBack,
   onConfirm,
   busy,
 }: {
   proposal: ProposalItem;
   current: AxisScores8;
   snapshot: DbProfileResponse | null;
-  onBack: () => void;
-  onConfirm: (scores: AxisScores8, values: AxisScores13) => void;
+  onConfirm: (
+    scores: AxisScores8,
+    values: AxisScores13,
+    refined: boolean,
+  ) => void;
   busy: boolean;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -285,6 +201,10 @@ function RefineChat({
     proposal.values_temperament,
   );
   const [streaming, setStreaming] = useState(false);
+  const [refined, setRefined] = useState(false);
+  const snapshotPersona = (
+    snapshot?.portrait as { persona_label?: string } | null | undefined
+  )?.persona_label;
 
   const send = async () => {
     const text = input.trim();
@@ -314,6 +234,7 @@ function RefineChat({
           onIdeal: (d) => {
             setWorking(d.behavior);
             setWorking13(d.values_temperament);
+            setRefined(true);
           },
         },
       );
@@ -357,9 +278,9 @@ function RefineChat({
               <div className="mb-1 flex items-center gap-2">
                 <span className="bg-muted-foreground inline-block h-2 w-2 rounded-full" />
                 <p className="text-sm font-semibold">현재 분석</p>
-                {snapshot?.persona_label && (
+                {snapshotPersona && (
                   <span className="text-muted-foreground text-xs">
-                    {snapshot.persona_label}
+                    {snapshotPersona}
                   </span>
                 )}
               </div>
@@ -466,13 +387,9 @@ function RefineChat({
         </div>
       </div>
 
-      <div className="flex flex-wrap justify-between gap-2">
-        <Button variant="outline" onClick={onBack} className="gap-1.5">
-          <ArrowLeft size={16} />
-          제안으로 돌아가기
-        </Button>
+      <div className="flex justify-end">
         <Button
-          onClick={() => onConfirm(working, working13)}
+          onClick={() => onConfirm(working, working13, refined)}
           disabled={busy}
           className="gap-1.5"
         >
@@ -497,8 +414,7 @@ function ShowProposals({
   const [snapshot, setSnapshot] = useState<DbProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [chatProposal, setChatProposal] = useState<ProposalItem | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
 
@@ -508,7 +424,7 @@ function ShowProposals({
     try {
       const prop = await getProposals(analysisId || undefined, true);
       setProposals(prop.proposals);
-      setExpanded(prop.proposals[0]?.ideal_type ?? null);
+      setSelected(prop.proposals[0]?.ideal_type ?? null);
     } catch {
       setError("추천을 다시 생성하지 못했습니다.");
     } finally {
@@ -541,7 +457,7 @@ function ShowProposals({
         } else {
           setCurrent(await getCurrentAxes().catch(() => ({}) as AxisScores8));
         }
-        setExpanded(prop.proposals[0]?.ideal_type ?? null);
+        setSelected(prop.proposals[0]?.ideal_type ?? null);
       } catch {
         if (!cancelled) setError("제안을 불러오지 못했습니다. (프로필이 필요합니다)");
       } finally {
@@ -592,34 +508,16 @@ function ShowProposals({
     );
   }
 
-  if (chatProposal) {
-    return (
-      <RefineChat
-        proposal={chatProposal}
-        current={current}
-        snapshot={snapshot}
-        busy={busy}
-        onBack={() => setChatProposal(null)}
-        onConfirm={(scores, values) =>
-          void confirmCreate(
-            "CUSTOM",
-            scores,
-            chatProposal.reasoning,
-            "",
-            values,
-          )
-        }
-      />
-    );
-  }
+  const selectedProposal =
+    proposals.find((p) => p.ideal_type === selected) ?? proposals[0] ?? null;
 
   return (
-    <>
-      <div className="mb-5 flex items-start justify-between gap-3">
+    <div className="flex flex-col gap-5">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">추천 이상향 3안</h2>
           <p className="text-muted-foreground mt-1 text-xs">
-            카드를 누르면 자세히 펼쳐집니다. (현재 파랑 · 이상향 인디고)
+            카드를 골라 아래에서 대화로 다듬어 보세요. (현재 파랑 · 이상향 인디고)
           </p>
         </div>
         <Button
@@ -633,39 +531,65 @@ function ShowProposals({
           다시 추천
         </Button>
       </div>
-      <div className="flex flex-col gap-3">
-        {proposals.map((p) => (
-          <ProposalCard
-            key={p.ideal_type}
-            proposal={p}
-            current={current}
-            busy={busy}
-            expanded={expanded === p.ideal_type}
-            onToggle={() =>
-              setExpanded((prev) =>
-                prev === p.ideal_type ? null : p.ideal_type,
-              )
-            }
-            onConfirm={() =>
-              void confirmCreate(
-                p.ideal_type,
-                p.scores,
-                p.reasoning,
-                p.persona_label,
-                p.values_temperament,
-              )
-            }
-            onRefine={() => setChatProposal(p)}
-          />
-        ))}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {proposals.map((p) => {
+          const active = selectedProposal?.ideal_type === p.ideal_type;
+          return (
+            <button
+              key={p.ideal_type}
+              type="button"
+              onClick={() => setSelected(p.ideal_type)}
+              className={cn(
+                "flex h-full flex-col rounded-2xl border bg-card px-4 py-4 text-left transition-colors",
+                active
+                  ? "border-primary bg-primary/5 ring-primary/30 ring-1"
+                  : "border-border hover:border-primary/40",
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <Badge variant="outline" className="rounded-full">
+                  {IDEAL_TYPE_LABEL[p.ideal_type]}
+                </Badge>
+                {active && <Check size={16} className="text-primary shrink-0" />}
+              </div>
+              {p.persona_label && (
+                <p className="mt-2 text-sm font-semibold">{p.persona_label}</p>
+              )}
+              <p className="text-muted-foreground mt-1 line-clamp-3 text-xs leading-relaxed">
+                {p.reasoning}
+              </p>
+            </button>
+          );
+        })}
       </div>
-      <div className="mt-6 flex justify-start">
+
+      {selectedProposal && (
+        <RefineChat
+          key={selectedProposal.ideal_type}
+          proposal={selectedProposal}
+          current={current}
+          snapshot={snapshot}
+          busy={busy}
+          onConfirm={(scores, values, refined) =>
+            void confirmCreate(
+              refined ? "CUSTOM" : selectedProposal.ideal_type,
+              scores,
+              selectedProposal.reasoning,
+              refined ? "" : selectedProposal.persona_label,
+              values,
+            )
+          }
+        />
+      )}
+
+      <div className="flex justify-start">
         <Button variant="outline" onClick={onBack} className="gap-1.5">
           <ArrowLeft size={16} />
           분석 다시 선택
         </Button>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -701,8 +625,7 @@ export function IdealSetupPage() {
   return (
     <div
       className={cn(
-        "mx-auto flex min-h-full flex-col px-6 py-8",
-        step === 2 ? "max-w-6xl" : "max-w-3xl",
+        "flex min-h-full flex-col px-4 py-5 sm:px-6 sm:py-6",
       )}
     >
       <Link

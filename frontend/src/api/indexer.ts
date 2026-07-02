@@ -47,10 +47,12 @@ export async function fetchCatalogGraphSummary(): Promise<CatalogGraphSummary> {
 export async function fetchEmbeddingGraph(params?: {
   before?: string;
   after?: string;
+  snapshotId?: string;
 }): Promise<EmbeddingGraphData> {
   const qs = new URLSearchParams();
   if (params?.before) qs.set("before", params.before);
   if (params?.after) qs.set("after", params.after);
+  if (params?.snapshotId) qs.set("snapshot_id", params.snapshotId);
   const query = qs.toString() ? `?${qs}` : "";
   return apiFetchAuth<EmbeddingGraphData>(`/api/v1/indexer/embedding-graph${query}`);
 }

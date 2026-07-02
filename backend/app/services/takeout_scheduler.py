@@ -56,11 +56,13 @@ async def _due_users() -> list[tuple[User, str]]:
         return [(row[0], row[1]) for row in result.all()]
 
 
-async def _process_file(user: User, file_id: str, file_name: str | None) -> None:
-    """새 파일을 멱등 등록 후 유저별 직렬 큐에 넣는다.
+async def _process_file(
+    user: User, file_id: str, file_name: str | None, batch_id: str
+) -> None:
+    """새 파일을 멱등 등록 후 유저별 직렬 큐에 넣는다(이번 실행 배치에 소속).
 
-    수동 경로(직접/전체/선택 분석)와 **동일**하게 IndexerService를 태워,
-    새 파일 전체를 순차 분류한 뒤 마지막에 프로파일러를 1회만 돌린다(profile-once).
+    수동 경로(직접/전체/선택 분석)와 **동일**하게 IndexerService를 태워, 이번 실행에
+    수집한 파일 전체를 순차 분류한 뒤 배치가 seal되면 프로파일러를 1회만 돌린다.
     """
     import uuid as uuid_mod
 
@@ -69,7 +71,9 @@ async def _process_file(user: User, file_id: str, file_name: str | None) -> None
 
     source_key = drive_source_key(file_id)
     async with AsyncSessionLocal() as session:
-        row, action = await begin_source(session, user.id, source_key, file_name)
+        row, action = await begin_source(
+            session, user.id, source_key, file_name, batch_id=batch_id
+        )
         await session.commit()
         source_id = str(row.id)
     if action != "queued":
@@ -86,14 +90,23 @@ async def _process_file(user: User, file_id: str, file_name: str | None) -> None
 
 
 async def _process_user(user: User, folder_id: str) -> None:
+    import uuid as uuid_mod
+
+    from app.services.analysis_source_service import seal_batch_async
+
     files = await find_takeout_in_folder(user, folder_id)
+    if not files:
+        return
+    # 이번 스케줄 실행 = 한 배치. 파일 전부 등록 후 seal("다 보냄").
+    batch_id = str(uuid_mod.uuid4())
     for f in files:
         try:
-            await _process_file(user, f["id"], f.get("name"))
+            await _process_file(user, f["id"], f.get("name"), batch_id)
         except Exception:
             logger.exception(
                 "[scheduler] 파일 처리 실패 user=%s file=%s", user.id, f.get("id")
             )
+    await seal_batch_async(user.id, batch_id, user.email)
 
 
 async def _bump_next(user_id) -> None:

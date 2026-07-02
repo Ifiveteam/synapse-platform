@@ -83,9 +83,10 @@ class IndexerService:
     async def _finalize_indexing(
         self, user_id: str, source_id: str, user_email: str
     ) -> None:
-        """인덱싱 완료 후: 대기 파일이 남았으면 인덱싱만 완료 처리, 마지막이면 프로파일 1회.
+        """인덱싱 완료 후: 이 소스를 '분류 완료(indexed)'로 표시하고 배치 트리거 시도.
 
-        여러 파일을 한 번에 올려도 '분류 다 끝난 뒤 최근 2달 기록으로 딱 1번' 분석되게 한다.
+        배치는 seal('다 보냄')되고 그 배치의 모든 소스 인덱싱이 끝났을 때만 프로파일러를
+        1회 발사한다(원자 전환으로 중복 방지). seal 전이거나 남은 파일이 있으면 대기.
         """
         from app.core.database.session import AsyncSessionLocal
         from app.models.user_analysis_source import (
@@ -93,37 +94,31 @@ class IndexerService:
             AnalysisSourceStatus,
             UserAnalysisSource,
         )
-        from app.repositories.analysis_source_repository import count_pending_sources
-        from app.services.analysis_source_service import set_source_stage_async
+        from app.services.analysis_source_service import (
+            maybe_trigger_batch_async,
+            set_source_stage_async,
+        )
 
         async with AsyncSessionLocal() as session:
             src = await session.get(UserAnalysisSource, uuid.UUID(source_id))
             this_failed = src is None or src.status == AnalysisSourceStatus.FAILED
-            pending = await count_pending_sources(session, uuid.UUID(user_id))
+            batch_id = str(src.batch_id) if (src and src.batch_id) else None
 
         if this_failed:
             # runner가 이미 실패 처리 → 완료/프로파일 하지 않음
             logger.info("[Indexer] 인덱싱 실패 — 프로파일 스킵 source_id=%s", source_id)
             return
-        if pending > 0:
-            # 아직 인덱싱할 파일 남음 → 이 소스는 '분류 완료(indexed)'로 두고 배치 분석 대기
-            await set_source_stage_async(source_id, AnalysisSourceStage.INDEXED)
-            logger.info(
-                "[Indexer] 분류 완료(대기 %d건 남음) — 배치 분석 대기 source_id=%s",
-                pending,
-                source_id,
-            )
-        else:
-            # 마지막 인덱싱 → 이 소스로 프로파일러 1회 (전체 catalog·최근 2달 기준)
-            from app.services.profiler.service import profiler_service
 
-            await set_source_stage_async(source_id, AnalysisSourceStage.PROFILING)
-            profiler_service.enqueue_for_user(
-                user_id, user_email, analysis_source_id=source_id
-            )
-            logger.info(
-                "[Indexer] 마지막 인덱싱 완료 — 프로파일 1회 실행 source_id=%s",
+        # 이 소스 분류 완료 표시 후 배치 트리거 시도 (조건 미충족이면 조용히 대기)
+        await set_source_stage_async(source_id, AnalysisSourceStage.INDEXED)
+        try:
+            await maybe_trigger_batch_async(user_id, batch_id, user_email)
+        except Exception:
+            # 트리거 실패가 인덱싱 락/후속 파일을 막지 않도록 격리
+            logger.exception(
+                "[Indexer] 배치 트리거 실패 source_id=%s batch_id=%s",
                 source_id,
+                batch_id,
             )
 
 

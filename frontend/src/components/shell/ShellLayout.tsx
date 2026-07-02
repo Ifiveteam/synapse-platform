@@ -41,6 +41,8 @@ export function ShellLayout() {
   const closeLoginModal = useShellStore((s) => s.closeLoginModal);
   const loadChats = useSidebarStore((s) => s.loadChats);
   const loadScraps = useSidebarStore((s) => s.loadScraps);
+  const loadIdealPersona = useSidebarStore((s) => s.loadIdealPersona);
+  const setActiveIdealLabel = useSidebarStore((s) => s.setActiveIdealLabel);
   const clearScraps = useSidebarStore((s) => s.clearScraps);
   const scrapPanelOpen = useScrapDetailPanelStore((s) => s.open);
   const selectedScrapId = useScrapDetailPanelStore((s) => s.selectedScrapId);
@@ -50,10 +52,19 @@ export function ShellLayout() {
     if (user) {
       void loadChats();
       void loadScraps();
+      void loadIdealPersona();
     } else {
       clearScraps();
+      setActiveIdealLabel(null);
     }
-  }, [user, loadChats, loadScraps, clearScraps]);
+  }, [
+    user,
+    loadChats,
+    loadScraps,
+    loadIdealPersona,
+    clearScraps,
+    setActiveIdealLabel,
+  ]);
   const isHomePage = location.pathname === ROUTES.home;
 
   useEffect(() => {

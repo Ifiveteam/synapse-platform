@@ -38,16 +38,27 @@ def run_profiler(
 
 
 async def run_profiler_async(
-    user_id: str, email: str, *, analysis_limit: int | None = None
+    user_id: str,
+    email: str,
+    *,
+    analysis_limit: int | None = None,
+    analysis_source_ids: list[str] | None = None,
+    batch_id: str | None = None,
 ) -> dict:
+    from app.core.config import get_settings
     from app.core.env import load_backend_env
 
     load_backend_env()
+    # 킬스위치: 배치 스코프 off면 통합본으로 산출 (batch_id 박제는 유지)
+    if not get_settings().profiler_batch_scope_enabled:
+        analysis_source_ids = None
     initial: ProfilerState = {
         "user_id": user_id,
         "notify_email": email,
         "current_step": "pending",
         "investigation_log": [],
         "analysis_limit": analysis_limit,
+        "analysis_source_ids": analysis_source_ids,
+        "batch_id": batch_id,
     }
     return await profiler_graph.ainvoke(initial)

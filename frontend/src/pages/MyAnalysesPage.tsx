@@ -164,7 +164,10 @@ function InProgressGroup({ items }: { items: AnalysisResultItem[] }) {
   );
 }
 
-export function MyAnalysesPage({ embedded = false }: { embedded?: boolean } = {}) {
+export function MyAnalysesPage({
+  embedded = false,
+  latestOnly = false,
+}: { embedded?: boolean; latestOnly?: boolean } = {}) {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterTab>("all");
   const [page, setPage] = useState(1);
@@ -205,14 +208,25 @@ export function MyAnalysesPage({ embedded = false }: { embedded?: boolean } = {}
     };
   }, []);
 
-  // 진행 중(job) 항목은 한 그룹 박스로, 완료 스냅샷만 개별 + 페이지네이션
+  // 진행 중(job) 항목은 **배치별로** 그룹 박스 하나씩, 완료 스냅샷만 개별 + 페이지네이션
   const jobItems = useMemo(() => items.filter((i) => i.kind === "job"), [items]);
+  const jobGroups = useMemo(() => {
+    const map = new Map<string, AnalysisResultItem[]>();
+    for (const it of jobItems) {
+      // 배치가 다르면 다른 박스. batch_id 없으면(구/자동 단일) 각자 독립 박스.
+      const key = it.batchId ?? `solo:${it.id}`;
+      const arr = map.get(key);
+      if (arr) arr.push(it);
+      else map.set(key, [it]);
+    }
+    return Array.from(map.values());
+  }, [jobItems]);
   const snapshotItems = useMemo(
     () => items.filter((i) => i.kind === "snapshot"),
     [items],
   );
   const showJobGroup =
-    !compareMode && jobItems.length > 0 && filter !== "completed";
+    !compareMode && !latestOnly && jobItems.length > 0 && filter !== "completed";
 
   const filteredSnapshots = useMemo(
     () => (filter === "pending" ? [] : snapshotItems),
@@ -227,6 +241,9 @@ export function MyAnalysesPage({ embedded = false }: { embedded?: boolean } = {}
     (currentPage - 1) * ANALYSIS_PAGE_SIZE,
     currentPage * ANALYSIS_PAGE_SIZE,
   );
+  const visibleSnapshots = latestOnly
+    ? filteredSnapshots.slice(0, 1)
+    : pageSnapshots;
 
   const handleFilterChange = (value: string) => {
     setFilter(value as FilterTab);
@@ -280,7 +297,7 @@ export function MyAnalysesPage({ embedded = false }: { embedded?: boolean } = {}
     <div
       className={cn(
         "flex flex-col",
-        embedded ? "" : "mx-auto min-h-full max-w-3xl px-6 py-8",
+        embedded ? "" : "min-h-full px-4 py-5 sm:px-6 sm:py-6",
       )}
     >
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -306,7 +323,7 @@ export function MyAnalysesPage({ embedded = false }: { embedded?: boolean } = {}
             )}
           </div>
 
-          {compareMode ? (
+          {latestOnly ? null : compareMode ? (
             <p className="text-primary mt-3 text-sm font-medium">
               비교할 완료된 분석 2개를 선택하세요.
             </p>
@@ -340,28 +357,29 @@ export function MyAnalysesPage({ embedded = false }: { embedded?: boolean } = {}
               </Link>
             </Button>
           )}
-          {!compareMode ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="gap-1.5"
-              disabled={!canCompare}
-              onClick={enterCompareMode}
-              title={
-                canCompare
-                  ? undefined
-                  : "완료된 분석이 2개 이상이면 비교할 수 있습니다."
-              }
-            >
-              <ArrowLeftRight size={16} />
-              비교분석
-            </Button>
-          ) : (
-            <Button type="button" size="sm" variant="ghost" onClick={exitCompareMode}>
-              취소
-            </Button>
-          )}
+          {!latestOnly &&
+            (!compareMode ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                disabled={!canCompare}
+                onClick={enterCompareMode}
+                title={
+                  canCompare
+                    ? undefined
+                    : "완료된 분석이 2개 이상이면 비교할 수 있습니다."
+                }
+              >
+                <ArrowLeftRight size={16} />
+                비교분석
+              </Button>
+            ) : (
+              <Button type="button" size="sm" variant="ghost" onClick={exitCompareMode}>
+                취소
+              </Button>
+            ))}
         </div>
       </div>
 
@@ -380,8 +398,14 @@ export function MyAnalysesPage({ embedded = false }: { embedded?: boolean } = {}
 
       {!loading && !error && (
         <div className="flex flex-1 flex-col gap-3">
-          {showJobGroup && <InProgressGroup items={jobItems} />}
-          {pageSnapshots.map((item) => (
+          {showJobGroup &&
+            jobGroups.map((group) => (
+              <InProgressGroup
+                key={group[0].batchId ?? group[0].id}
+                items={group}
+              />
+            ))}
+          {visibleSnapshots.map((item) => (
             <AnalysisListItem
               key={item.id}
               item={item}
@@ -395,7 +419,7 @@ export function MyAnalysesPage({ embedded = false }: { embedded?: boolean } = {}
               onToggleSelect={toggleSelect}
             />
           ))}
-          {!showJobGroup && pageSnapshots.length === 0 && (
+          {!showJobGroup && visibleSnapshots.length === 0 && (
             <div className="border-border text-muted-foreground rounded-2xl border border-dashed px-6 py-16 text-center text-sm">
               {items.length === 0
                 ? "아직 분석 결과가 없습니다. 시청 기록을 업로드한 뒤 프로파일러가 완료되면 여기에 표시됩니다."
@@ -423,7 +447,7 @@ export function MyAnalysesPage({ embedded = false }: { embedded?: boolean } = {}
         </div>
       )}
 
-      {!loading && !error && !compareMode && totalPages > 1 && (
+      {!loading && !error && !compareMode && !latestOnly && totalPages > 1 && (
         <div className="mt-8 flex items-center justify-center gap-2">
           <Button
             type="button"
