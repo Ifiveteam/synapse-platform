@@ -13,6 +13,7 @@ import type {
   PlaylistResponse,
   PlaylistSummary,
   ProposalsResponse,
+  SaveStartResponse,
 } from "@/api/types/navigator";
 import { API_BASE_URL } from "@/lib/env";
 
@@ -111,6 +112,11 @@ export const refreshPlaylistItem = (playlistId: string, videoId: string) =>
 
 export const regeneratePlaylist = (playlistId: string) =>
   apiFetchAuth<PlaylistResponse>(`${P}/playlists/${playlistId}/regenerate`, {
+    method: "POST",
+  });
+
+export const savePlaylistToYoutube = (playlistId: string) =>
+  apiFetchAuth<SaveStartResponse>(`${P}/playlists/${playlistId}/save`, {
     method: "POST",
   });
 

@@ -294,6 +294,7 @@ class NavigatorRepository:
         summary: str | None = None,
         youtube_playlist_id: str | None = None,
         status: str | None = None,
+        save_status: str | None = None,
     ) -> NavigatorPlaylist | None:
         row = await self.get_playlist(user_id=user_id, playlist_id=playlist_id)
         if row is None:
@@ -310,6 +311,8 @@ class NavigatorRepository:
             row.youtube_playlist_id = youtube_playlist_id
         if status is not None:
             row.status = status
+        if save_status is not None:
+            row.save_status = save_status
         await self.db.commit()
         await self.db.refresh(row)
         return row
