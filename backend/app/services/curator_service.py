@@ -29,19 +29,23 @@ class CuratorService:
         self.db = db
         self.engine = engine
 
-    async def _load_history(self, session_id: str, user_id: uuid.UUID) -> list[BaseMessage]:
+    async def _load_history(
+        self, session_id: str, user_id: uuid.UUID
+    ) -> list[BaseMessage]:
         """session_id 기준으로 최근 대화 히스토리를 로드한다."""
-        rows = (await self.db.execute(
-            select(AIChatLog.role, AIChatLog.content)
-            .where(
-                AIChatLog.session_id == session_id,
-                AIChatLog.user_id == user_id,
-                AIChatLog.agent_type == CURATOR_AGENT_TYPE,
-                AIChatLog.role.in_(["user", "assistant"]),
+        rows = (
+            await self.db.execute(
+                select(AIChatLog.role, AIChatLog.content)
+                .where(
+                    AIChatLog.session_id == session_id,
+                    AIChatLog.user_id == user_id,
+                    AIChatLog.agent_type == CURATOR_AGENT_TYPE,
+                    AIChatLog.role.in_(["user", "assistant"]),
+                )
+                .order_by(AIChatLog.created_at.desc())
+                .limit(HISTORY_MESSAGE_LIMIT)
             )
-            .order_by(AIChatLog.created_at.desc())
-            .limit(HISTORY_MESSAGE_LIMIT)
-        )).fetchall()
+        ).fetchall()
 
         messages: list[BaseMessage] = []
         for row in reversed(rows):
@@ -55,8 +59,9 @@ class CuratorService:
         """유저의 큐레이터 채팅 세션 목록을 최신순으로 반환한다."""
         from sqlalchemy import text
 
-        rows = (await self.db.execute(
-            text("""
+        rows = (
+            await self.db.execute(
+                text("""
                 WITH session_title AS (
                     SELECT DISTINCT ON (session_id)
                         session_id,
@@ -93,25 +98,30 @@ class CuratorService:
                 ORDER BY sl.updated_at DESC
                 LIMIT 30
             """),
-            {"uid": str(user_id), "agent_type": CURATOR_AGENT_TYPE},
-        )).fetchall()
+                {"uid": str(user_id), "agent_type": CURATOR_AGENT_TYPE},
+            )
+        ).fetchall()
 
         return [
             {"session_id": r.session_id, "title": r.title, "updated_at": r.updated_at}
             for r in rows
         ]
 
-    async def get_session_messages(self, session_id: str, user_id: uuid.UUID) -> list[dict]:
+    async def get_session_messages(
+        self, session_id: str, user_id: uuid.UUID
+    ) -> list[dict]:
         """세션의 메시지 목록을 시간순으로 반환한다."""
-        rows = (await self.db.execute(
-            select(AIChatLog.role, AIChatLog.content)
-            .where(
-                AIChatLog.session_id == session_id,
-                AIChatLog.user_id == user_id,
-                AIChatLog.agent_type == CURATOR_AGENT_TYPE,
+        rows = (
+            await self.db.execute(
+                select(AIChatLog.role, AIChatLog.content)
+                .where(
+                    AIChatLog.session_id == session_id,
+                    AIChatLog.user_id == user_id,
+                    AIChatLog.agent_type == CURATOR_AGENT_TYPE,
+                )
+                .order_by(AIChatLog.created_at.asc())
             )
-            .order_by(AIChatLog.created_at.asc())
-        )).fetchall()
+        ).fetchall()
         return [{"role": r.role, "content": r.content} for r in rows]
 
     async def delete_session(self, session_id: str, user_id: uuid.UUID) -> None:
@@ -131,8 +141,10 @@ class CuratorService:
         """첫 턴을 기반으로 세션 제목을 생성한다."""
         from app.agents.curator.constants import GEMINI_MODEL
         from app.agents.curator.gemini import get_client
+
         try:
             from google.genai import types
+
             response = await get_client().aio.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=f"유저: {user_message}\n어시스턴트: {assistant_message[:200]}",
@@ -169,27 +181,33 @@ class CuratorService:
         """유저·어시스턴트 한 턴을 DB에 저장한다."""
         if is_first_turn:
             title = await self._generate_title(user_message, assistant_message)
-            self.db.add(AIChatLog(
+            self.db.add(
+                AIChatLog(
+                    session_id=session_id,
+                    user_id=user_id,
+                    agent_type=CURATOR_AGENT_TYPE,
+                    role="session_title",
+                    content=title,
+                )
+            )
+        self.db.add(
+            AIChatLog(
                 session_id=session_id,
                 user_id=user_id,
                 agent_type=CURATOR_AGENT_TYPE,
-                role="session_title",
-                content=title,
-            ))
-        self.db.add(AIChatLog(
-            session_id=session_id,
-            user_id=user_id,
-            agent_type=CURATOR_AGENT_TYPE,
-            role="user",
-            content=user_message,
-        ))
-        self.db.add(AIChatLog(
-            session_id=session_id,
-            user_id=user_id,
-            agent_type=CURATOR_AGENT_TYPE,
-            role="assistant",
-            content=assistant_message,
-        ))
+                role="user",
+                content=user_message,
+            )
+        )
+        self.db.add(
+            AIChatLog(
+                session_id=session_id,
+                user_id=user_id,
+                agent_type=CURATOR_AGENT_TYPE,
+                role="assistant",
+                content=assistant_message,
+            )
+        )
         await self.db.commit()
 
     async def generate_stream(
@@ -207,7 +225,9 @@ class CuratorService:
             content: list[dict] = [
                 {
                     "type": "image_url",
-                    "image_url": {"url": f"data:{image_mime_type};base64,{image_base64}"},
+                    "image_url": {
+                        "url": f"data:{image_mime_type};base64,{image_base64}"
+                    },
                 }
             ]
             if message:
@@ -226,7 +246,9 @@ class CuratorService:
 
         response_tokens: list[str] = []
         try:
-            async for event in self.engine.stream(initial_state=initial_state, db=self.db):
+            async for event in self.engine.stream(
+                initial_state=initial_state, db=self.db
+            ):
                 yield format_stream_event(event)
                 if event.event == "token":
                     response_tokens.append(event.content)
@@ -242,8 +264,15 @@ class CuratorService:
                 saved_message = f"[이미지] {message}"
             try:
                 await self._save_turn(
-                    session_id, user_id, saved_message, assistant_response,
+                    session_id,
+                    user_id,
+                    saved_message,
+                    assistant_response,
                     is_first_turn=is_first_turn,
                 )
             except Exception:
-                logger.error("Failed to save chat history — history will not accumulate for session %s", session_id, exc_info=True)
+                logger.error(
+                    "Failed to save chat history — history will not accumulate for session %s",
+                    session_id,
+                    exc_info=True,
+                )

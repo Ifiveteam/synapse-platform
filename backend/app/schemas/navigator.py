@@ -171,12 +171,16 @@ class PlaylistItemResponse(BaseModel):
     reason: str = ""
 
 
+PlaylistStatus = Literal["pending", "ready", "failed"]
+
+
 class PlaylistResponse(BaseModel):
     id: str
     ideal_id: str
     title: str = ""
     summary: str = ""
     items: list[PlaylistItemResponse]
+    status: PlaylistStatus = "ready"
     youtube_playlist_id: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -188,6 +192,7 @@ class PlaylistSummary(BaseModel):
     id: str
     title: str = ""
     item_count: int = 0
+    status: PlaylistStatus = "ready"
     youtube_playlist_id: str | None = None
     created_at: datetime
 

@@ -9,7 +9,9 @@ import {
   Plus,
   RefreshCw,
   Send,
+  Target,
   Trash2,
+  X,
   Youtube,
 } from "lucide-react";
 
@@ -46,6 +48,7 @@ export function PlaylistPage() {
   const [filterIdeal, setFilterIdeal] = useState<string>(initialIdeal);
   const [sortDesc, setSortDesc] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
 
   // 상세
   const [selected, setSelected] = useState<PlaylistResponse | null>(null);
@@ -94,6 +97,34 @@ export function PlaylistPage() {
     return () => abortRef.current?.abort();
   }, [loadAll]);
 
+  // 생성중(pending)인 재생목록을 폴링해 완료되면 자동으로 채운다
+  useEffect(() => {
+    if (!selected || selected.status !== "pending") return;
+    const id = selected.id;
+    const timer = setInterval(async () => {
+      try {
+        const updated = await getPlaylist(id);
+        setSelected((cur) => (cur && cur.id === id ? updated : cur));
+        setRows((prev) =>
+          prev.map((r) =>
+            r.id === id
+              ? {
+                  ...r,
+                  status: updated.status,
+                  item_count: updated.items.length,
+                  title: updated.title,
+                }
+              : r,
+          ),
+        );
+        if (updated.status !== "pending") clearInterval(timer);
+      } catch {
+        /* 일시 오류는 무시하고 계속 폴링 */
+      }
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [selected?.id, selected?.status]);
+
   const visibleRows = useMemo(() => {
     const filtered =
       filterIdeal === "all"
@@ -118,29 +149,36 @@ export function PlaylistPage() {
     setSelected(await getPlaylist(playlistId));
   };
 
-  const handleCreate = async () => {
-    if (filterIdeal === "all") return;
+  const createFor = async (idealId: string) => {
+    setShowPicker(false);
     setCreating(true);
     try {
-      const created = await createPlaylist(filterIdeal);
-      const i = ideals.find((x) => x.id === filterIdeal);
+      const created = await createPlaylist(idealId);
+      const i = ideals.find((x) => x.id === idealId);
       setRows((prev) => [
         {
           id: created.id,
           title: created.title,
           item_count: created.items.length,
+          status: created.status,
           youtube_playlist_id: created.youtube_playlist_id,
           created_at: created.created_at,
-          idealId: filterIdeal,
+          idealId,
           idealLabel: i ? idealLabel(i) : "",
         },
         ...prev,
       ]);
       setChatLog([]);
-      setSelected(created);
+      setSelected(created); // pending → 폴링이 채움
     } finally {
       setCreating(false);
     }
+  };
+
+  const handleNewClick = () => {
+    // 특정 이상향이 필터에 선택돼 있으면 바로, "모든 이상향"이면 항상 고르게
+    if (filterIdeal !== "all") return void createFor(filterIdeal);
+    setShowPicker((v) => !v);
   };
 
   const handleRefreshItem = async (videoId: string) => {
@@ -248,8 +286,9 @@ export function PlaylistPage() {
 
   // ── 상세 뷰 ──────────────────────────────────────────────────────
   if (selected) {
+    const ready = selected.status === "ready";
     return (
-      <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-6 py-8">
+      <div className="flex min-h-full flex-col px-4 py-5 sm:px-6 sm:py-6">
         <button
           type="button"
           onClick={() => setSelected(null)}
@@ -293,35 +332,39 @@ export function PlaylistPage() {
               </div>
             )}
             <div className="flex shrink-0 items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void handleRefreshAll()}
-                disabled={refreshingAll}
-                className="gap-1.5"
-              >
-                <RefreshCw
-                  size={14}
-                  className={refreshingAll ? "animate-spin" : ""}
-                />
-                전체 새로고침
-              </Button>
-              {selected.youtube_playlist_id ? (
-                <Button size="sm" variant="outline" asChild className="gap-1.5">
-                  <a
-                    href={`https://www.youtube.com/playlist?list=${selected.youtube_playlist_id}`}
-                    target="_blank"
-                    rel="noreferrer"
+              {ready && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void handleRefreshAll()}
+                    disabled={refreshingAll}
+                    className="gap-1.5"
                   >
-                    <Youtube size={15} />
-                    유튜브에서 보기
-                  </a>
-                </Button>
-              ) : (
-                <Button size="sm" onClick={handleSaveYoutube} className="gap-1.5">
-                  <Youtube size={15} />
-                  유튜브에 저장
-                </Button>
+                    <RefreshCw
+                      size={14}
+                      className={refreshingAll ? "animate-spin" : ""}
+                    />
+                    전체 새로고침
+                  </Button>
+                  {selected.youtube_playlist_id ? (
+                    <Button size="sm" variant="outline" asChild className="gap-1.5">
+                      <a
+                        href={`https://www.youtube.com/playlist?list=${selected.youtube_playlist_id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <Youtube size={15} />
+                        유튜브에서 보기
+                      </a>
+                    </Button>
+                  ) : (
+                    <Button size="sm" onClick={handleSaveYoutube} className="gap-1.5">
+                      <Youtube size={15} />
+                      유튜브에 저장
+                    </Button>
+                  )}
+                </>
               )}
               <Button
                 size="sm"
@@ -339,8 +382,21 @@ export function PlaylistPage() {
             <p className="text-muted-foreground mb-4 text-sm">{selected.summary}</p>
           )}
 
-          <ul className="flex flex-col gap-3">
-            {selected.items.map((it) => (
+          {selected.status === "pending" ? (
+            <div className="text-muted-foreground flex flex-col items-center gap-2 py-16 text-center text-sm">
+              <RefreshCw size={22} className="animate-spin" />
+              재생목록을 만드는 중이에요… (채널 검색·큐레이션)
+              <span className="text-xs">
+                이 창을 나가도 계속 생성돼요. 잠시 후 자동으로 채워집니다.
+              </span>
+            </div>
+          ) : selected.status === "failed" ? (
+            <div className="text-muted-foreground py-16 text-center text-sm">
+              생성에 실패했어요. 삭제 후 다시 만들어 주세요.
+            </div>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {selected.items.map((it) => (
               <li
                 key={it.video_id}
                 className="border-border flex items-start gap-3 rounded-xl border p-2.5"
@@ -387,7 +443,8 @@ export function PlaylistPage() {
                 </button>
               </li>
             ))}
-          </ul>
+            </ul>
+          )}
         </section>
 
         {/* 오른쪽: 채팅 패널 (대화 기록 유지) */}
@@ -430,14 +487,14 @@ export function PlaylistPage() {
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && void handleChat()}
-                placeholder="수정 요청을 입력하세요"
-                disabled={chatting}
+                placeholder={ready ? "수정 요청을 입력하세요" : "생성 완료 후 이용할 수 있어요"}
+                disabled={chatting || !ready}
                 className="border-border min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm"
               />
               <Button
                 size="icon"
                 onClick={() => void handleChat()}
-                disabled={chatting || !chatInput.trim()}
+                disabled={chatting || !chatInput.trim() || !ready}
               >
                 <Send size={15} />
               </Button>
@@ -451,7 +508,7 @@ export function PlaylistPage() {
 
   // ── 목록 뷰 ──────────────────────────────────────────────────────
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-6 py-8">
+    <div className="flex min-h-full flex-col px-4 py-5 sm:px-6 sm:py-6">
       <Link
         to={ROUTES.idealManagement}
         className="text-muted-foreground hover:text-foreground mb-4 inline-flex w-fit items-center gap-1.5 text-sm transition-colors"
@@ -467,15 +524,71 @@ export function PlaylistPage() {
         </h1>
         <Button
           size="sm"
-          onClick={() => void handleCreate()}
-          disabled={creating || filterIdeal === "all"}
-          title={filterIdeal === "all" ? "이상향을 먼저 선택하세요" : undefined}
+          onClick={handleNewClick}
+          disabled={creating}
           className="gap-1.5"
         >
           <Plus size={15} className={creating ? "animate-spin" : ""} />
           {creating ? "생성 중…" : "새 재생목록"}
         </Button>
       </div>
+
+      {/* 이상향 선택 팝업 */}
+      {showPicker && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setShowPicker(false)}
+          />
+          <div className="border-border bg-card relative z-10 w-full max-w-sm rounded-2xl border p-5 shadow-xl">
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-base font-semibold">이상향 선택</h3>
+              <button
+                type="button"
+                onClick={() => setShowPicker(false)}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="닫기"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-muted-foreground mb-4 text-sm">
+              어느 이상향으로 재생목록을 만들까요?
+            </p>
+            {ideals.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                이상향이 없어요. 먼저 이상향을 만들어 주세요.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {ideals.map((i) => (
+                  <li key={i.id}>
+                    <button
+                      type="button"
+                      onClick={() => void createFor(i.id)}
+                      className="border-border hover:border-primary/40 hover:bg-secondary flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors"
+                    >
+                      <Target size={18} className="text-muted-foreground shrink-0" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium">
+                          {idealLabel(i)}
+                        </span>
+                        <span className="text-muted-foreground block truncate text-xs">
+                          {i.reasoning || IDEAL_TYPE_LABEL[i.ideal_type]}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 필터 + 정렬 */}
       <div className="mb-5 flex items-center gap-2">
@@ -534,7 +647,16 @@ export function PlaylistPage() {
                     <Badge variant="outline" className="rounded-full">
                       {r.idealLabel}
                     </Badge>
-                    <span>영상 {r.item_count}개</span>
+                    {r.status === "pending" ? (
+                      <span className="text-primary inline-flex items-center gap-1">
+                        <RefreshCw size={11} className="animate-spin" />
+                        생성중
+                      </span>
+                    ) : r.status === "failed" ? (
+                      <span className="text-destructive">생성 실패</span>
+                    ) : (
+                      <span>영상 {r.item_count}개</span>
+                    )}
                     <span>
                       {new Date(r.created_at).toLocaleDateString("ko-KR")}
                     </span>

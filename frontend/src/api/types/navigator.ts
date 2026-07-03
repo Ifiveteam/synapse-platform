@@ -87,12 +87,15 @@ export interface PlaylistItemResponse {
   url: string;
   reason: string;
 }
+export type PlaylistStatus = "pending" | "ready" | "failed";
+
 export interface PlaylistResponse {
   id: string;
   ideal_id: string;
   title: string;
   summary: string;
   items: PlaylistItemResponse[];
+  status: PlaylistStatus;
   youtube_playlist_id: string | null;
   created_at: string;
   updated_at: string;
@@ -101,6 +104,7 @@ export interface PlaylistSummary {
   id: string;
   title: string;
   item_count: number;
+  status: PlaylistStatus;
   youtube_playlist_id: string | null;
   created_at: string;
 }

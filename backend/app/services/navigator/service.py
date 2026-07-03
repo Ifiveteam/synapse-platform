@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import uuid
 from collections.abc import AsyncIterator
 
@@ -32,7 +34,7 @@ from app.agents.navigator.facade import NavigatorAgent, get_navigator_agent
 from app.agents.navigator.schemas import Guide, PlaylistItem
 from app.agents.navigator.streaming import format_sse_event, format_stream_event
 from app.agents.shared.persona import persona_from_scores
-from app.core.database.session import get_db
+from app.core.database.session import AsyncSessionLocal, get_db
 from app.models.user_ideal_persona import UserIdealPersona
 from app.repositories.indexer_repository import (
     fetch_top_categories,
@@ -70,6 +72,86 @@ _IDEAL_404 = (
     "Ideal persona not found. Confirm an ideal via POST /navigator/ideal first."
 )
 _PLAYLIST_404 = "Playlist not found."
+
+logger = logging.getLogger(__name__)
+
+_bg_tasks: set[asyncio.Task] = set()
+
+
+def _spawn_bg(coro) -> None:
+    """백그라운드 태스크를 GC로부터 보호하며 실행."""
+    task = asyncio.create_task(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+
+
+async def _domain_signals(session, user_id, persona) -> dict[str, dict]:
+    """발굴용 신호 — 현재 관심 도메인(portrait) + 목표 도메인·성향."""
+    portrait = None
+    try:
+        if persona.source_profile_history_id:
+            row = await fetch_profile_snapshot(
+                session, user_id, persona.source_profile_history_id
+            )
+        else:
+            row = await fetch_latest_profile(session, user_id)
+        portrait = getattr(row, "portrait", None) if row else None
+    except Exception:
+        logger.exception("playlist domain signals load failed")
+    return {
+        "current_interest": interest_from_portrait(portrait),
+        "target_interest": dict(persona.target_interest or {}),
+        "target_disposition": dict(persona.target_disposition or {}),
+    }
+
+
+async def _generate_playlist_bg(
+    *, user_id: uuid.UUID, ideal_id: uuid.UUID, playlist_id: uuid.UUID
+) -> None:
+    """백그라운드 재생목록 생성 — 자체 세션으로 파이프라인 실행 후 행 갱신."""
+    async with AsyncSessionLocal() as session:
+        repo = NavigatorRepository(session)
+        agent = get_navigator_agent()
+        try:
+            persona = await repo.get_ideal(user_id=user_id, ideal_id=ideal_id)
+            if persona is None:
+                await repo.update_playlist(
+                    user_id=user_id, playlist_id=playlist_id, status="failed"
+                )
+                return
+            persona_label = persona.persona_label or "추천 재생목록"
+            values13 = persona.values_temperament or {}
+            ideal_type, reasoning = decode_description(persona.description)
+            signals = await _domain_signals(session, user_id, persona)
+            build = await agent.generate_playlist(
+                store=repo,
+                user_id=user_id,
+                persona_label=persona_label,
+                values13=values13,
+                ideal_type=ideal_type,
+                reasoning=reasoning,
+                **signals,
+            )
+            await repo.update_playlist(
+                user_id=user_id,
+                playlist_id=playlist_id,
+                summary=build.playlist.summary,
+                items_json=[it.model_dump() for it in build.playlist.items],
+                channels_json=[
+                    {"channel_id": c.channel_id, "title": c.title}
+                    for c in build.channels
+                ],
+                reservoir_json=[it.model_dump() for it in build.reservoir],
+                status="ready" if build.playlist.items else "failed",
+            )
+        except Exception:
+            logger.exception("playlist background generation failed: %s", playlist_id)
+            try:
+                await repo.update_playlist(
+                    user_id=user_id, playlist_id=playlist_id, status="failed"
+                )
+            except Exception:
+                logger.exception("playlist failed-status update failed")
 
 
 def should_persist_assistant_log(content: str) -> bool:
@@ -152,6 +234,7 @@ def _playlist_to_response(row) -> PlaylistResponse:
         title=row.title or "",
         summary=row.summary or "",
         items=items,
+        status=row.status,
         youtube_playlist_id=row.youtube_playlist_id,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -163,6 +246,7 @@ def _playlist_summary(row) -> PlaylistSummary:
         id=str(row.id),
         title=row.title or "",
         item_count=len(row.items_json or []),
+        status=row.status,
         youtube_playlist_id=row.youtube_playlist_id,
         created_at=row.created_at,
     )
@@ -540,20 +624,12 @@ class NavigatorService:
     async def create_playlist(
         self, *, user_id: uuid.UUID, ideal_id: uuid.UUID
     ) -> PlaylistResponse:
-        """이상향 페르소나+시청기록 근거로 새 재생목록을 생성·저장한다."""
+        """빈 pending 행을 즉시 만들고, 실제 생성은 백그라운드로 돌린다.
+
+        프론트는 pending 응답을 받아 '생성중' 카드를 띄우고 폴링으로 완료를 채운다.
+        """
         persona = await self._ideal_or_404(user_id, ideal_id)
         persona_label = persona.persona_label or "추천 재생목록"
-        values13 = persona.values_temperament or {}
-        ideal_type, reasoning = decode_description(persona.description)
-
-        build = await self.agent.generate_playlist(
-            store=self.repo,
-            user_id=user_id,
-            persona_label=persona_label,
-            values13=values13,
-            ideal_type=ideal_type,
-            reasoning=reasoning,
-        )
 
         existing = await self.repo.list_playlists(user_id=user_id, ideal_id=ideal_id)
         title = f"{persona_label} #{len(existing) + 1}"
@@ -561,12 +637,16 @@ class NavigatorService:
             user_id=user_id,
             ideal_id=ideal_id,
             title=title,
-            summary=build.playlist.summary,
-            items_json=[it.model_dump() for it in build.playlist.items],
-            channels_json=[
-                {"channel_id": c.channel_id, "title": c.title} for c in build.channels
-            ],
-            reservoir_json=[it.model_dump() for it in build.reservoir],
+            summary=None,
+            items_json=[],
+            channels_json=[],
+            reservoir_json=[],
+            status="pending",
+        )
+        _spawn_bg(
+            _generate_playlist_bg(
+                user_id=user_id, ideal_id=ideal_id, playlist_id=row.id
+            )
         )
         return _playlist_to_response(row)
 
@@ -653,6 +733,7 @@ class NavigatorService:
         persona_label = persona.persona_label or "추천 재생목록"
         values13 = persona.values_temperament or {}
         ideal_type, reasoning = decode_description(persona.description)
+        signals = await _domain_signals(self.db, user_id, persona)
 
         build = await self.agent.generate_playlist(
             store=self.repo,
@@ -661,6 +742,7 @@ class NavigatorService:
             values13=values13,
             ideal_type=ideal_type,
             reasoning=reasoning,
+            **signals,
         )
         # 재생성 결과가 비면 기존 재생목록을 덮어쓰지 않는다 (날아가는 것 방지)
         if not build.playlist.items:

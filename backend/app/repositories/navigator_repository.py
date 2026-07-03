@@ -242,6 +242,7 @@ class NavigatorRepository:
         items_json: list,
         channels_json: list,
         reservoir_json: list,
+        status: str = "ready",
     ) -> NavigatorPlaylist:
         row = NavigatorPlaylist(
             user_id=user_id,
@@ -251,6 +252,7 @@ class NavigatorRepository:
             items_json=items_json,
             channels_json=channels_json,
             reservoir_json=reservoir_json,
+            status=status,
         )
         self.db.add(row)
         await self.db.commit()
@@ -291,6 +293,7 @@ class NavigatorRepository:
         reservoir_json: list | None = None,
         summary: str | None = None,
         youtube_playlist_id: str | None = None,
+        status: str | None = None,
     ) -> NavigatorPlaylist | None:
         row = await self.get_playlist(user_id=user_id, playlist_id=playlist_id)
         if row is None:
@@ -305,6 +308,8 @@ class NavigatorRepository:
             row.summary = summary
         if youtube_playlist_id is not None:
             row.youtube_playlist_id = youtube_playlist_id
+        if status is not None:
+            row.status = status
         await self.db.commit()
         await self.db.refresh(row)
         return row

@@ -121,10 +121,11 @@ async def handle_oauth_callback(
             if payload.get("flow") == "extension":
                 redirect_uri = payload.get("redirect_uri", "")
                 if is_allowed_extension_redirect_uri(redirect_uri):
-                    link_code, _ = (
-                        await extension_auth_service.create_extension_link_code(
-                            session, user.id
-                        )
+                    (
+                        link_code,
+                        _,
+                    ) = await extension_auth_service.create_extension_link_code(
+                        session, user.id
                     )
                     await session.commit()
                     return RedirectResponse(
@@ -203,8 +204,6 @@ async def logout(session: AsyncSession, refresh_token: str | None) -> None:
         await token_service.revoke_refresh_token(session, refresh_token)
 
     if user is not None:
-        await extension_auth_service.revoke_extension_refresh_for_user(
-            session, user.id
-        )
+        await extension_auth_service.revoke_extension_refresh_for_user(session, user.id)
 
     await session.commit()

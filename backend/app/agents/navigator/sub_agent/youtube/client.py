@@ -10,16 +10,22 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import xml.etree.ElementTree as ET
+from typing import Protocol, TypeVar
 
 import httpx
 
+from app.agents.navigator.sub_agent.youtube.constants import SHORTS_MAX_SECONDS
 from app.agents.navigator.sub_agent.youtube.schemas import ChannelRef, YoutubeVideo
 
 logger = logging.getLogger(__name__)
 
 _SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
+_VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos"
 _RSS_URL = "https://www.youtube.com/feeds/videos.xml"
+
+_DURATION_RE = re.compile(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?")
 
 _RSS_NS = {
     "a": "http://www.w3.org/2005/Atom",
@@ -78,6 +84,74 @@ async def search_channels(
                 )
             )
     return out
+
+
+def _parse_duration(iso: str) -> int:
+    """ISO8601(PT#H#M#S) → 초. 파싱 실패 시 0."""
+    m = _DURATION_RE.fullmatch(iso or "")
+    if not m:
+        return 0
+    h, mm, s = (int(x) if x else 0 for x in m.groups())
+    return h * 3600 + mm * 60 + s
+
+
+async def fetch_video_durations(video_ids: list[str]) -> dict[str, int]:
+    """video_id → 길이(초). videos.list(part=contentDetails), 50개/콜(1유닛).
+
+    키 없거나 오류면 빈 dict(→ 호출측이 필터를 스킵하도록).
+    """
+    key = _api_key()
+    ids = [v for v in video_ids if v]
+    if not key or not ids:
+        return {}
+    out: dict[str, int] = {}
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            for i in range(0, len(ids), 50):
+                chunk = ids[i : i + 50]
+                resp = await client.get(
+                    _VIDEOS_URL,
+                    params={
+                        "part": "contentDetails",
+                        "id": ",".join(chunk),
+                        "key": key,
+                    },
+                )
+                data = resp.json()
+                if "error" in data:
+                    logger.warning(
+                        "youtube videos.list error: %s", data["error"].get("message")
+                    )
+                    continue
+                for item in data.get("items", []):
+                    vid = item.get("id")
+                    dur = (item.get("contentDetails") or {}).get("duration", "")
+                    if vid:
+                        out[vid] = _parse_duration(dur)
+    except Exception:
+        logger.exception("youtube fetch_video_durations failed")
+    return out
+
+
+class _HasVideoId(Protocol):
+    video_id: str
+
+
+_T = TypeVar("_T", bound=_HasVideoId)
+
+
+async def filter_out_shorts(items: list[_T]) -> list[_T]:
+    """쇼츠(길이 ≤ SHORTS_MAX_SECONDS) 제외. 길이 못 얻은 건 관대하게 남긴다.
+
+    길이 조회가 전부 실패(키 없음 등)하면 원본 그대로 반환(필터 스킵).
+    """
+    if not items:
+        return items
+    durations = await fetch_video_durations([it.video_id for it in items])
+    if not durations:
+        return items
+    big = 10**9
+    return [it for it in items if durations.get(it.video_id, big) > SHORTS_MAX_SECONDS]
 
 
 async def fetch_channel_uploads(
