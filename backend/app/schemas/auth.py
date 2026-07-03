@@ -72,6 +72,16 @@ class DriveConnectResponse(BaseModel):
     access_token: str
 
 
+class YoutubeConnectRequest(BaseModel):
+    """GIS 코드 클라이언트(popup)가 받은 youtube 스코프 authorization code."""
+
+    code: str
+
+
+class YoutubeConnectResponse(BaseModel):
+    connected: bool = True
+
+
 class DriveFolderRequest(BaseModel):
     folder_id: str
     folder_name: str | None = None

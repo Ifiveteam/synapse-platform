@@ -172,6 +172,7 @@ class PlaylistItemResponse(BaseModel):
 
 
 PlaylistStatus = Literal["pending", "ready", "failed"]
+PlaylistSaveStatus = Literal["none", "saving", "saved", "failed"]
 
 
 class PlaylistResponse(BaseModel):
@@ -181,6 +182,7 @@ class PlaylistResponse(BaseModel):
     summary: str = ""
     items: list[PlaylistItemResponse]
     status: PlaylistStatus = "ready"
+    save_status: PlaylistSaveStatus = "none"
     youtube_playlist_id: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -193,8 +195,16 @@ class PlaylistSummary(BaseModel):
     title: str = ""
     item_count: int = 0
     status: PlaylistStatus = "ready"
+    save_status: PlaylistSaveStatus = "none"
     youtube_playlist_id: str | None = None
     created_at: datetime
+
+
+class SaveStartResponse(BaseModel):
+    """YouTube 저장 시작 응답. needs_reconsent면 프론트가 동의 유도 후 재시도."""
+
+    needs_reconsent: bool = False
+    save_status: PlaylistSaveStatus = "saving"
 
 
 class RenamePlaylistRequest(BaseModel):

@@ -26,8 +26,10 @@ import {
   refreshPlaylistItem,
   regeneratePlaylist,
   renamePlaylist,
+  savePlaylistToYoutube,
   streamPlaylistChat,
 } from "@/api/navigator";
+import { connectYoutube } from "@/lib/youtube-connect";
 import type {
   IdealResponse,
   PlaylistResponse,
@@ -125,6 +127,33 @@ export function PlaylistPage() {
     return () => clearInterval(timer);
   }, [selected?.id, selected?.status]);
 
+  // YouTube 저장중(saving)을 폴링해 완료되면 반영
+  useEffect(() => {
+    if (!selected || selected.save_status !== "saving") return;
+    const id = selected.id;
+    const timer = setInterval(async () => {
+      try {
+        const updated = await getPlaylist(id);
+        setSelected((cur) => (cur && cur.id === id ? updated : cur));
+        setRows((prev) =>
+          prev.map((r) =>
+            r.id === id
+              ? {
+                  ...r,
+                  save_status: updated.save_status,
+                  youtube_playlist_id: updated.youtube_playlist_id,
+                }
+              : r,
+          ),
+        );
+        if (updated.save_status !== "saving") clearInterval(timer);
+      } catch {
+        /* 무시하고 계속 폴링 */
+      }
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [selected?.id, selected?.save_status]);
+
   const visibleRows = useMemo(() => {
     const filtered =
       filterIdeal === "all"
@@ -161,6 +190,7 @@ export function PlaylistPage() {
           title: created.title,
           item_count: created.items.length,
           status: created.status,
+          save_status: created.save_status,
           youtube_playlist_id: created.youtube_playlist_id,
           created_at: created.created_at,
           idealId,
@@ -201,9 +231,33 @@ export function PlaylistPage() {
     }
   };
 
-  const handleSaveYoutube = () => {
-    // TODO(Phase B): savePlaylistToYoutube(selected.id) 연결 (OAuth youtube 스코프)
-    window.alert("유튜브에 저장은 곧 지원됩니다. (백엔드 준비 중)");
+  const markSaving = (id: string) => {
+    setSelected((cur) =>
+      cur && cur.id === id ? { ...cur, save_status: "saving" } : cur,
+    );
+    setRows((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, save_status: "saving" } : r)),
+    );
+  };
+
+  const handleSaveYoutube = async () => {
+    if (!selected) return;
+    const id = selected.id;
+    try {
+      let res = await savePlaylistToYoutube(id);
+      if (res.needs_reconsent) {
+        try {
+          await connectYoutube(); // youtube 스코프 동의 팝업
+        } catch {
+          return; // 동의 취소
+        }
+        res = await savePlaylistToYoutube(id);
+        if (res.needs_reconsent) return;
+      }
+      markSaving(id); // 폴링이 완료를 채움
+    } catch {
+      window.alert("저장을 시작하지 못했어요. 잠시 후 다시 시도해 주세요.");
+    }
   };
 
   const handleDelete = async () => {
@@ -358,10 +412,21 @@ export function PlaylistPage() {
                         유튜브에서 보기
                       </a>
                     </Button>
+                  ) : selected.save_status === "saving" ? (
+                    <Button size="sm" disabled className="gap-1.5">
+                      <RefreshCw size={15} className="animate-spin" />
+                      저장 중…
+                    </Button>
                   ) : (
-                    <Button size="sm" onClick={handleSaveYoutube} className="gap-1.5">
+                    <Button
+                      size="sm"
+                      onClick={() => void handleSaveYoutube()}
+                      className="gap-1.5"
+                    >
                       <Youtube size={15} />
-                      유튜브에 저장
+                      {selected.save_status === "failed"
+                        ? "다시 저장"
+                        : "유튜브에 저장"}
                     </Button>
                   )}
                 </>
