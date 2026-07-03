@@ -13,7 +13,8 @@ from app.agents.navigator.sub_agent.guide.state import GuideState
 
 async def evaluate(state: GuideState) -> dict[str, Any]:
     draft = state.get("draft")
-    weak_axes = state["weak_axes"]
+    deepen = state["deepen_targets"]
+    expand = state["expand_domains"]
     evidence = state.get("evidence") or {}
     retrieve_attempts = state.get("retrieve_attempts", 0)
     gen_attempts = state.get("gen_attempts", 0)
@@ -25,11 +26,12 @@ async def evaluate(state: GuideState) -> dict[str, Any]:
         return {"decision": "done", "result": None}
 
     covered = {step.axis for step in draft.steps}
-    coverage_ok = all(axis in covered for axis in weak_axes)
-    grounding_missing = any(not evidence.get(axis) for axis in weak_axes)
+    coverage_ok = all(t in covered for t in (*deepen, *expand))
+    # 근거는 심화(성향)만 필요 — 확장은 원래 근거가 없을 수 있음
+    grounding_missing = any(not evidence.get(a) for a in deepen)
 
-    # 근거 부족 → 재검색(완화)
-    if grounding_missing and retrieve_attempts < MAX_RETRIEVE_ATTEMPTS:
+    # 심화 근거 부족 → 재검색(완화)
+    if deepen and grounding_missing and retrieve_attempts < MAX_RETRIEVE_ATTEMPTS:
         return {"decision": "retrieve"}
     # 커버 부족 → 재생성
     if not coverage_ok and gen_attempts < MAX_GEN_ATTEMPTS:

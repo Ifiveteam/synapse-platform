@@ -57,6 +57,8 @@ class NavigatorRepository:
         reasoning: str,
         persona_label: str = "",
         values_temperament: dict[str, float] | None = None,
+        target_disposition: dict[str, float] | None = None,
+        target_interest: dict[str, float] | None = None,
         source_profile_history_id: uuid.UUID | None = None,
     ) -> UserIdealPersona:
         """이상향을 새 행으로 생성한다 (적용 여부는 별도 apply)."""
@@ -64,6 +66,8 @@ class NavigatorRepository:
             user_id=user_id,
             persona_label=persona_label or None,
             values_temperament=values_temperament or None,
+            target_disposition=target_disposition or None,
+            target_interest=target_interest or None,
             description=encode_description(ideal_type, reasoning),
             source_profile_history_id=source_profile_history_id,
             is_active=False,
@@ -238,6 +242,7 @@ class NavigatorRepository:
         items_json: list,
         channels_json: list,
         reservoir_json: list,
+        status: str = "ready",
     ) -> NavigatorPlaylist:
         row = NavigatorPlaylist(
             user_id=user_id,
@@ -247,6 +252,7 @@ class NavigatorRepository:
             items_json=items_json,
             channels_json=channels_json,
             reservoir_json=reservoir_json,
+            status=status,
         )
         self.db.add(row)
         await self.db.commit()
@@ -287,6 +293,7 @@ class NavigatorRepository:
         reservoir_json: list | None = None,
         summary: str | None = None,
         youtube_playlist_id: str | None = None,
+        status: str | None = None,
     ) -> NavigatorPlaylist | None:
         row = await self.get_playlist(user_id=user_id, playlist_id=playlist_id)
         if row is None:
@@ -301,6 +308,8 @@ class NavigatorRepository:
             row.summary = summary
         if youtube_playlist_id is not None:
             row.youtube_playlist_id = youtube_playlist_id
+        if status is not None:
+            row.status = status
         await self.db.commit()
         await self.db.refresh(row)
         return row

@@ -108,7 +108,9 @@ def build_evaluator_prompt(
     user_content = _EVALUATOR_USER_TEMPLATE.format(
         target_engines=", ".join(target_engines) if target_engines else "(없음)",
         executed_steps=", ".join(executed_steps) if executed_steps else "(없음)",
-        pending_engines=", ".join(pending_engines) if pending_engines else "(없음 — 추가 수집 불가)",
+        pending_engines=", ".join(pending_engines)
+        if pending_engines
+        else "(없음 — 추가 수집 불가)",
         search_attempts=search_attempts,
         retrieval_attempts=retrieval_attempts,
         max_search=max_search_attempts,

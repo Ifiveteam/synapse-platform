@@ -26,4 +26,3 @@ __all__ = [
     "rag_node",
     "search_node",
 ]
-

@@ -34,6 +34,11 @@ class NavigatorPlaylist(TimestampMixin, Base):
         nullable=False,
     )
 
+    # 생성 상태 — pending(백그라운드 생성중) / ready(완료) / failed
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'ready'")
+    )
+
     # 자동 "{persona_label} #N", 사용자 수정 가능
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 재생목록 총평 (LLM 큐레이션 summary)

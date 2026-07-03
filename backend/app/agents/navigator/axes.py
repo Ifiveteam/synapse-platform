@@ -9,10 +9,15 @@ from app.agents.navigator.constants import (
     AXIS_MAX,
     AXIS_MIN,
     BEHAVIOR_AXES,
+    DISPOSITION_AXES,
+    DISPOSITION_LABELS_KO,
+    INTEREST_DOMAINS,
     VALUES_TEMPERAMENT_AXES,
 )
 from app.agents.navigator.schemas import AxisGap, RadarComparison
 from app.agents.profiler.axis_labels import SCORE_LABELS_KO
+
+_KO_TO_DISPOSITION = {ko: en for en, ko in DISPOSITION_LABELS_KO.items()}
 
 
 def clamp_value(value: float) -> float:
@@ -21,6 +26,46 @@ def clamp_value(value: float) -> float:
 
 def clamp_scores(scores: dict[str, float]) -> dict[str, float]:
     return {axis: clamp_value(scores.get(axis, 0.0)) for axis in BEHAVIOR_AXES}
+
+
+def clamp_disposition(scores: dict[str, float]) -> dict[str, float]:
+    return {axis: clamp_value(scores.get(axis, 0.0)) for axis in DISPOSITION_AXES}
+
+
+def disposition_from_portrait(portrait: dict | None) -> dict[str, float]:
+    """portrait.disposition([{axis:한글라벨, value}]) → {영문키: 값}."""
+    if not portrait:
+        return {}
+    out: dict[str, float] = {}
+    for item in portrait.get("disposition") or []:
+        en = _KO_TO_DISPOSITION.get(item.get("axis"))
+        if en:
+            out[en] = float(item.get("value") or 0.0)
+    return out
+
+
+def interest_from_portrait(portrait: dict | None) -> dict[str, float]:
+    """portrait.interest([{axis:도메인, value}]) → {도메인: 값} (알려진 9개만)."""
+    if not portrait:
+        return {}
+    return {
+        item.get("axis"): float(item.get("value") or 0.0)
+        for item in (portrait.get("interest") or [])
+        if item.get("axis") in INTEREST_DOMAINS
+    }
+
+
+def coerce_interest_targets(items, current: dict[str, float]) -> dict[str, float]:
+    """LLM이 낸 도메인 목표 목록(InterestTarget) → 9개 도메인 dict.
+
+    누락 도메인은 현재값 유지, 미지 도메인은 버림, 전부 클램프.
+    """
+    out = dict(current)
+    for it in items or []:
+        domain = getattr(it, "domain", None)
+        if domain in INTEREST_DOMAINS:
+            out[domain] = clamp_value(getattr(it, "target", 0.0))
+    return {d: clamp_value(out.get(d, 0.0)) for d in INTEREST_DOMAINS}
 
 
 def clamp_values_13(values: dict[str, float]) -> dict[str, float]:

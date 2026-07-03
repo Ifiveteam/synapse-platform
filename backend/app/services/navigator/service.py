@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import uuid
 from collections.abc import AsyncIterator
 
@@ -13,21 +15,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.navigator.axes import (
     clamp_scores,
     compare,
+    disposition_from_portrait,
     extract_8axis,
+    interest_from_portrait,
 )
 from app.agents.navigator.behavior_map import derive_8_from_13
 from app.agents.navigator.constants import (
     BEHAVIOR_AXES,
+    DISPOSITION_AXES,
+    DISPOSITION_LABELS_KO,
+    INTEREST_DOMAINS,
     MAX_HISTORY_MESSAGES,
     STREAM_ERROR_PREFIX,
     TOP_INTERESTS_LIMIT,
     VALUES_TEMPERAMENT_AXES,
 )
 from app.agents.navigator.facade import NavigatorAgent, get_navigator_agent
-from app.agents.navigator.schemas import PlaylistItem
+from app.agents.navigator.schemas import Guide, PlaylistItem
 from app.agents.navigator.streaming import format_sse_event, format_stream_event
 from app.agents.shared.persona import persona_from_scores
-from app.core.database.session import get_db
+from app.core.database.session import AsyncSessionLocal, get_db
 from app.models.user_ideal_persona import UserIdealPersona
 from app.repositories.indexer_repository import (
     fetch_top_categories,
@@ -47,6 +54,8 @@ from app.schemas.navigator import (
     AxisScores13,
     ComparisonResponse,
     ConfirmIdealRequest,
+    DispositionPair,
+    DomainPair,
     GuideResponse,
     IdealResponse,
     NavigatorChatRequest,
@@ -64,6 +73,86 @@ _IDEAL_404 = (
 )
 _PLAYLIST_404 = "Playlist not found."
 
+logger = logging.getLogger(__name__)
+
+_bg_tasks: set[asyncio.Task] = set()
+
+
+def _spawn_bg(coro) -> None:
+    """백그라운드 태스크를 GC로부터 보호하며 실행."""
+    task = asyncio.create_task(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+
+
+async def _domain_signals(session, user_id, persona) -> dict[str, dict]:
+    """발굴용 신호 — 현재 관심 도메인(portrait) + 목표 도메인·성향."""
+    portrait = None
+    try:
+        if persona.source_profile_history_id:
+            row = await fetch_profile_snapshot(
+                session, user_id, persona.source_profile_history_id
+            )
+        else:
+            row = await fetch_latest_profile(session, user_id)
+        portrait = getattr(row, "portrait", None) if row else None
+    except Exception:
+        logger.exception("playlist domain signals load failed")
+    return {
+        "current_interest": interest_from_portrait(portrait),
+        "target_interest": dict(persona.target_interest or {}),
+        "target_disposition": dict(persona.target_disposition or {}),
+    }
+
+
+async def _generate_playlist_bg(
+    *, user_id: uuid.UUID, ideal_id: uuid.UUID, playlist_id: uuid.UUID
+) -> None:
+    """백그라운드 재생목록 생성 — 자체 세션으로 파이프라인 실행 후 행 갱신."""
+    async with AsyncSessionLocal() as session:
+        repo = NavigatorRepository(session)
+        agent = get_navigator_agent()
+        try:
+            persona = await repo.get_ideal(user_id=user_id, ideal_id=ideal_id)
+            if persona is None:
+                await repo.update_playlist(
+                    user_id=user_id, playlist_id=playlist_id, status="failed"
+                )
+                return
+            persona_label = persona.persona_label or "추천 재생목록"
+            values13 = persona.values_temperament or {}
+            ideal_type, reasoning = decode_description(persona.description)
+            signals = await _domain_signals(session, user_id, persona)
+            build = await agent.generate_playlist(
+                store=repo,
+                user_id=user_id,
+                persona_label=persona_label,
+                values13=values13,
+                ideal_type=ideal_type,
+                reasoning=reasoning,
+                **signals,
+            )
+            await repo.update_playlist(
+                user_id=user_id,
+                playlist_id=playlist_id,
+                summary=build.playlist.summary,
+                items_json=[it.model_dump() for it in build.playlist.items],
+                channels_json=[
+                    {"channel_id": c.channel_id, "title": c.title}
+                    for c in build.channels
+                ],
+                reservoir_json=[it.model_dump() for it in build.reservoir],
+                status="ready" if build.playlist.items else "failed",
+            )
+        except Exception:
+            logger.exception("playlist background generation failed: %s", playlist_id)
+            try:
+                await repo.update_playlist(
+                    user_id=user_id, playlist_id=playlist_id, status="failed"
+                )
+            except Exception:
+                logger.exception("playlist failed-status update failed")
+
 
 def should_persist_assistant_log(content: str) -> bool:
     """빈 본문·엔진 오류(❌) 토큰은 DB에 남기지 않는다."""
@@ -73,6 +162,37 @@ def should_persist_assistant_log(content: str) -> bool:
 
 def _persona_scores(persona: UserIdealPersona) -> dict[str, float]:
     return {axis: float(getattr(persona, axis) or 0.0) for axis in BEHAVIOR_AXES}
+
+
+def _disposition_pairs(
+    current: dict[str, float], target: dict[str, float]
+) -> list[DispositionPair]:
+    """성향 6축 현재→목표 쌍 (6축 전부, 값 없으면 0)."""
+    return [
+        DispositionPair(
+            key=k,
+            label_ko=DISPOSITION_LABELS_KO.get(k, k),
+            current=round(float(current.get(k, 0.0)), 1),
+            target=round(float(target.get(k, 0.0)), 1),
+        )
+        for k in DISPOSITION_AXES
+    ]
+
+
+def _domain_pairs(
+    current: dict[str, float], target: dict[str, float]
+) -> list[DomainPair]:
+    """관심 도메인 9개 현재→목표 쌍 (목표 큰 순)."""
+    pairs = [
+        DomainPair(
+            domain=d,
+            current=round(float(current.get(d, 0.0)), 1),
+            target=round(float(target.get(d, 0.0)), 1),
+        )
+        for d in INTEREST_DOMAINS
+    ]
+    pairs.sort(key=lambda p: p.target, reverse=True)
+    return pairs
 
 
 def _vt_or_none(values: dict | None) -> AxisScores13 | None:
@@ -91,6 +211,8 @@ def _ideal_to_response(persona: UserIdealPersona) -> IdealResponse:
         ideal_type=ideal_type,
         scores=AxisScores8(**_persona_scores(persona)),
         values_temperament=_vt_or_none(persona.values_temperament),
+        target_disposition=persona.target_disposition or None,
+        target_interest=persona.target_interest or None,
         persona_label=persona.persona_label or "",
         reasoning=reasoning,
         is_active=persona.is_active,
@@ -112,6 +234,7 @@ def _playlist_to_response(row) -> PlaylistResponse:
         title=row.title or "",
         summary=row.summary or "",
         items=items,
+        status=row.status,
         youtube_playlist_id=row.youtube_playlist_id,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -123,6 +246,7 @@ def _playlist_summary(row) -> PlaylistSummary:
         id=str(row.id),
         title=row.title or "",
         item_count=len(row.items_json or []),
+        status=row.status,
         youtube_playlist_id=row.youtube_playlist_id,
         created_at=row.created_at,
     )
@@ -140,7 +264,9 @@ class NavigatorService:
 
     async def _load_profile_or_404(
         self, user_id: uuid.UUID, snapshot_id: uuid.UUID | None = None
-    ) -> tuple[dict[str, float], dict[str, float], dict[str, list], uuid.UUID]:
+    ) -> tuple[
+        dict[str, float], dict[str, float], dict[str, list], dict | None, uuid.UUID
+    ]:
         if snapshot_id is not None:
             row = await fetch_profile_snapshot(self.db, user_id, snapshot_id)
         else:
@@ -151,6 +277,8 @@ class NavigatorService:
             )
         profile_21 = history_scores_dict(row)
         current_8axis = extract_8axis(profile_21)
+        # portrait(성향 6축·관심 도메인)는 이상향 설계의 주 신호. 옛 스냅샷은 None.
+        portrait = getattr(row, "portrait", None)
         top_interests = {
             "categories": await fetch_top_categories(
                 self.db, user_id, limit=TOP_INTERESTS_LIMIT
@@ -159,7 +287,7 @@ class NavigatorService:
                 self.db, user_id, limit=TOP_INTERESTS_LIMIT
             ),
         }
-        return profile_21, current_8axis, top_interests, row.id
+        return profile_21, current_8axis, top_interests, portrait, row.id
 
     async def get_proposals(
         self,
@@ -172,6 +300,7 @@ class NavigatorService:
             profile_21,
             _current,
             top_interests,
+            portrait,
             snapshot_id,
         ) = await self._load_profile_or_404(user_id, source_profile_history_id)
 
@@ -188,12 +317,16 @@ class NavigatorService:
                 )
 
         # 생성 → 캐시 저장 → 반환
-        proposals = await self.agent.propose(profile_21, top_interests)
+        proposals = await self.agent.propose(profile_21, portrait, top_interests)
+        cur_disp = disposition_from_portrait(portrait)
+        cur_interest = interest_from_portrait(portrait)
         items = [
             ProposalItem(
                 ideal_type=p.ideal_type.value,
                 scores=AxisScores8(**p.scores8),
                 values_temperament=AxisScores13(**p.values13),
+                disposition=_disposition_pairs(cur_disp, p.target_disposition),
+                interest=_domain_pairs(cur_interest, p.target_interest),
                 persona_label=p.persona_label
                 or persona_from_scores(p.values13, p.scores8),
                 reasoning=p.reasoning,
@@ -216,6 +349,7 @@ class NavigatorService:
             profile_21,
             current_8axis,
             top_interests,
+            portrait,
             _snap,
         ) = await self._load_profile_or_404(user_id)
 
@@ -225,16 +359,24 @@ class NavigatorService:
         prior_history = await self.repo.get_chat_history(
             session_id=session_id, user_id=user_id
         )
-        await self.repo.save_chat_log(
-            session_id=session_id, user_id=user_id, role="user", content=request.message
-        )
+        # 턴 = 이번 발화를 포함한 사용자 발화 수 (인터뷰 캡 판정용)
+        turn = sum(1 for h in prior_history if h.role == "user") + 1
 
         messages = _history_to_messages(prior_history)
-        messages.append(HumanMessage(content=request.message))
+        if request.message.strip():
+            await self.repo.save_chat_log(
+                session_id=session_id,
+                user_id=user_id,
+                role="user",
+                content=request.message,
+            )
+            messages.append(HumanMessage(content=request.message))
 
-        # 이상향 시드(13축이 원본): 요청 값 우선, 없으면 저장된 활성 이상향
+        # 이상향 시드: 요청 값 우선, 없으면 저장된 활성 이상향
         ideal_type = request.ideal_type
         working_values: dict[str, float] | None = None
+        working_disposition: dict[str, float] | None = request.working_disposition
+        working_interest: dict[str, float] | None = request.working_interest
         if request.working_values is not None:
             working_values = request.working_values.model_dump()
         else:
@@ -242,6 +384,10 @@ class NavigatorService:
             if persona is not None:
                 if persona.values_temperament:
                     working_values = dict(persona.values_temperament)
+                if working_disposition is None and persona.target_disposition:
+                    working_disposition = dict(persona.target_disposition)
+                if working_interest is None and persona.target_interest:
+                    working_interest = dict(persona.target_interest)
                 if ideal_type is None:
                     ideal_type, _ = decode_description(persona.description)
 
@@ -254,10 +400,15 @@ class NavigatorService:
             session_id=session_id,
             profile_21=profile_21,
             current_8axis=current_8axis,
+            portrait=portrait,
             working_ideal=working_ideal,
             working_values=working_values,
+            working_disposition=working_disposition,
+            working_interest=working_interest,
             ideal_type=ideal_type,
             top_interests=top_interests,
+            turn=turn,
+            force_finalize=request.force_finalize,
         ):
             yield format_stream_event(event)
             if event.event == "token":
@@ -311,6 +462,8 @@ class NavigatorService:
             reasoning=request.reasoning,
             persona_label=persona_label,
             values_temperament=values13,
+            target_disposition=request.target_disposition,
+            target_interest=request.target_interest,
             source_profile_history_id=row.id,
         )
         return _ideal_to_response(persona)
@@ -354,9 +507,13 @@ class NavigatorService:
     ) -> ComparisonResponse:
         # 비교 기준 = 이상향이 만들어진 그 스냅샷(버전 고정). 없으면 최신.
         persona = await self._ideal_or_404(user_id, ideal_id)
-        profile_21, current_8axis, _interests, _snap = await self._load_profile_or_404(
-            user_id, persona.source_profile_history_id
-        )
+        (
+            profile_21,
+            current_8axis,
+            _interests,
+            portrait,
+            _snap,
+        ) = await self._load_profile_or_404(user_id, persona.source_profile_history_id)
         ideal_8 = _persona_scores(persona)
         comparison = compare(current_8axis, ideal_8)
         # 13축: 현재=스냅샷에서 추출, 이상향=저장값(없으면 null)
@@ -364,6 +521,13 @@ class NavigatorService:
             {axis: profile_21.get(axis, 0.0) for axis in VALUES_TEMPERAMENT_AXES}
         )
         ideal_vt = _vt_or_none(persona.values_temperament)
+        # 주 표시 축: 성향·도메인 현재(스냅샷 초상)→목표(저장값)
+        disposition = _disposition_pairs(
+            disposition_from_portrait(portrait), persona.target_disposition or {}
+        )
+        interest = _domain_pairs(
+            interest_from_portrait(portrait), persona.target_interest or {}
+        )
         return ComparisonResponse(
             current=AxisScores8(**current_8axis),
             ideal=AxisScores8(**ideal_8),
@@ -380,6 +544,8 @@ class NavigatorService:
             total_gap=comparison.total_gap,
             current_vt=current_vt,
             ideal_vt=ideal_vt,
+            disposition=disposition,
+            interest=interest,
         )
 
     async def get_guide(
@@ -398,26 +564,43 @@ class NavigatorService:
                 stale=stale,
             )
 
-        # 생성: 이상향이 만들어진 그 스냅샷(버전 고정) 기준으로 가이드를 만든다.
-        profile_21, _current, _interests, _snap = await self._load_profile_or_404(
-            user_id, persona.source_profile_history_id
-        )
-        ideal_8 = _persona_scores(persona)
+        # 생성: 이상향이 만들어진 그 스냅샷(버전 고정) 기준. 목표 없으면(레거시) 안내.
         ideal_type, reasoning = decode_description(persona.description)
-        guide = await self.agent.generate_guide(
-            store=self.repo,
-            user_id=user_id,
-            profile_21=profile_21,
-            ideal_8=ideal_8,
-            ideal_type=ideal_type,
-            reasoning=reasoning,
-        )
+        if not persona.target_disposition and not persona.target_interest:
+            guide = Guide(
+                summary=(
+                    "이 이상향에는 성향·도메인 목표가 없어(예전 버전) 맞춤 가이드를 "
+                    "만들 수 없어요. 이상향을 새로 만들면 제공됩니다."
+                ),
+                steps=[],
+            )
+        else:
+            (
+                _p21,
+                _current,
+                _interests,
+                portrait,
+                _snap,
+            ) = await self._load_profile_or_404(
+                user_id, persona.source_profile_history_id
+            )
+            guide = await self.agent.generate_guide(
+                store=self.repo,
+                user_id=user_id,
+                current_disposition=disposition_from_portrait(portrait),
+                current_interest=interest_from_portrait(portrait),
+                target_disposition=dict(persona.target_disposition or {}),
+                target_interest=dict(persona.target_interest or {}),
+                ideal_type=ideal_type,
+                reasoning=reasoning,
+            )
         guide_json = {
             "summary": guide.summary,
             "steps": [
                 {
                     "axis": s.axis,
                     "label_ko": s.label_ko,
+                    "kind": s.kind,
                     "title": s.title,
                     "detail": s.detail,
                     "priority": s.priority,
@@ -441,20 +624,12 @@ class NavigatorService:
     async def create_playlist(
         self, *, user_id: uuid.UUID, ideal_id: uuid.UUID
     ) -> PlaylistResponse:
-        """이상향 페르소나+시청기록 근거로 새 재생목록을 생성·저장한다."""
+        """빈 pending 행을 즉시 만들고, 실제 생성은 백그라운드로 돌린다.
+
+        프론트는 pending 응답을 받아 '생성중' 카드를 띄우고 폴링으로 완료를 채운다.
+        """
         persona = await self._ideal_or_404(user_id, ideal_id)
         persona_label = persona.persona_label or "추천 재생목록"
-        values13 = persona.values_temperament or {}
-        ideal_type, reasoning = decode_description(persona.description)
-
-        build = await self.agent.generate_playlist(
-            store=self.repo,
-            user_id=user_id,
-            persona_label=persona_label,
-            values13=values13,
-            ideal_type=ideal_type,
-            reasoning=reasoning,
-        )
 
         existing = await self.repo.list_playlists(user_id=user_id, ideal_id=ideal_id)
         title = f"{persona_label} #{len(existing) + 1}"
@@ -462,12 +637,16 @@ class NavigatorService:
             user_id=user_id,
             ideal_id=ideal_id,
             title=title,
-            summary=build.playlist.summary,
-            items_json=[it.model_dump() for it in build.playlist.items],
-            channels_json=[
-                {"channel_id": c.channel_id, "title": c.title} for c in build.channels
-            ],
-            reservoir_json=[it.model_dump() for it in build.reservoir],
+            summary=None,
+            items_json=[],
+            channels_json=[],
+            reservoir_json=[],
+            status="pending",
+        )
+        _spawn_bg(
+            _generate_playlist_bg(
+                user_id=user_id, ideal_id=ideal_id, playlist_id=row.id
+            )
         )
         return _playlist_to_response(row)
 
@@ -554,6 +733,7 @@ class NavigatorService:
         persona_label = persona.persona_label or "추천 재생목록"
         values13 = persona.values_temperament or {}
         ideal_type, reasoning = decode_description(persona.description)
+        signals = await _domain_signals(self.db, user_id, persona)
 
         build = await self.agent.generate_playlist(
             store=self.repo,
@@ -562,6 +742,7 @@ class NavigatorService:
             values13=values13,
             ideal_type=ideal_type,
             reasoning=reasoning,
+            **signals,
         )
         # 재생성 결과가 비면 기존 재생목록을 덮어쓰지 않는다 (날아가는 것 방지)
         if not build.playlist.items:

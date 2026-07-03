@@ -89,7 +89,9 @@ def _message_text(content: Any) -> str:
         return content
     if isinstance(content, list):
         return "".join(
-            p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"
+            p.get("text", "")
+            for p in content
+            if isinstance(p, dict) and p.get("type") == "text"
         )
     return str(content) if content else ""
 
@@ -130,7 +132,11 @@ def _build_recent_context(messages: list[BaseMessage], window: int) -> str:
     for m in messages[:last_human_idx]:
         if isinstance(m, HumanMessage):
             lines.append(f"유저: {_message_text(m.content).strip()}")
-        elif isinstance(m, AIMessage) and not getattr(m, "tool_calls", None) and m.content:
+        elif (
+            isinstance(m, AIMessage)
+            and not getattr(m, "tool_calls", None)
+            and m.content
+        ):
             text = _message_text(m.content).strip()
             if text:
                 lines.append(f"AI: {_truncate_at_boundary(text, 60)}")
@@ -234,6 +240,7 @@ def build_graph(db: AsyncSession, user_id: uuid.UUID):
 
     async def agent_node(state: CuratorState) -> dict[str, Any]:
         from langgraph.config import get_stream_writer
+
         writer = get_stream_writer()
         writer({"event": "status", "content": "🤔 분석 중..."})
 
@@ -278,6 +285,7 @@ def build_graph(db: AsyncSession, user_id: uuid.UUID):
 
     async def relay_node(state: CuratorState) -> dict[str, Any]:
         from langgraph.config import get_stream_writer
+
         writer = get_stream_writer()
         last_tool = next(
             (m for m in reversed(state["messages"]) if isinstance(m, ToolMessage)),

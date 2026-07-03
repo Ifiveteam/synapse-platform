@@ -16,6 +16,7 @@ from app.agents.navigator.llm import invoke_structured_safe
 from app.agents.navigator.schemas import NavigatorStreamEvent, PlaylistItem
 from app.agents.navigator.sub_agent.youtube.client import (
     fetch_channel_uploads,
+    filter_out_shorts,
     search_channels,
 )
 from app.agents.navigator.sub_agent.youtube.constants import (
@@ -86,6 +87,7 @@ async def refresh_item(
                     continue
                 seen.add(v.video_id)
                 fresh.append(_to_item(v))
+        fresh = await filter_out_shorts(fresh)  # 교체 후보도 쇼츠 제외
         if fresh:
             new_item = fresh[0]
             new_reservoir = (new_reservoir + fresh[1:])[:RESERVOIR_TARGET]
@@ -173,6 +175,7 @@ async def edit_playlist(
                 for v in vids:
                     if v.video_id not in shown and v.video_id not in watched:
                         new_videos.append(_to_item(v))
+            new_videos = await filter_out_shorts(new_videos)  # 쇼츠 제외
 
         # 바꿀 대상 미지정인데 교체 의도면 끝의 1~2개를 기본 타깃으로
         if not targets and spec.scope in ("swap", "add_theme"):
@@ -188,10 +191,12 @@ async def edit_playlist(
                 for cid in cids
             )
         )
+        fetched: list[PlaylistItem] = []
         for vids in results:
             for v in vids:
                 if v.video_id not in shown and v.video_id not in watched:
-                    reservoir_pool.append(_to_item(v))
+                    fetched.append(_to_item(v))
+        reservoir_pool.extend(await filter_out_shorts(fetched))  # 쇼츠 제외
 
     # add_theme 신규를 앞에 두어 교체가 새 주제를 우선 사용
     pool = new_videos + reservoir_pool

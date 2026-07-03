@@ -18,6 +18,11 @@ class PlaylistState(TypedDict):
     ideal_type: str
     reasoning: str
 
+    # 도메인 신호 (B-1): 현재 관심 분포 + 넓힐 목표 도메인 + 목표 성향
+    current_interest: NotRequired[dict[str, float]]
+    raise_domains: NotRequired[list[str]]
+    target_disposition: NotRequired[dict[str, float]]
+
     # 시청기록 근거 / watched (discover에서 store로 1회 로드)
     grounding: NotRequired[WatchGrounding]
     watched: NotRequired[set[str]]
