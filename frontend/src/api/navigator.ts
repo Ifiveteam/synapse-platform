@@ -4,6 +4,7 @@ import type {
   AxisScores13,
   ChatStreamHandlers,
   ComparisonResponse,
+  CompleteEvent,
   GuideResponse,
   IdealEvent,
   IdealResponse,
@@ -31,6 +32,8 @@ export const createIdeal = (body: {
   ideal_type: IdealType;
   scores: AxisScores8;
   values_temperament?: AxisScores13;
+  target_disposition?: Record<string, number>;
+  target_interest?: Record<string, number>;
   persona_label?: string;
   reasoning: string;
   source_profile_history_id?: string;
@@ -173,7 +176,10 @@ export async function streamChat(
     message: string;
     session_id?: string | null;
     working_values?: AxisScores13 | null;
+    working_disposition?: Record<string, number> | null;
+    working_interest?: Record<string, number> | null;
     ideal_type?: IdealType | null;
+    force_finalize?: boolean;
   },
   handlers: ChatStreamHandlers,
   signal?: AbortSignal,
@@ -220,6 +226,12 @@ export async function streamChat(
         else if (event === "ideal") {
           try {
             handlers.onIdeal?.(JSON.parse(content) as IdealEvent);
+          } catch {
+            /* ignore */
+          }
+        } else if (event === "complete") {
+          try {
+            handlers.onComplete?.(JSON.parse(content) as CompleteEvent);
           } catch {
             /* ignore */
           }

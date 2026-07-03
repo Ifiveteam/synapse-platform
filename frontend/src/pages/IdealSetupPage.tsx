@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Check, ChevronRight, RefreshCw, Send } from "lucide-react";
 
 import { fetchMyAnalyses, fetchMyAnalysisSnapshot } from "@/api/analyses";
 import type { DbProfileResponse } from "@/api/types/profiler";
+import { InterestPie } from "@/components/analyses/interest-pie";
 import { CompareBars } from "@/components/ideals/CompareBars";
 import { RadarCompareChart } from "@/components/ideals/RadarCompareChart";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,8 @@ import {
 import type {
   AxisScores8,
   AxisScores13,
+  CompleteEvent,
+  IdealType,
   ProposalItem,
 } from "@/api/types/navigator";
 import { AXIS_LABELS, IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
@@ -172,231 +175,200 @@ interface ChatMessage {
   content: string;
 }
 
-function RefineChat({
+function snapshotPersonaOf(snapshot: DbProfileResponse | null): string {
+  return (
+    (snapshot?.portrait as { persona_label?: string } | null | undefined)
+      ?.persona_label ?? ""
+  );
+}
+
+/** 접힌 카드(3안 중 하나) — 클릭하면 펼침 + 선택. */
+function ProposalCard({
   proposal,
-  current,
-  snapshot,
-  onConfirm,
-  busy,
+  onSelect,
 }: {
   proposal: ProposalItem;
-  current: AxisScores8;
-  snapshot: DbProfileResponse | null;
-  onConfirm: (
-    scores: AxisScores8,
-    values: AxisScores13,
-    refined: boolean,
-  ) => void;
-  busy: boolean;
+  onSelect: () => void;
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "assistant",
-      content: `'${IDEAL_TYPE_LABEL[proposal.ideal_type]}' 이상향을 함께 다듬어볼게요. 어떤 축을 더 올리거나 낮추고 싶으세요?`,
-    },
-  ]);
-  const [input, setInput] = useState("");
-  const [working, setWorking] = useState<AxisScores8>(proposal.scores);
-  const [working13, setWorking13] = useState<AxisScores13>(
-    proposal.values_temperament,
-  );
-  const [streaming, setStreaming] = useState(false);
-  const [refined, setRefined] = useState(false);
-  const snapshotPersona = (
-    snapshot?.portrait as { persona_label?: string } | null | undefined
-  )?.persona_label;
-
-  const send = async () => {
-    const text = input.trim();
-    if (!text || streaming) return;
-    setInput("");
-    setMessages((m) => [
-      ...m,
-      { role: "user", content: text },
-      { role: "assistant", content: "" },
-    ]);
-    setStreaming(true);
-    try {
-      await streamChat(
-        {
-          message: text,
-          working_values: working13,
-          ideal_type: proposal.ideal_type,
-        },
-        {
-          onToken: (c) =>
-            setMessages((m) => {
-              const upd = [...m];
-              const last = upd[upd.length - 1];
-              upd[upd.length - 1] = { ...last, content: last.content + c };
-              return upd;
-            }),
-          onIdeal: (d) => {
-            setWorking(d.behavior);
-            setWorking13(d.values_temperament);
-            setRefined(true);
-          },
-        },
-      );
-    } catch {
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", content: "오류가 발생했습니다." },
-      ]);
-    } finally {
-      setStreaming(false);
-    }
-  };
-
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        <div className="border-border min-w-0 rounded-2xl border bg-card px-5 py-5 lg:flex-1">
-        <div className="mb-3 flex items-center justify-between">
+    <button
+      type="button"
+      onClick={onSelect}
+      className="border-border hover:border-primary/40 flex h-full flex-col rounded-2xl border bg-card px-4 py-4 text-left transition-colors"
+    >
+      <Badge variant="outline" className="w-fit rounded-full">
+        {IDEAL_TYPE_LABEL[proposal.ideal_type]}
+      </Badge>
+      {proposal.persona_label && (
+        <p className="mt-2 text-sm font-semibold">{proposal.persona_label}</p>
+      )}
+      <p className="text-muted-foreground mt-1 line-clamp-3 text-xs leading-relaxed">
+        {proposal.reasoning}
+      </p>
+    </button>
+  );
+}
+
+/** 펼친 카드 — 행 전체를 덮고 상세 표시, 뒤로 누르면 3개로 복귀. */
+function ExpandedProposal({
+  proposal,
+  snapshot,
+  onBack,
+}: {
+  proposal: ProposalItem;
+  snapshot: DbProfileResponse | null;
+  onBack: () => void;
+}) {
+  const snapshotPersona = snapshotPersonaOf(snapshot);
+  return (
+    <div className="border-primary bg-primary/5 ring-primary/20 rounded-2xl border px-5 py-5 ring-1">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
           <Badge variant="outline" className="rounded-full">
             {IDEAL_TYPE_LABEL[proposal.ideal_type]}
           </Badge>
-          <div className="flex items-center gap-4 text-xs">
+          {proposal.persona_label && (
+            <span className="text-primary text-sm font-semibold">
+              {proposal.persona_label}
+            </span>
+          )}
+        </div>
+        <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5">
+          <ArrowLeft size={16} />
+          뒤로
+        </Button>
+      </div>
+      <div className="space-y-4">
+        <div>
+          <div className="mb-1 flex items-center gap-2">
+            <span className="bg-muted-foreground inline-block h-2 w-2 rounded-full" />
+            <p className="text-sm font-semibold">현재 분석</p>
+            {snapshotPersona && (
+              <span className="text-muted-foreground text-xs">
+                {snapshotPersona}
+              </span>
+            )}
+          </div>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            {snapshot?.summary_text ||
+              "현재 시청 패턴을 바탕으로 한 행동 성향입니다."}
+          </p>
+          {snapshot?.tone_of_user && (
+            <p className="text-muted-foreground mt-1 text-xs">
+              톤: {snapshot.tone_of_user}
+            </p>
+          )}
+        </div>
+        <div>
+          <div className="mb-1 flex items-center gap-2">
+            <span className="bg-primary inline-block h-2 w-2 rounded-full" />
+            <p className="text-sm font-semibold">이상향</p>
+          </div>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            {proposal.reasoning}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 좌측 패널 — 현재 생성 예상 이상향: 성향 6각 + 관심 도메인(현재/이상향). */
+function IdealCharts({
+  dispRadar,
+  curPie,
+  idealPie,
+  current8,
+  working8,
+  working13,
+  snapshot,
+}: {
+  dispRadar: { label: string; current: number; ideal: number }[];
+  curPie: { axis: string; value: number }[];
+  idealPie: { axis: string; value: number }[] | null;
+  current8: AxisScores8;
+  working8: AxisScores8 | null;
+  working13: AxisScores13 | null;
+  snapshot: DbProfileResponse | null;
+}) {
+  return (
+    <div className="border-border space-y-4 rounded-2xl border bg-card px-4 py-4">
+      {/* 성향 6각 */}
+      <div>
+        <div className="mb-1 flex items-center justify-between">
+          <p className="text-sm font-semibold">성향</p>
+          <div className="text-muted-foreground flex items-center gap-3 text-xs">
             <span className="flex items-center gap-1.5">
               <span className="bg-muted-foreground inline-block h-2 w-4 rounded-full" />
               현재
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="bg-primary inline-block h-2 w-4 rounded-full" />
-              이상향
-            </span>
+            {idealPie && (
+              <span className="flex items-center gap-1.5">
+                <span className="bg-primary inline-block h-2 w-4 rounded-full" />
+                이상향
+              </span>
+            )}
           </div>
         </div>
-
-        {/* 8축 레이더 + 좌우 설명 */}
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-          <div className="shrink-0 self-center">
-            <RadarCompareChart axes={buildAxes(current, working)} size={240} />
+        {dispRadar.length > 0 ? (
+          <div className="flex justify-center">
+            <RadarCompareChart axes={dispRadar} size={190} />
           </div>
-          <div className="min-w-0 flex-1 space-y-4">
-            <div>
-              <div className="mb-1 flex items-center gap-2">
-                <span className="bg-muted-foreground inline-block h-2 w-2 rounded-full" />
-                <p className="text-sm font-semibold">현재 분석</p>
-                {snapshotPersona && (
-                  <span className="text-muted-foreground text-xs">
-                    {snapshotPersona}
-                  </span>
-                )}
-              </div>
-              <p className="text-muted-foreground text-sm leading-relaxed">
-                {snapshot?.summary_text ||
-                  "현재 시청 패턴을 바탕으로 한 행동 성향입니다."}
-              </p>
-              {snapshot?.tone_of_user && (
-                <p className="text-muted-foreground mt-1 text-xs">
-                  톤: {snapshot.tone_of_user}
-                </p>
-              )}
-            </div>
-            <div>
-              <div className="mb-1 flex items-center gap-2">
-                <span className="bg-primary inline-block h-2 w-2 rounded-full" />
-                <p className="text-sm font-semibold">이상향</p>
-                {proposal.persona_label && (
-                  <span className="text-primary text-xs font-medium">
-                    {proposal.persona_label}
-                  </span>
-                )}
-              </div>
-              <p className="text-muted-foreground text-sm leading-relaxed">
-                {proposal.reasoning}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* 8축 아래: 가치관 10축 · 기질 3축 — 현재 vs 이상향 */}
-        {snapshot && (
-          <div className="border-border mt-5 space-y-5 border-t pt-5">
-            <div className="flex items-center gap-4 text-xs">
-              <span className="flex items-center gap-1.5">
-                <span className="bg-muted-foreground/50 inline-block h-2 w-4 rounded-full" />
-                현재(막대)
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="bg-primary inline-block h-3.5 w-[3px] rounded-full" />
-                이상향(목표선)
-              </span>
-            </div>
-            <CompareBars
-              title="가치관"
-              subtitle="0=관심 없음 · 100=강하게 추구"
-              axes={VALUES_AXES}
-              current={snapshot.scores}
-              ideal={working13}
-            />
-            <CompareBars
-              title="기질"
-              subtitle="시청에서 읽히는 성향 · 0=약함 · 100=강함"
-              axes={TEMPERAMENT_AXES}
-              current={snapshot.scores}
-              ideal={working13}
-            />
-          </div>
+        ) : (
+          <p className="text-muted-foreground py-6 text-center text-sm">
+            성향 데이터가 없습니다. "다시 추천"으로 새로 생성해 보세요.
+          </p>
         )}
       </div>
 
-        <div className="border-border flex flex-col rounded-2xl border bg-card lg:sticky lg:top-4 lg:w-[400px] lg:shrink-0">
-        <div className="flex max-h-[320px] min-h-[180px] flex-col gap-3 overflow-y-auto px-5 py-4 lg:max-h-[60vh]">
-          {messages.map((m, i) => (
-            <div
-              key={i}
-              className={cn(
-                "flex",
-                m.role === "user" ? "justify-end" : "justify-start",
-              )}
-            >
-              <div
-                className={cn(
-                  "max-w-[80%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap",
-                  m.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-secondary text-foreground",
-                )}
-              >
-                {m.content || (streaming ? "…" : "")}
-              </div>
+      {/* 관심 도메인 (현재 / 이상향) */}
+      <div className="border-border border-t pt-4">
+        <p className="mb-1 text-sm font-semibold">관심 도메인</p>
+        <div className={cn("grid gap-2", idealPie ? "grid-cols-2" : "grid-cols-1")}>
+          <div>
+            <p className="text-muted-foreground mb-1 text-center text-xs">현재</p>
+            <InterestPie data={curPie} size={idealPie ? 130 : 170} />
+          </div>
+          {idealPie && (
+            <div>
+              <p className="text-primary mb-1 text-center text-xs">이상향</p>
+              <InterestPie data={idealPie} size={130} />
             </div>
-          ))}
-        </div>
-        <div className="border-border flex items-center gap-2 border-t px-3 py-3">
-          <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void send();
-            }}
-            placeholder="조정하고 싶은 내용을 입력하세요"
-            className="flex-1"
-          />
-          <Button
-            size="icon"
-            onClick={() => void send()}
-            disabled={streaming}
-            aria-label="전송"
-          >
-            <Send size={16} />
-          </Button>
-        </div>
+          )}
         </div>
       </div>
 
-      <div className="flex justify-end">
-        <Button
-          onClick={() => onConfirm(working, working13, refined)}
-          disabled={busy}
-          className="gap-1.5"
-        >
-          <Check size={16} />
-          이 이상향으로 확정하기
-        </Button>
-      </div>
+      {/* 폴드: 행동 8축 · 가치관/기질 13축 */}
+      {working8 && (
+        <details className="border-border border-t pt-4">
+          <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-xs select-none">
+            자세히 보기 (행동 8축 · 가치관/기질 13축)
+          </summary>
+          <div className="mt-4 space-y-5">
+            <div className="flex justify-center">
+              <RadarCompareChart axes={buildAxes(current8, working8)} size={220} />
+            </div>
+            {snapshot && working13 && (
+              <>
+                <CompareBars
+                  title="가치관"
+                  subtitle="0=관심 없음 · 100=강하게 추구"
+                  axes={VALUES_AXES}
+                  current={snapshot.scores}
+                  ideal={working13}
+                />
+                <CompareBars
+                  title="기질"
+                  subtitle="시청에서 읽히는 성향 · 0=약함 · 100=강함"
+                  axes={TEMPERAMENT_AXES}
+                  current={snapshot.scores}
+                  ideal={working13}
+                />
+              </>
+            )}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
@@ -414,9 +386,45 @@ function ShowProposals({
   const [snapshot, setSnapshot] = useState<DbProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<IdealType | null>(null);
   const [busy, setBusy] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+
+  // 챗 상태 (선택 없이도 대화 가능)
+  const [sessionId] = useState(() => crypto.randomUUID());
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      role: "assistant",
+      content:
+        "이상향을 함께 만들어볼게요. 요즘 어떤 콘텐츠가 끌리는지, 뭘 더 보고 싶은지 편하게 말씀해 주세요. 마음에 드는 카드를 골라 시작해도 좋아요.",
+    },
+  ]);
+  const [input, setInput] = useState("");
+  const [streaming, setStreaming] = useState(false);
+  // 대화로 실시간 갱신되는 이상향(성향·도메인·8·13) + 완성 결과
+  const [liveDisp, setLiveDisp] = useState<Record<string, number> | null>(null);
+  const [liveInt, setLiveInt] = useState<Record<string, number> | null>(null);
+  const [liveBehavior, setLiveBehavior] = useState<AxisScores8 | null>(null);
+  const [liveValues, setLiveValues] = useState<AxisScores13 | null>(null);
+  const [finalIdeal, setFinalIdeal] = useState<CompleteEvent | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  // 새 메시지/토큰마다 대화창을 맨 아래로 자동 스크롤
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages]);
+
+  const selectedProposal =
+    proposals.find((p) => p.ideal_type === selected) ?? null;
+
+  const dispTargetMap = (p: ProposalItem) =>
+    Object.fromEntries(p.disposition.map((x) => [x.key, x.target]));
+  const intTargetMap = (p: ProposalItem) =>
+    Object.fromEntries(p.interest.map((x) => [x.domain, x.target]));
+
+  // 카드를 펼쳤다 접어도 대화로 만든 이상향(live/final)은 유지한다.
+  // 차트 이상향 우선순위는 liveDisp ?? 선택 카드 목표(아래 렌더 참고).
 
   const regenerate = async () => {
     setRegenerating(true);
@@ -424,7 +432,7 @@ function ShowProposals({
     try {
       const prop = await getProposals(analysisId || undefined, true);
       setProposals(prop.proposals);
-      setSelected(prop.proposals[0]?.ideal_type ?? null);
+      setSelected(null);
     } catch {
       setError("추천을 다시 생성하지 못했습니다.");
     } finally {
@@ -447,19 +455,16 @@ function ShowProposals({
         if (cancelled) return;
         setProposals(prop.proposals);
         setSnapshot(snap);
-        // 현재 8축: 스냅샷에서 추출, 없으면 최신 프로필로 폴백
         if (snap) {
           setCurrent(
-            Object.fromEntries(
-              AXIS_ORDER.map((k) => [k, snap.scores[k] ?? 0]),
-            ),
+            Object.fromEntries(AXIS_ORDER.map((k) => [k, snap.scores[k] ?? 0])),
           );
         } else {
           setCurrent(await getCurrentAxes().catch(() => ({}) as AxisScores8));
         }
-        setSelected(prop.proposals[0]?.ideal_type ?? null);
       } catch {
-        if (!cancelled) setError("제안을 불러오지 못했습니다. (프로필이 필요합니다)");
+        if (!cancelled)
+          setError("제안을 불러오지 못했습니다. (프로필이 필요합니다)");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -469,28 +474,119 @@ function ShowProposals({
     };
   }, [analysisId]);
 
-  const confirmCreate = async (
-    ideal_type: ProposalItem["ideal_type"],
-    scores: AxisScores8,
-    reasoning: string,
-    persona_label: string,
-    values_temperament?: AxisScores13,
-  ) => {
+  const saveIdealAndGo = async (body: Parameters<typeof createIdeal>[0]) => {
     setBusy(true);
     try {
-      const created = await createIdeal({
-        ideal_type,
-        scores,
-        values_temperament,
-        persona_label: persona_label || undefined,
-        reasoning,
-        source_profile_history_id: analysisId || undefined,
-      });
+      const created = await createIdeal(body);
       navigate(ROUTES.idealDetail(created.id));
     } catch {
       setError("이상향 저장에 실패했습니다.");
       setBusy(false);
     }
+  };
+
+  const send = async (opts?: { force?: boolean }) => {
+    const force = opts?.force ?? false;
+    const text = input.trim();
+    if (streaming || (!force && !text)) return;
+    if (text) {
+      setInput("");
+      setMessages((m) => [
+        ...m,
+        { role: "user", content: text },
+        { role: "assistant", content: "" },
+      ]);
+    } else {
+      setMessages((m) => [...m, { role: "assistant", content: "" }]);
+    }
+    setStreaming(true);
+    try {
+      await streamChat(
+        {
+          message: text,
+          session_id: sessionId,
+          working_values:
+            liveValues ?? selectedProposal?.values_temperament ?? undefined,
+          working_disposition:
+            liveDisp ??
+            (selectedProposal ? dispTargetMap(selectedProposal) : undefined),
+          working_interest:
+            liveInt ??
+            (selectedProposal ? intTargetMap(selectedProposal) : undefined),
+          ideal_type: selected ?? undefined,
+          force_finalize: force,
+        },
+        {
+          onToken: (c) =>
+            setMessages((m) => {
+              const upd = [...m];
+              const last = upd[upd.length - 1];
+              upd[upd.length - 1] = { ...last, content: last.content + c };
+              return upd;
+            }),
+          onIdeal: (d) => {
+            setLiveDisp(d.disposition);
+            setLiveInt(d.interest);
+            setLiveBehavior(d.behavior);
+            setLiveValues(d.values_temperament);
+          },
+          onComplete: (d) => {
+            setFinalIdeal(d);
+            setLiveDisp(d.disposition);
+            setLiveInt(d.interest);
+            setLiveBehavior(d.behavior);
+            setLiveValues(d.values_temperament);
+            // 대화로 마무리(발화·완성 버튼) → 확정 버튼 누른 것처럼 저장 + 다음 페이지
+            void saveIdealAndGo({
+              ideal_type: "CUSTOM",
+              scores: d.behavior,
+              values_temperament: d.values_temperament,
+              target_disposition: d.disposition,
+              target_interest: d.interest,
+              persona_label: d.persona_label || undefined,
+              reasoning: d.reasoning || "",
+              source_profile_history_id: analysisId || undefined,
+            });
+          },
+        },
+      );
+    } catch {
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", content: "오류가 발생했습니다." },
+      ]);
+    } finally {
+      setStreaming(false);
+    }
+  };
+
+  const hasChatIdeal = liveDisp !== null || finalIdeal !== null;
+
+  const confirmCreate = () => {
+    if (!selectedProposal && !hasChatIdeal) return;
+    // 카드가 선택돼 있으면 그 카드를, 아니면 대화로 만든 이상향(CUSTOM)을 저장
+    const body = selectedProposal
+      ? {
+          ideal_type: selectedProposal.ideal_type,
+          scores: selectedProposal.scores,
+          values_temperament: selectedProposal.values_temperament,
+          target_disposition: dispTargetMap(selectedProposal),
+          target_interest: intTargetMap(selectedProposal),
+          persona_label: selectedProposal.persona_label || undefined,
+          reasoning: selectedProposal.reasoning,
+          source_profile_history_id: analysisId || undefined,
+        }
+      : {
+          ideal_type: "CUSTOM" as const,
+          scores: liveBehavior ?? {},
+          values_temperament: liveValues ?? undefined,
+          target_disposition: liveDisp ?? {},
+          target_interest: liveInt ?? {},
+          persona_label: finalIdeal?.persona_label || undefined,
+          reasoning: finalIdeal?.reasoning || "",
+          source_profile_history_id: analysisId || undefined,
+        };
+    void saveIdealAndGo(body);
   };
 
   if (loading) {
@@ -508,8 +604,26 @@ function ShowProposals({
     );
   }
 
-  const selectedProposal =
-    proposals.find((p) => p.ideal_type === selected) ?? proposals[0] ?? null;
+  // 차트 데이터: 현재는 아무 제안의 pair(current 동일)에서.
+  // 이상향은 대화로 갱신된 값(live) 우선, 없으면 선택 제안의 target.
+  const baseDisp = proposals[0]?.disposition ?? [];
+  const baseInt = proposals[0]?.interest ?? [];
+  // 카드 선택 시엔 그 카드 목표를 보여주고, 아니면 대화로 만든 이상향(유지됨).
+  const idealDispMap = selectedProposal
+    ? dispTargetMap(selectedProposal)
+    : liveDisp;
+  const idealIntMap = selectedProposal
+    ? intTargetMap(selectedProposal)
+    : liveInt;
+  const dispRadar = baseDisp.map((p) => ({
+    label: p.label_ko,
+    current: p.current,
+    ideal: idealDispMap ? (idealDispMap[p.key] ?? p.current) : p.current,
+  }));
+  const curPie = baseInt.map((p) => ({ axis: p.domain, value: p.current }));
+  const idealPie = idealIntMap
+    ? baseInt.map((p) => ({ axis: p.domain, value: idealIntMap[p.domain] ?? 0 }))
+    : null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -517,7 +631,8 @@ function ShowProposals({
         <div>
           <h2 className="text-base font-semibold">추천 이상향 3안</h2>
           <p className="text-muted-foreground mt-1 text-xs">
-            카드를 골라 아래에서 대화로 다듬어 보세요. (현재 파랑 · 이상향 인디고)
+            카드를 고르면 상세와 예상 이상향 차트가 보여요. 선택 없이 대화만 해도
+            됩니다.
           </p>
         </div>
         <Button
@@ -532,61 +647,112 @@ function ShowProposals({
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {proposals.map((p) => {
-          const active = selectedProposal?.ideal_type === p.ideal_type;
-          return (
-            <button
-              key={p.ideal_type}
-              type="button"
-              onClick={() => setSelected(p.ideal_type)}
-              className={cn(
-                "flex h-full flex-col rounded-2xl border bg-card px-4 py-4 text-left transition-colors",
-                active
-                  ? "border-primary bg-primary/5 ring-primary/30 ring-1"
-                  : "border-border hover:border-primary/40",
-              )}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <Badge variant="outline" className="rounded-full">
-                  {IDEAL_TYPE_LABEL[p.ideal_type]}
-                </Badge>
-                {active && <Check size={16} className="text-primary shrink-0" />}
-              </div>
-              {p.persona_label && (
-                <p className="mt-2 text-sm font-semibold">{p.persona_label}</p>
-              )}
-              <p className="text-muted-foreground mt-1 line-clamp-3 text-xs leading-relaxed">
-                {p.reasoning}
-              </p>
-            </button>
-          );
-        })}
-      </div>
-
-      {selectedProposal && (
-        <RefineChat
-          key={selectedProposal.ideal_type}
+      {/* 카드: 접힘(3개) 또는 펼침(1개) */}
+      {selectedProposal ? (
+        <ExpandedProposal
           proposal={selectedProposal}
-          current={current}
           snapshot={snapshot}
-          busy={busy}
-          onConfirm={(scores, values, refined) =>
-            void confirmCreate(
-              refined ? "CUSTOM" : selectedProposal.ideal_type,
-              scores,
-              selectedProposal.reasoning,
-              refined ? "" : selectedProposal.persona_label,
-              values,
-            )
-          }
+          onBack={() => setSelected(null)}
         />
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {proposals.map((p) => (
+            <ProposalCard
+              key={p.ideal_type}
+              proposal={p}
+              onSelect={() => setSelected(p.ideal_type)}
+            />
+          ))}
+        </div>
       )}
 
-      <div className="flex justify-start">
+      {/* 하단: 좌 차트(컴팩트) + 우 챗(나머지 채움) */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        <div className="lg:w-[340px] lg:shrink-0">
+          <IdealCharts
+            dispRadar={dispRadar}
+            curPie={curPie}
+            idealPie={idealPie}
+            current8={current}
+            working8={selectedProposal ? selectedProposal.scores : liveBehavior}
+            working13={
+              selectedProposal ? selectedProposal.values_temperament : liveValues
+            }
+            snapshot={snapshot}
+          />
+        </div>
+
+        <div className="border-border flex flex-col rounded-2xl border bg-card lg:sticky lg:top-4 lg:min-w-0 lg:flex-1">
+          <div
+            ref={chatScrollRef}
+            className="flex max-h-[320px] min-h-[220px] flex-col gap-3 overflow-y-auto px-5 py-4 lg:max-h-[60vh]"
+          >
+            {messages.map((m, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "flex",
+                  m.role === "user" ? "justify-end" : "justify-start",
+                )}
+              >
+                <div
+                  className={cn(
+                    "max-w-[80%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap",
+                    m.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-secondary text-foreground",
+                  )}
+                >
+                  {m.content || (streaming ? "…" : "")}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="border-border flex items-center gap-2 border-t px-3 py-3">
+            <Input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void send();
+              }}
+              placeholder="어떤 콘텐츠가 끌리는지 편하게 말해보세요"
+              className="flex-1"
+            />
+            <Button
+              size="icon"
+              onClick={() => void send()}
+              disabled={streaming}
+              aria-label="전송"
+            >
+              <Send size={16} />
+            </Button>
+          </div>
+          <div className="border-border border-t px-3 py-2">
+            <button
+              type="button"
+              onClick={() => void send({ force: true })}
+              disabled={streaming || finalIdeal !== null}
+              className="text-muted-foreground hover:text-foreground text-xs transition-colors disabled:opacity-50"
+            >
+              대화는 이만 — 지금까지 취향으로 이상향 완성하기
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 하단 버튼 */}
+      <div className="flex items-center justify-between gap-3">
         <Button variant="outline" onClick={onBack} className="gap-1.5">
           <ArrowLeft size={16} />
           분석 다시 선택
+        </Button>
+        <Button
+          onClick={() => void confirmCreate()}
+          disabled={busy || (!selectedProposal && !hasChatIdeal)}
+          className="gap-1.5"
+        >
+          <Check size={16} />
+          이 이상향으로 확정하기
         </Button>
       </div>
     </div>
@@ -623,11 +789,7 @@ export function IdealSetupPage() {
   }, []);
 
   return (
-    <div
-      className={cn(
-        "flex min-h-full flex-col px-4 py-5 sm:px-6 sm:py-6",
-      )}
-    >
+    <div className={cn("flex min-h-full flex-col px-4 py-5 sm:px-6 sm:py-6")}>
       <Link
         to={ROUTES.idealManagement}
         className="text-muted-foreground hover:text-foreground mb-4 inline-flex w-fit items-center gap-1.5 text-sm transition-colors"

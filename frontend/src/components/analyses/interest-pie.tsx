@@ -7,6 +7,8 @@ import {
   Tooltip,
 } from "recharts";
 
+import { cn } from "@/lib/utils";
+
 export interface InterestDatum {
   axis: string;
   value: number;
@@ -47,21 +49,36 @@ function PieTooltip({
   );
 }
 
-/** 관심사 도메인 비율을 도넛(원) 그래프로 표시. */
-export function InterestPie({ data }: { data: InterestDatum[] }) {
+/** 관심사 도메인 비율을 도넛(원) 그래프로 표시. size 지정 시 고정 높이(컴팩트). */
+export function InterestPie({
+  data,
+  size,
+}: {
+  data: InterestDatum[];
+  size?: number;
+}) {
   const chartData = data.filter((d) => d.value > 0);
   const total = chartData.reduce((s, d) => s + d.value, 0);
 
   if (chartData.length === 0) {
     return (
-      <div className="text-muted-foreground flex h-[min(320px,42vw)] items-center justify-center text-sm">
-        관심사 데이터가 없습니다.
+      <div
+        className={cn(
+          "text-muted-foreground flex items-center justify-center text-xs",
+          !size && "h-[min(320px,42vw)]",
+        )}
+        style={size ? { height: size } : undefined}
+      >
+        데이터 없음
       </div>
     );
   }
 
   return (
-    <div className="h-[min(320px,42vw)] w-full min-w-[260px]">
+    <div
+      className={size ? "w-full" : "h-[min(320px,42vw)] w-full min-w-[260px]"}
+      style={size ? { height: size } : undefined}
+    >
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from app.agents.navigator.constants import (
     BEHAVIOR_AXES,
+    DISPOSITION_AXES,
+    DISPOSITION_LABELS_KO,
+    INTEREST_DOMAINS,
     VALUES_TEMPERAMENT_AXES,
 )
 from app.agents.profiler.axis_labels import SCORE_LABELS_KO
@@ -34,6 +37,46 @@ def render_8axis(scores: dict[str, float]) -> str:
 def render_13axis(scores: dict[str, float]) -> str:
     """가치관 10축 + 기질 3축만 렌더한다 (이상향 설계 축)."""
     return render_scores(scores, VALUES_TEMPERAMENT_AXES)
+
+
+def render_disposition(disposition: dict[str, float]) -> str:
+    """성향 6축을 `- 라벨(key): 값` 목록으로 렌더한다."""
+    if not disposition:
+        return "(성향 데이터 없음)"
+    lines = []
+    for key in DISPOSITION_AXES:
+        if key not in disposition:
+            continue
+        label = DISPOSITION_LABELS_KO.get(key, key)
+        lines.append(f"- {label}({key}): {round(float(disposition[key]), 1)}")
+    return "\n".join(lines) if lines else "(성향 데이터 없음)"
+
+
+def render_domains(interest: dict[str, float]) -> str:
+    """관심 도메인 분포를 `- 도메인: 값` 목록으로 렌더한다 (값 큰 순)."""
+    if not interest:
+        return "(관심 도메인 데이터 없음)"
+    ordered = sorted(INTEREST_DOMAINS, key=lambda d: interest.get(d, 0.0), reverse=True)
+    lines = [f"- {d}: {round(float(interest.get(d, 0.0)), 1)}" for d in ordered]
+    return "\n".join(lines)
+
+
+def render_portrait(
+    *,
+    disposition: dict[str, float],
+    interest: dict[str, float],
+    keywords: list[str] | None = None,
+    persona_label: str = "",
+) -> str:
+    """portrait 신호(별칭·키워드·성향 6축·관심 도메인)를 한 블록으로 렌더한다."""
+    parts = []
+    if persona_label:
+        parts.append(f"현재 별칭: {persona_label}")
+    if keywords:
+        parts.append(f"키워드: {', '.join(str(k) for k in keywords[:7])}")
+    parts.append(f"[현재 성향 6축]\n{render_disposition(disposition)}")
+    parts.append(f"[현재 관심 도메인]\n{render_domains(interest)}")
+    return "\n".join(parts)
 
 
 def render_interests(top_interests: dict[str, list] | None) -> str:

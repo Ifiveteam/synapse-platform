@@ -57,6 +57,8 @@ class NavigatorRepository:
         reasoning: str,
         persona_label: str = "",
         values_temperament: dict[str, float] | None = None,
+        target_disposition: dict[str, float] | None = None,
+        target_interest: dict[str, float] | None = None,
         source_profile_history_id: uuid.UUID | None = None,
     ) -> UserIdealPersona:
         """이상향을 새 행으로 생성한다 (적용 여부는 별도 apply)."""
@@ -64,6 +66,8 @@ class NavigatorRepository:
             user_id=user_id,
             persona_label=persona_label or None,
             values_temperament=values_temperament or None,
+            target_disposition=target_disposition or None,
+            target_interest=target_interest or None,
             description=encode_description(ideal_type, reasoning),
             source_profile_history_id=source_profile_history_id,
             is_active=False,
