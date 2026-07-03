@@ -35,6 +35,10 @@ SCOPES = [
 # 폴더 연동용 — 프론트 GIS 코드 클라이언트가 요청하고, 백엔드는 code를 postmessage로 교환.
 DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 
+# YouTube 재생목록 쓰기 — 재생목록 저장용(별도 동의).
+YOUTUBE_SCOPE = "https://www.googleapis.com/auth/youtube"
+GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo"
+
 
 def _client_id() -> str:
     return os.getenv("GOOGLE_CLIENT_ID", "")
@@ -204,6 +208,35 @@ async def upsert_user_and_token(
 
 
 # ── 4. 구글 access token 갱신 ─────────────────
+
+
+async def _token_scopes(access_token: str) -> set[str]:
+    """access token의 부여된 스코프 집합 (tokeninfo, 무쿼터). 실패 시 빈 집합."""
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                GOOGLE_TOKENINFO_URL, params={"access_token": access_token}
+            )
+        data = res.json()
+    except Exception:
+        return set()
+    return set((data.get("scope") or "").split())
+
+
+async def get_youtube_access_token(user) -> str | None:
+    """youtube 스코프를 포함한 유효 access token. 없거나 스코프 부족이면 None.
+
+    None이면 호출측이 needs_reconsent 처리(사용자 재동의 유도).
+    동의 직후 저장된 access_token을 먼저 확인하고(스코프 보유·유효),
+    만료 등으로 실패할 때만 refresh 후 재확인한다(재동의 루프 방지).
+    """
+    token = user.access_token
+    if token and YOUTUBE_SCOPE in await _token_scopes(token):
+        return token
+    refreshed = await refresh_access_token(user)
+    if refreshed and YOUTUBE_SCOPE in await _token_scopes(refreshed):
+        return refreshed
+    return None
 
 
 async def refresh_access_token(user) -> str | None:

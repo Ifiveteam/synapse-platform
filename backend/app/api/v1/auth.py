@@ -25,6 +25,8 @@ from app.schemas.auth import (
     RefreshResponse,
     UpdateMeRequest,
     UserResponse,
+    YoutubeConnectRequest,
+    YoutubeConnectResponse,
 )
 from app.services import (
     auth_service,
@@ -138,6 +140,24 @@ async def drive_connect(
     await google_oauth.store_google_tokens(session, user, tokens)
     await session.commit()
     return DriveConnectResponse(access_token=access)
+
+
+@router.post("/youtube/connect", response_model=YoutubeConnectResponse)
+async def youtube_connect(
+    body: YoutubeConnectRequest,
+    user: User = Depends(get_current_user_dep),
+    session: AsyncSession = Depends(get_db),
+) -> YoutubeConnectResponse:
+    """GIS 코드 클라이언트 code(youtube 스코프) → 토큰 저장. 재생목록 저장 권한 확보용."""
+    tokens = await google_oauth.exchange_code_postmessage(body.code)
+    if not tokens.get("access_token"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="youtube_token_exchange_failed",
+        )
+    await google_oauth.store_google_tokens(session, user, tokens)
+    await session.commit()
+    return YoutubeConnectResponse(connected=True)
 
 
 @router.get("/google-config", response_model=GoogleConfigResponse)

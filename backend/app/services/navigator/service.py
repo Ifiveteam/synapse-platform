@@ -33,8 +33,13 @@ from app.agents.navigator.constants import (
 from app.agents.navigator.facade import NavigatorAgent, get_navigator_agent
 from app.agents.navigator.schemas import Guide, PlaylistItem
 from app.agents.navigator.streaming import format_sse_event, format_stream_event
+from app.agents.navigator.sub_agent.youtube.client import (
+    add_playlist_item,
+    create_youtube_playlist,
+)
 from app.agents.shared.persona import persona_from_scores
 from app.core.database.session import AsyncSessionLocal, get_db
+from app.models.user import User
 from app.models.user_ideal_persona import UserIdealPersona
 from app.repositories.indexer_repository import (
     fetch_top_categories,
@@ -64,7 +69,9 @@ from app.schemas.navigator import (
     PlaylistSummary,
     ProposalItem,
     ProposalsResponse,
+    SaveStartResponse,
 )
+from app.services import google_oauth
 from app.services.profiler.scores import history_scores_dict
 
 _PROFILE_404 = "Profile not found. Run POST /profiler/run first."
@@ -154,6 +161,57 @@ async def _generate_playlist_bg(
                 logger.exception("playlist failed-status update failed")
 
 
+async def _save_playlist_bg(*, user_id: uuid.UUID, playlist_id: uuid.UUID) -> None:
+    """백그라운드 YouTube 저장 — 재생목록 생성 + 영상 순차 삽입 후 상태 갱신."""
+    async with AsyncSessionLocal() as session:
+        repo = NavigatorRepository(session)
+        try:
+            row = await repo.get_playlist(user_id=user_id, playlist_id=playlist_id)
+            user = await session.get(User, user_id)
+            if row is None or user is None:
+                return
+            token = await google_oauth.get_youtube_access_token(user)
+            if not token:
+                await repo.update_playlist(
+                    user_id=user_id, playlist_id=playlist_id, save_status="failed"
+                )
+                return
+            items = [PlaylistItem(**it) for it in (row.items_json or [])]
+            yt_id = await create_youtube_playlist(
+                access_token=token,
+                title=row.title or "Synapse 추천 재생목록",
+                description=row.summary or "",
+            )
+            if not yt_id:
+                await repo.update_playlist(
+                    user_id=user_id, playlist_id=playlist_id, save_status="failed"
+                )
+                return
+            added = 0
+            for it in items:
+                if await add_playlist_item(
+                    access_token=token, playlist_id=yt_id, video_id=it.video_id
+                ):
+                    added += 1
+            await repo.update_playlist(
+                user_id=user_id,
+                playlist_id=playlist_id,
+                youtube_playlist_id=yt_id,
+                save_status="saved",
+            )
+            logger.info(
+                "playlist saved to youtube: %s (%d/%d)", yt_id, added, len(items)
+            )
+        except Exception:
+            logger.exception("playlist youtube save failed: %s", playlist_id)
+            try:
+                await repo.update_playlist(
+                    user_id=user_id, playlist_id=playlist_id, save_status="failed"
+                )
+            except Exception:
+                logger.exception("save-failed status update failed")
+
+
 def should_persist_assistant_log(content: str) -> bool:
     """빈 본문·엔진 오류(❌) 토큰은 DB에 남기지 않는다."""
     normalized = content.strip()
@@ -235,6 +293,7 @@ def _playlist_to_response(row) -> PlaylistResponse:
         summary=row.summary or "",
         items=items,
         status=row.status,
+        save_status=row.save_status,
         youtube_playlist_id=row.youtube_playlist_id,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -247,6 +306,7 @@ def _playlist_summary(row) -> PlaylistSummary:
         title=row.title or "",
         item_count=len(row.items_json or []),
         status=row.status,
+        save_status=row.save_status,
         youtube_playlist_id=row.youtube_playlist_id,
         created_at=row.created_at,
     )
@@ -649,6 +709,34 @@ class NavigatorService:
             )
         )
         return _playlist_to_response(row)
+
+    async def save_playlist_to_youtube(
+        self, *, user_id: uuid.UUID, playlist_id: uuid.UUID
+    ) -> SaveStartResponse:
+        """YouTube에 비동기 저장 시작. 토큰 없으면 needs_reconsent."""
+        row = await self.repo.get_playlist(user_id=user_id, playlist_id=playlist_id)
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=_PLAYLIST_404
+            )
+        if row.status != "ready" or not (row.items_json or []):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="playlist_not_ready",
+            )
+        if row.save_status == "saving":
+            return SaveStartResponse(needs_reconsent=False, save_status="saving")
+
+        user = await self.db.get(User, user_id)
+        token = await google_oauth.get_youtube_access_token(user) if user else None
+        if not token:
+            return SaveStartResponse(needs_reconsent=True, save_status=row.save_status)
+
+        await self.repo.update_playlist(
+            user_id=user_id, playlist_id=playlist_id, save_status="saving"
+        )
+        _spawn_bg(_save_playlist_bg(user_id=user_id, playlist_id=playlist_id))
+        return SaveStartResponse(needs_reconsent=False, save_status="saving")
 
     async def list_playlists(
         self, *, user_id: uuid.UUID, ideal_id: uuid.UUID

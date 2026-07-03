@@ -38,6 +38,10 @@ class NavigatorPlaylist(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("'ready'")
     )
+    # YouTube 저장 상태 — none / saving / saved / failed
+    save_status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'none'")
+    )
 
     # 자동 "{persona_label} #N", 사용자 수정 가능
     title: Mapped[str | None] = mapped_column(Text, nullable=True)

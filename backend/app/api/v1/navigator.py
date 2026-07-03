@@ -31,6 +31,7 @@ from app.schemas.navigator import (
     ProposalsResponse,
     RefreshItemRequest,
     RenamePlaylistRequest,
+    SaveStartResponse,
 )
 from app.services.navigator import NavigatorService
 
@@ -221,6 +222,18 @@ async def regenerate_playlist(
 ) -> PlaylistResponse:
     """재생목록 전체 재생성 (채널 재발굴→큐레이션, 같은 행 갱신)."""
     return await navigator_service.regenerate_playlist(
+        user_id=user.id, playlist_id=playlist_id
+    )
+
+
+@router.post("/playlists/{playlist_id}/save", response_model=SaveStartResponse)
+async def save_playlist_to_youtube(
+    playlist_id: uuid.UUID,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> SaveStartResponse:
+    """재생목록을 실제 YouTube에 비동기 저장 시작 (needs_reconsent면 재동의 필요)."""
+    return await navigator_service.save_playlist_to_youtube(
         user_id=user.id, playlist_id=playlist_id
     )
 

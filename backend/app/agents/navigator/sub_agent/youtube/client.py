@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 _SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 _VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos"
+_PLAYLISTS_URL = "https://www.googleapis.com/youtube/v3/playlists"
+_PLAYLIST_ITEMS_URL = "https://www.googleapis.com/youtube/v3/playlistItems"
 _RSS_URL = "https://www.youtube.com/feeds/videos.xml"
 
 _DURATION_RE = re.compile(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?")
@@ -84,6 +86,73 @@ async def search_channels(
                 )
             )
     return out
+
+
+# ── 쓰기: 실제 YouTube 재생목록 (유저 OAuth 토큰) ─────────────────
+
+
+async def create_youtube_playlist(
+    *, access_token: str, title: str, description: str = ""
+) -> str | None:
+    """유저 계정에 재생목록 생성 → playlist id (playlists.insert, 50유닛)."""
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.post(
+                _PLAYLISTS_URL,
+                params={"part": "snippet,status"},
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={
+                    "snippet": {
+                        "title": title[:150],
+                        "description": description[:4000],
+                    },
+                    "status": {"privacyStatus": "private"},
+                },
+            )
+        data = resp.json()
+    except Exception:
+        logger.exception("youtube create_playlist failed")
+        return None
+    if "error" in data:
+        logger.warning(
+            "youtube create_playlist error: %s", data["error"].get("message")
+        )
+        return None
+    return data.get("id")
+
+
+async def add_playlist_item(
+    *, access_token: str, playlist_id: str, video_id: str
+) -> bool:
+    """재생목록에 영상 1개 추가 (playlistItems.insert, 50유닛). 성공 여부."""
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.post(
+                _PLAYLIST_ITEMS_URL,
+                params={"part": "snippet"},
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={
+                    "snippet": {
+                        "playlistId": playlist_id,
+                        "resourceId": {
+                            "kind": "youtube#video",
+                            "videoId": video_id,
+                        },
+                    }
+                },
+            )
+        data = resp.json()
+    except Exception:
+        logger.warning("youtube add_playlist_item failed: %s", video_id)
+        return False
+    if "error" in data:
+        logger.warning(
+            "youtube add_playlist_item error(%s): %s",
+            video_id,
+            data["error"].get("message"),
+        )
+        return False
+    return True
 
 
 def _parse_duration(iso: str) -> int:

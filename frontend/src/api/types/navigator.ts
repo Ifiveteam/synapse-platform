@@ -88,6 +88,7 @@ export interface PlaylistItemResponse {
   reason: string;
 }
 export type PlaylistStatus = "pending" | "ready" | "failed";
+export type PlaylistSaveStatus = "none" | "saving" | "saved" | "failed";
 
 export interface PlaylistResponse {
   id: string;
@@ -96,6 +97,7 @@ export interface PlaylistResponse {
   summary: string;
   items: PlaylistItemResponse[];
   status: PlaylistStatus;
+  save_status: PlaylistSaveStatus;
   youtube_playlist_id: string | null;
   created_at: string;
   updated_at: string;
@@ -105,8 +107,14 @@ export interface PlaylistSummary {
   title: string;
   item_count: number;
   status: PlaylistStatus;
+  save_status: PlaylistSaveStatus;
   youtube_playlist_id: string | null;
   created_at: string;
+}
+
+export interface SaveStartResponse {
+  needs_reconsent: boolean;
+  save_status: PlaylistSaveStatus;
 }
 
 export interface PlaylistChatHandlers {
