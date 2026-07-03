@@ -36,6 +36,7 @@ def profile_to_dict(row: UserProfileHistory) -> dict[str, Any]:
         "tone_of_user": row.tone_of_user,
         "top_categories": [],
         "top_channels": [],
+        "portrait": row.portrait,
     }
 
 
@@ -46,8 +47,27 @@ async def profile_dict_with_catalog(session, row: UserProfileHistory) -> dict[st
     )
 
     data = profile_to_dict(row)
-    data["top_categories"] = await fetch_top_categories(session, row.user_id)
-    data["top_channels"] = await fetch_top_channels(session, row.user_id)
+
+    # 배치 스냅샷이면 그 배치 소속 영상만 SQL 집계(임베딩 미로드), 아니면 전체 catalog.
+    source_ids = None
+    if row.batch_id:
+        from app.repositories.analysis_source_repository import fetch_batch_source_ids
+
+        source_ids = await fetch_batch_source_ids(session, row.batch_id)
+
+    data["top_categories"] = await fetch_top_categories(
+        session, row.user_id, source_ids=source_ids
+    )
+    data["top_channels"] = await fetch_top_channels(
+        session, row.user_id, source_ids=source_ids
+    )
+    # 롱폼/숏폼 상위 채널 분리
+    data["top_channels_long"] = await fetch_top_channels(
+        session, row.user_id, source_ids=source_ids, is_shorts=False
+    )
+    data["top_channels_short"] = await fetch_top_channels(
+        session, row.user_id, source_ids=source_ids, is_shorts=True
+    )
     return data
 
 
@@ -56,7 +76,8 @@ class ProfilerJob:
     job_id: str
     user_id: str
     notify_email: str
-    analysis_source_id: str | None = None
+    analysis_source_ids: list[str] | None = None
+    batch_id: str | None = None
     status: JobStatus = JobStatus.PENDING
     current_step: str = "pending"
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -81,13 +102,15 @@ class ProfilerService:
         user_id: str,
         email: str = "",
         *,
-        analysis_source_id: str | None = None,
+        analysis_source_ids: list[str] | None = None,
+        batch_id: str | None = None,
     ) -> ProfilerJob:
         job = ProfilerJob(
             job_id=str(uuid.uuid4()),
             user_id=user_id,
             notify_email=email,
-            analysis_source_id=analysis_source_id,
+            analysis_source_ids=analysis_source_ids,
+            batch_id=batch_id,
         )
         with self._lock:
             self._jobs[job.job_id] = job
@@ -147,12 +170,15 @@ class ProfilerService:
                     "status": status,
                     "stage": src.stage,
                     "kind": "job",
+                    "batch_id": str(src.batch_id) if src.batch_id else None,
                 }
             )
 
         for index, row in enumerate(rows):
             number = total - index
-            title = row.persona_label or f"개인성향 분석 #{number}"
+            title = (row.portrait or {}).get(
+                "persona_label"
+            ) or f"개인성향 분석 #{number}"
             items.append(
                 {
                     "id": str(row.id),
@@ -189,20 +215,26 @@ class ProfilerService:
                 job.updated_at = datetime.now(UTC)
                 user_id = job.user_id
                 notify_email = job.notify_email
-                analysis_source_id = job.analysis_source_id
+                analysis_source_ids = job.analysis_source_ids
+                batch_id = job.batch_id
 
             try:
-                final = await self.agent.run_profile(user_id, notify_email)
+                final = await self.agent.run_profile(
+                    user_id,
+                    notify_email,
+                    analysis_source_ids=analysis_source_ids,
+                    batch_id=batch_id,
+                )
                 profile = await self.fetch_profile_async(user_id)
                 notification = final.get("notification")
-                if profile and analysis_source_id:
+                if profile and batch_id:
                     from app.services.analysis_source_service import (
                         complete_analysis_batch_async,
                     )
 
-                    # 트리거 소스 완료 + 배치의 '분류 완료' 형제들 일괄 완료
+                    # 배치 전 소스 완료 + 스냅샷 연결 + 배치 done
                     await complete_analysis_batch_async(
-                        user_id, analysis_source_id, profile.get("snapshot_id")
+                        analysis_source_ids, profile.get("snapshot_id"), batch_id
                     )
                 with self._lock:
                     job = self._jobs[job_id]
@@ -212,15 +244,13 @@ class ProfilerService:
                     job.notification = notification
                     job.updated_at = datetime.now(UTC)
             except Exception as exc:  # noqa: BLE001
-                if analysis_source_id:
+                if batch_id:
                     from app.services.analysis_source_service import (
-                        fail_source_async,
-                        resolve_indexed_siblings_async,
+                        fail_analysis_batch_async,
                     )
 
-                    await fail_source_async(analysis_source_id)
-                    # 분류만 성공한 형제들은 completed로 마무리 (분석만 실패)
-                    await resolve_indexed_siblings_async(user_id)
+                    # 배치 전 소스 failed + 배치 done (분석 실패)
+                    await fail_analysis_batch_async(analysis_source_ids, batch_id)
                 with self._lock:
                     job = self._jobs[job_id]
                     job.status = JobStatus.FAILED
@@ -232,9 +262,15 @@ class ProfilerService:
         user_id: str,
         email: str = "",
         *,
-        analysis_source_id: str | None = None,
+        analysis_source_ids: list[str] | None = None,
+        batch_id: str | None = None,
     ) -> ProfilerJob:
-        job = self.create_job(user_id, email, analysis_source_id=analysis_source_id)
+        job = self.create_job(
+            user_id,
+            email,
+            analysis_source_ids=analysis_source_ids,
+            batch_id=batch_id,
+        )
 
         try:
             loop = asyncio.get_running_loop()

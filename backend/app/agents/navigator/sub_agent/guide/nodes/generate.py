@@ -1,53 +1,55 @@
-"""generate 노드 — 근거(있으면)로 가이드 생성, 없으면 폴백."""
+"""generate 노드 — 심화(근거)·확장(다리/전방향) 가이드 생성 + kind/label 정규화."""
 
 from __future__ import annotations
 
 from typing import Any
 
+from app.agents.navigator.constants import (
+    DISPOSITION_AXES,
+    DISPOSITION_LABELS_KO,
+    INTEREST_DOMAINS,
+)
 from app.agents.navigator.llm import invoke_structured_safe
 from app.agents.navigator.schemas import Guide
-from app.agents.navigator.sub_agent.guide.prompts import (
-    build_fallback_prompt,
-    build_grounded_prompt,
-)
+from app.agents.navigator.sub_agent.guide.prompts import build_guide_prompt
 from app.agents.navigator.sub_agent.guide.state import GuideState
-from app.agents.profiler.axis_labels import SCORE_LABELS_KO
 
 _GEN_TEMPERATURE = 0.5
 
 
-async def generate(state: GuideState) -> dict[str, Any]:
-    weak_axes = state["weak_axes"]
-    gap_by_axis = state["gap_by_axis"]
-    evidence = state.get("evidence") or {}
-    has_evidence = any(evidence.get(axis) for axis in weak_axes)
+def _normalize(guide: Guide) -> Guide:
+    """axis로 kind·label_ko를 확정한다 (LLM 오분류 보정)."""
+    for step in guide.steps:
+        if step.axis in DISPOSITION_AXES:
+            step.kind = "deepen"
+            step.label_ko = DISPOSITION_LABELS_KO.get(step.axis, step.axis)
+        elif step.axis in INTEREST_DOMAINS:
+            step.kind = "expand"
+            step.label_ko = step.axis
+        elif not step.label_ko:
+            step.label_ko = step.axis
+    return guide
 
-    if has_evidence:
-        system = build_grounded_prompt(
-            weak_axes=weak_axes,
-            gap_by_axis=gap_by_axis,
-            evidence=evidence,
-            ideal_type=state["ideal_type"],
-            reasoning=state["reasoning"],
-        )
-    else:
-        system = build_fallback_prompt(
-            weak_axes=weak_axes,
-            gap_by_axis=gap_by_axis,
-            ideal_type=state["ideal_type"],
-            reasoning=state["reasoning"],
-        )
+
+async def generate(state: GuideState) -> dict[str, Any]:
+    system = build_guide_prompt(
+        deepen_targets=state["deepen_targets"],
+        deepen_gaps=state["deepen_gaps"],
+        evidence=state.get("evidence") or {},
+        expand_domains=state["expand_domains"],
+        expand_gaps=state["expand_gaps"],
+        bridge_evidence=state.get("bridge_evidence") or {},
+        ideal_type=state["ideal_type"],
+        reasoning=state["reasoning"],
+    )
 
     guide = await invoke_structured_safe(
         system_instruction=system,
-        user_content="이상향 달성을 위한 행동 가이드를 작성하세요.",
+        user_content="이상향 달성을 위한 심화·확장 행동 가이드를 작성하세요.",
         schema=Guide,
         temperature=_GEN_TEMPERATURE,
     )
-
     if guide is not None:
-        for step in guide.steps:
-            if not step.label_ko:
-                step.label_ko = SCORE_LABELS_KO.get(step.axis, step.axis)
+        guide = _normalize(guide)
 
     return {"draft": guide, "gen_attempts": state.get("gen_attempts", 0) + 1}

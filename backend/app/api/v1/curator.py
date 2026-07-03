@@ -28,11 +28,18 @@ async def stream_chat(
     """메인 채팅 — SSE 스트림으로 답변 반환."""
     session_id = request.session_id or str(uuid.uuid4())
 
+    if not request.message and not request.image_base64:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail="메시지 또는 이미지가 필요합니다.")
+
     return StreamingResponse(
         service.generate_stream(
             message=request.message,
             user_id=user.id,
             session_id=session_id,
+            image_base64=request.image_base64,
+            image_mime_type=request.image_mime_type,
         ),
         media_type="text/event-stream",
         headers={

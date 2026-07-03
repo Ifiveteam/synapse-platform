@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, RefreshCw, Target } from "lucide-react";
+import { ArrowLeft, Target } from "lucide-react";
 
+import { InterestPie } from "@/components/analyses/interest-pie";
 import { CompareBars } from "@/components/ideals/CompareBars";
 import { RadarCompareChart } from "@/components/ideals/RadarCompareChart";
 import { Badge } from "@/components/ui/badge";
@@ -43,7 +44,6 @@ export function IdealDetailPage() {
   const [guide, setGuide] = useState<GuideResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [guideLoading, setGuideLoading] = useState(true);
-  const [regenerating, setRegenerating] = useState(false);
   const [notFound, setNotFound] = useState(false);
 
   const load = useCallback(async () => {
@@ -104,26 +104,31 @@ export function IdealDetailPage() {
     ideal: g.ideal,
   }));
 
+  // 주 표시: 성향 6각 레이더(현재+이상향) · 관심 도메인 파이(현재/이상향)
+  const dispRadar = comparison.disposition.map((p) => ({
+    label: p.label_ko,
+    current: p.current,
+    ideal: p.target,
+  }));
+  const curPie = comparison.interest.map((p) => ({
+    axis: p.domain,
+    value: p.current,
+  }));
+  const idealPie = comparison.interest.map((p) => ({
+    axis: p.domain,
+    value: p.target,
+  }));
+  const hasTargets =
+    comparison.disposition.length > 0 || comparison.interest.length > 0;
+
   const handleApply = async () => {
     await applyIdeal(ideal.id);
     setIdeal({ ...ideal, is_active: true });
-    setActiveIdealLabel(IDEAL_TYPE_LABEL[ideal.ideal_type]);
-  };
-
-  const handleRegenerateGuide = async () => {
-    if (!id) return;
-    setRegenerating(true);
-    try {
-      setGuide(await getGuide(id, true));
-    } catch {
-      /* 유지: 기존 가이드 그대로 둠 */
-    } finally {
-      setRegenerating(false);
-    }
+    setActiveIdealLabel(ideal.persona_label || IDEAL_TYPE_LABEL[ideal.ideal_type]);
   };
 
   return (
-    <div className="mx-auto flex min-h-full max-w-3xl flex-col px-6 py-8">
+    <div className="flex min-h-full flex-col px-4 py-5 sm:px-6 sm:py-6">
       <Link
         to={ROUTES.idealManagement}
         className="text-muted-foreground hover:text-foreground mb-4 inline-flex w-fit items-center gap-1.5 text-sm transition-colors"
@@ -176,80 +181,120 @@ export function IdealDetailPage() {
             총 차이 {Math.round(comparison.total_gap)}
           </span>
         </div>
-        <div className="flex flex-col items-center">
-          <RadarCompareChart axes={axes} />
-          <div className="mt-2 flex items-center gap-4 text-xs">
-            <span className="flex items-center gap-1.5">
-              <span className="bg-muted-foreground inline-block h-2 w-4 rounded-full" />
-              현재
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="bg-primary inline-block h-2 w-4 rounded-full" />
-              이상향
-            </span>
+        {/* 주 표시: 성향 6각 레이더 + 관심 도메인 파이(현재/이상향) */}
+        {hasTargets ? (
+          <div className="grid gap-6 lg:grid-cols-2">
+            {dispRadar.length > 0 && (
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-semibold">성향</p>
+                  <div className="text-muted-foreground flex items-center gap-3 text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <span className="bg-muted-foreground inline-block h-2 w-4 rounded-full" />
+                      현재
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="bg-primary inline-block h-2 w-4 rounded-full" />
+                      이상향
+                    </span>
+                  </div>
+                </div>
+                <div className="flex justify-center">
+                  <RadarCompareChart axes={dispRadar} size={260} />
+                </div>
+              </div>
+            )}
+            {curPie.length > 0 && (
+              <div>
+                <p className="mb-2 text-sm font-semibold">관심 도메인</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-muted-foreground mb-1 text-center text-xs">
+                      현재
+                    </p>
+                    <InterestPie data={curPie} size={160} />
+                  </div>
+                  <div>
+                    <p className="text-primary mb-1 text-center text-xs">이상향</p>
+                    <InterestPie data={idealPie} size={160} />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-        <div className="border-border mt-5 flex flex-col gap-2 border-t pt-4">
-          {comparison.gaps.map((g) => (
-            <div
-              key={g.axis}
-              className="flex items-center justify-between text-xs"
-            >
-              <span className="font-medium">{g.label_ko}</span>
-              <span className="text-muted-foreground flex items-center gap-2">
-                현재 {Math.round(g.current)} → 목표 {Math.round(g.ideal)}{" "}
-                <GapBadge gap={g.gap} />
+        ) : (
+          // 레거시(목표 없는 옛 이상향): 8축 레이더를 그대로 노출
+          <div className="flex flex-col items-center">
+            <RadarCompareChart axes={axes} />
+            <div className="mt-2 flex items-center gap-4 text-xs">
+              <span className="flex items-center gap-1.5">
+                <span className="bg-muted-foreground inline-block h-2 w-4 rounded-full" />
+                현재
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="bg-primary inline-block h-2 w-4 rounded-full" />
+                이상향
               </span>
             </div>
-          ))}
-        </div>
-
-        {comparison.current_vt && comparison.ideal_vt && (
-          <div className="border-border mt-5 space-y-5 border-t pt-5">
-            <p className="text-muted-foreground text-xs">
-              가치관·기질 (막대=현재 · 목표선=이상향)
-            </p>
-            <CompareBars
-              title="가치관"
-              axes={VALUES_AXES}
-              current={comparison.current_vt}
-              ideal={comparison.ideal_vt}
-            />
-            <CompareBars
-              title="기질"
-              axes={TEMPERAMENT_AXES}
-              current={comparison.current_vt}
-              ideal={comparison.ideal_vt}
-            />
           </div>
         )}
+
+        {/* 자세히: 행동 8축 · 가치관/기질 (폴드) */}
+        <details className="border-border mt-5 border-t pt-4">
+          <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-xs select-none">
+            자세히 보기 (행동 8축 · 가치관/기질)
+          </summary>
+          <div className="mt-4 space-y-5">
+            {hasTargets && (
+              <div className="flex justify-center">
+                <RadarCompareChart axes={axes} size={220} />
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              {comparison.gaps.map((g) => (
+                <div
+                  key={g.axis}
+                  className="flex items-center justify-between text-xs"
+                >
+                  <span className="font-medium">{g.label_ko}</span>
+                  <span className="text-muted-foreground flex items-center gap-2">
+                    현재 {Math.round(g.current)} → 목표 {Math.round(g.ideal)}{" "}
+                    <GapBadge gap={g.gap} />
+                  </span>
+                </div>
+              ))}
+            </div>
+            {comparison.current_vt && comparison.ideal_vt && (
+              <div className="space-y-5">
+                <p className="text-muted-foreground text-xs">
+                  가치관·기질 (막대=현재 · 목표선=이상향)
+                </p>
+                <CompareBars
+                  title="가치관"
+                  axes={VALUES_AXES}
+                  current={comparison.current_vt}
+                  ideal={comparison.ideal_vt}
+                />
+                <CompareBars
+                  title="기질"
+                  axes={TEMPERAMENT_AXES}
+                  current={comparison.current_vt}
+                  ideal={comparison.ideal_vt}
+                />
+              </div>
+            )}
+          </div>
+        </details>
       </section>
 
       {/* 행동 가이드 */}
       <section className="border-border rounded-2xl border bg-card px-5 py-5">
         <div className="mb-4 flex items-start justify-between gap-3">
           <h2 className="text-base font-semibold">이상향을 위한 행동 가이드</h2>
-          {guide && !guideLoading && (
-            <div className="flex shrink-0 items-center gap-2">
-              {guide.generated_at && (
-                <span className="text-muted-foreground text-xs">
-                  {new Date(guide.generated_at).toLocaleDateString("ko-KR")} 생성
-                </span>
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void handleRegenerateGuide()}
-                disabled={regenerating}
-                className="gap-1.5"
-              >
-                <RefreshCw
-                  size={14}
-                  className={regenerating ? "animate-spin" : ""}
-                />
-                다시 생성
-              </Button>
-            </div>
+          {guide && !guideLoading && guide.generated_at && (
+            <span className="text-muted-foreground shrink-0 text-xs">
+              {new Date(guide.generated_at).toLocaleDateString("ko-KR")} 생성
+            </span>
           )}
         </div>
         {guideLoading ? (
@@ -260,13 +305,6 @@ export function IdealDetailPage() {
           </p>
         ) : (
           <>
-            {guide.stale && (
-              <div className="border-border bg-secondary/50 text-muted-foreground mb-4 flex items-center gap-2 rounded-xl border px-3 py-2 text-xs">
-                <RefreshCw size={14} className="shrink-0" />
-                생성 이후 새 시청기록이 쌓였어요. "다시 생성"으로 최신 기록을
-                반영할 수 있어요.
-              </div>
-            )}
             <p className="text-muted-foreground mb-4 text-sm">{guide.summary}</p>
             <ol className="flex flex-col gap-3">
               {guide.steps.map((s, i) => (
@@ -275,7 +313,20 @@ export function IdealDetailPage() {
                     {i + 1}
                   </span>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium">{s.title}</p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge
+                        variant={s.kind === "expand" ? "indigo" : "outline"}
+                        className="rounded-full"
+                      >
+                        {s.kind === "expand" ? "확장" : "심화"}
+                      </Badge>
+                      {s.label_ko && (
+                        <span className="text-muted-foreground text-xs">
+                          {s.label_ko}
+                        </span>
+                      )}
+                      <p className="text-sm font-medium">{s.title}</p>
+                    </div>
                     <p className="text-muted-foreground mt-0.5 text-xs">
                       {s.detail}
                     </p>

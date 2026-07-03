@@ -167,17 +167,16 @@ function DualGlobeView({ analyses }: DualGlobeViewProps) {
 
 export function GraphViewPlaceholder() {
   const user = useAuthStore((s) => s.user);
-  const token = useAuthStore((s) => s.token);
   const [graph, setGraph] = useState<EmbeddingGraphData | null | "empty">(null);
   const [analyses, setAnalyses] = useState<AnalysisListItem[] | null>(null);
 
   useEffect(() => {
-    if (!user || !token) return;
+    if (!user) return;
     fetchEmbeddingGraph()
       .then((data) => setGraph(data.total > 0 ? data : "empty"))
       .catch(() => setGraph("empty"));
     listMyAnalyses().then(setAnalyses);
-  }, [user, token]);
+  }, [user]);
 
   const completed =
     analyses?.filter((a) => a.status === "completed" && a.kind === "snapshot") ?? [];

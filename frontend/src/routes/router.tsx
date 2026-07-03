@@ -21,7 +21,6 @@ import { ScrapDetailPage } from "@/pages/ScrapDetailPage";
 import { ScrapPage } from "@/pages/ScrapPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { PaymentSuccessPage } from "@/pages/PaymentSuccessPage";
-import { SetupPage } from "@/pages/SetupPage";
 import { UploadPage } from "@/pages/UploadPage";
 import { TrendDetailPage } from "@/pages/TrendDetailPage";
 import { ROUTES } from "@/routes";
@@ -48,7 +47,6 @@ export const router = createBrowserRouter([
       { path: ROUTES.download, element: <DownloadPage /> },
       { path: ROUTES.login, element: <LoginPage /> },
       { path: ROUTES.upload, element: <UploadPage /> },
-      { path: ROUTES.setup, element: <SetupPage /> },
       { path: "/agents/:slug", element: <AgentDetailPage /> },
       { path: "/agents/:slug/posts", element: <TrendPostsPage /> },
       { path: "/agents/:slug/posts/:postId", element: <TrendPostDetailPage /> },

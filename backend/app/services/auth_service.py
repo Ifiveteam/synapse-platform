@@ -121,10 +121,11 @@ async def handle_oauth_callback(
             if payload.get("flow") == "extension":
                 redirect_uri = payload.get("redirect_uri", "")
                 if is_allowed_extension_redirect_uri(redirect_uri):
-                    link_code, _ = (
-                        await extension_auth_service.create_extension_link_code(
-                            session, user.id
-                        )
+                    (
+                        link_code,
+                        _,
+                    ) = await extension_auth_service.create_extension_link_code(
+                        session, user.id
                     )
                     await session.commit()
                     return RedirectResponse(
@@ -161,23 +162,24 @@ async def get_or_create_dev_user(session: AsyncSession) -> User:
     return user
 
 
-async def dev_login(session: AsyncSession) -> tuple[DevLoginResponse, str]:
+async def dev_login(session: AsyncSession) -> tuple[DevLoginResponse, str, str]:
+    """반환: (응답 바디, refresh 쿠키용 평문, access 쿠키용 JWT).
+    access token은 바디에 안 담기 때문에 라우터가 쿠키로 세팅할 수 있게 별도로 반환한다."""
     user = await get_or_create_dev_user(session)
     refresh = await token_service.issue_refresh_token(session, user.id)
     await session.commit()
     access = create_access_token(user.id)
     return (
-        DevLoginResponse(
-            access_token=access,
-            user=UserResponse.model_validate(user),
-        ),
+        DevLoginResponse(user=UserResponse.model_validate(user)),
         refresh,
+        access,
     )
 
 
 async def refresh_session(
     session: AsyncSession, refresh_token: str
-) -> tuple[RefreshResponse, str]:
+) -> tuple[RefreshResponse, str, str]:
+    """반환: (응답 바디, refresh 쿠키용 평문, access 쿠키용 JWT)."""
     if not refresh_token:
         raise HTTPException(status_code=401, detail="refresh token이 없습니다")
 
@@ -188,10 +190,11 @@ async def refresh_session(
     new_refresh = await token_service.issue_refresh_token(session, user.id)
     await session.commit()
     access = create_access_token(user.id)
-    return RefreshResponse(
-        access_token=access,
-        user=UserResponse.model_validate(user),
-    ), new_refresh
+    return (
+        RefreshResponse(user=UserResponse.model_validate(user)),
+        new_refresh,
+        access,
+    )
 
 
 async def logout(session: AsyncSession, refresh_token: str | None) -> None:
@@ -201,8 +204,6 @@ async def logout(session: AsyncSession, refresh_token: str | None) -> None:
         await token_service.revoke_refresh_token(session, refresh_token)
 
     if user is not None:
-        await extension_auth_service.revoke_extension_refresh_for_user(
-            session, user.id
-        )
+        await extension_auth_service.revoke_extension_refresh_for_user(session, user.id)
 
     await session.commit()

@@ -8,7 +8,6 @@ export const ROUTES = {
   home: "/",
   login: "/login",
   upload: "/upload",
-  setup: "/setup",
   myAnalyses: "/me/analyses",
   analysisDetail: (id: string) => `/me/analyses/${id}`,
   analysisCompare: (fromId: string, toId: string) =>

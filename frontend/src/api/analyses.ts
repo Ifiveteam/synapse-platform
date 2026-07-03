@@ -17,6 +17,7 @@ interface AnalysisListItemDto {
   status: AnalysisStatus;
   stage?: AnalysisStage | null;
   kind: "snapshot" | "job";
+  batch_id?: string | null;
 }
 
 interface AnalysisListResponseDto {
@@ -33,6 +34,7 @@ function mapListItem(dto: AnalysisListItemDto): AnalysisResultItem {
     status: dto.status,
     stage: dto.stage ?? null,
     kind: dto.kind,
+    batchId: dto.batch_id ?? null,
   };
 }
 
@@ -45,6 +47,23 @@ export async function fetchMyAnalysisSnapshot(
   snapshotId: string,
 ): Promise<DbProfileResponse> {
   return apiFetchAuth<DbProfileResponse>(`${PREFIX}/me/analyses/${snapshotId}`);
+}
+
+export interface PortraitAxis {
+  axis: string;
+  value: number;
+}
+export interface PortraitStyle {
+  label: string;
+  value: number;
+}
+export interface Portrait {
+  persona_label: string;
+  keywords: string[];
+  interest: PortraitAxis[];
+  disposition: PortraitAxis[];
+  style: PortraitStyle[];
+  reasoning: string;
 }
 
 export async function fetchAnalysisCompare(

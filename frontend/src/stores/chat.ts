@@ -11,16 +11,24 @@ export interface RankItem {
   count: number;
 }
 
+export interface RadarItem {
+  axis: string;
+  current: number;
+  ideal: number | null;
+}
+
 export type ChartEntry =
   | { type: "video_list"; title: string; items: VideoItem[] }
   | { type: "shorts_list"; title: string; items: VideoItem[] }
   | { type: "channel_rank"; title: string; items: RankItem[] }
-  | { type: "category_bar"; title: string; items: RankItem[] };
+  | { type: "category_bar"; title: string; items: RankItem[] }
+  | { type: "persona_radar"; title: string; items: RadarItem[] };
 
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  imageUrl?: string;
   status?: string;
   streaming?: boolean;
   createdAt?: number;
@@ -35,7 +43,7 @@ interface ChatState {
   // 현재 세션 메시지 (sessions[sessionId])
   messages: ChatMessage[];
 
-  addUserMessage: (content: string) => string;
+  addUserMessage: (content: string, imageUrl?: string) => string;
   startAssistantMessage: () => string;
   appendToken: (id: string, token: string) => void;
   setStatus: (id: string, status: string) => void;
@@ -67,10 +75,10 @@ export const useChatStore = create<ChatState>()(
       isStreaming: false,
       messages: [],
 
-      addUserMessage: (content) => {
+      addUserMessage: (content, imageUrl) => {
         const id = randomId();
         set((s) => {
-          const updated = [...s.messages, { id, role: "user" as const, content, createdAt: Date.now() }];
+          const updated = [...s.messages, { id, role: "user" as const, content, imageUrl, createdAt: Date.now() }];
           return withSessions(s, updated);
         });
         return id;

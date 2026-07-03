@@ -47,7 +47,9 @@ def build_router_prompt(
     """수집 계획용 시스템 프롬프트. 사용자 질문은 invoke user_content로만 전달한다."""
     dialogue_block = ""
     if recent_dialogue:
-        dialogue_block = _ROUTER_DIALOGUE_BLOCK.format(recent_dialogue=recent_dialogue.strip())
+        dialogue_block = _ROUTER_DIALOGUE_BLOCK.format(
+            recent_dialogue=recent_dialogue.strip()
+        )
 
     return ROUTER_SYSTEM_TEMPLATE.format(
         dialogue_block=dialogue_block,

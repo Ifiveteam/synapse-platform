@@ -62,7 +62,10 @@ async def curate(state: PlaylistState) -> dict[str, Any]:
 
     res = await invoke_structured_safe(
         system_instruction=build_curate_prompt(
-            persona_label=persona_label, reasoning=reasoning, candidates=pool
+            persona_label=persona_label,
+            reasoning=reasoning,
+            candidates=pool,
+            raise_domains=state.get("raise_domains"),
         ),
         user_content="재생목록을 구성하세요.",
         schema=PlaylistCuration,

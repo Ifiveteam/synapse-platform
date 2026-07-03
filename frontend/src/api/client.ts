@@ -1,3 +1,4 @@
+import { refreshSession } from "@/api/auth";
 import { API_BASE_URL } from "@/lib/env";
 import { useAuthStore } from "@/stores/auth";
 
@@ -49,18 +50,30 @@ export async function apiFetch<T>(
   return response.json() as Promise<T>;
 }
 
-/** 인증 토큰 + refresh 쿠키를 포함한 API 호출 */
+/**
+ * 인증이 필요한 API 호출. 액세스 토큰은 HttpOnly 쿠키로 브라우저가 자동 첨부하므로
+ * 여기서 직접 헤더를 붙이지 않는다 (credentials:'include'만 있으면 됨).
+ * 401(액세스 토큰 만료)이 나면 refresh 쿠키로 재발급 시도 후 원요청을 1회만 재시도한다
+ * (재발급도 실패하면 완전히 로그아웃 처리 — 무한 재시도 방지).
+ */
 export async function apiFetchAuth<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const token = useAuthStore.getState().token;
-  return apiFetch<T>(path, {
-    ...init,
-    credentials: "include",
-    headers: {
-      ...init?.headers,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
+  try {
+    return await apiFetch<T>(path, { ...init, credentials: "include" });
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.status !== 401) {
+      throw err;
+    }
+
+    const session = await refreshSession();
+    if (!session) {
+      useAuthStore.getState().logout();
+      throw err;
+    }
+
+    useAuthStore.getState().setUser(session.user);
+    return apiFetch<T>(path, { ...init, credentials: "include" });
+  }
 }

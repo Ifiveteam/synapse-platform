@@ -13,18 +13,18 @@ from pydantic import BaseModel, Field
 
 
 class CuratorRoute(StrEnum):
-    MY_DATA = "MY_DATA"    # 내 프로필·시청기록 기반
-    GENERAL = "GENERAL"   # 일반 YouTube/콘텐츠 질문
+    MY_DATA = "MY_DATA"  # 내 프로필·시청기록 기반
+    GENERAL = "GENERAL"  # 일반 YouTube/콘텐츠 질문
 
 
 class DataSource(StrEnum):
-    PROFILE = "profile"               # 페르소나·성향 요약
-    STATS = "stats"                   # 총 시청 수·카테고리 통계
-    CHANNELS = "channels"             # 자주 본 채널 TOP 5
-    RECENT = "recent"                 # 최근 시청 영상 (쇼츠 제외)
-    SHORTS = "shorts"                 # 최근 본 쇼츠 영상
-    VECTOR_CATALOG = "vector_catalog" # 질문 관련 영상 (벡터 검색)
-    VECTOR_ANALYSIS = "vector_analysis" # 질문 관련 영상 분석 (벡터 검색)
+    PROFILE = "profile"  # 페르소나·성향 요약
+    STATS = "stats"  # 총 시청 수·카테고리 통계
+    CHANNELS = "channels"  # 자주 본 채널 TOP 5
+    RECENT = "recent"  # 최근 시청 영상 (쇼츠 제외)
+    SHORTS = "shorts"  # 최근 본 쇼츠 영상
+    VECTOR_CATALOG = "vector_catalog"  # 질문 관련 영상 (벡터 검색)
+    VECTOR_ANALYSIS = "vector_analysis"  # 질문 관련 영상 분석 (벡터 검색)
 
 
 class RouteDecision(BaseModel):

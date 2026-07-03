@@ -9,7 +9,6 @@ import { ROUTES } from "@/routes";
 export function PaymentSuccessPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const token = useAuthStore((s) => s.token);
   const setUser = useAuthStore((s) => s.setUser);
   const user = useAuthStore((s) => s.user);
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
@@ -23,12 +22,12 @@ export function PaymentSuccessPage() {
     const orderId = searchParams.get("orderId");
     const amount = Number(searchParams.get("amount"));
 
-    if (!paymentKey || !orderId || !amount || !token) {
+    if (!paymentKey || !orderId || !amount || !user) {
       setStatus("error");
       return;
     }
 
-    confirmPayment(token, { paymentKey, orderId, amount })
+    confirmPayment({ paymentKey, orderId, amount })
       .then((updated) => {
         if (updated && user) {
           setUser({ ...user, plan: updated.plan });
@@ -41,7 +40,7 @@ export function PaymentSuccessPage() {
         }
       })
       .catch(() => setStatus("error"));
-  }, [searchParams, token, user, setUser, navigate]);
+  }, [searchParams, user, setUser, navigate]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4">

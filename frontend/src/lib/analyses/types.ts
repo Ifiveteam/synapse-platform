@@ -12,6 +12,8 @@ export interface AnalysisResultItem {
   status: AnalysisStatus;
   stage: AnalysisStage | null;
   kind: "snapshot" | "job";
+  /** 진행 중(job) 항목이 속한 배치 — 배치별 그룹핑에 사용 */
+  batchId: string | null;
 }
 
 export const ANALYSIS_PAGE_SIZE = 5;

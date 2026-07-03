@@ -191,8 +191,6 @@ async def refresh_extension_session(
     return build_extension_session_response(user, access, new_refresh)
 
 
-async def revoke_extension_session(
-    session: AsyncSession, refresh_token: str
-) -> None:
+async def revoke_extension_session(session: AsyncSession, refresh_token: str) -> None:
     await revoke_extension_refresh_token(session, refresh_token)
     await session.commit()

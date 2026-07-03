@@ -4,6 +4,7 @@ import type {
   AxisScores13,
   ChatStreamHandlers,
   ComparisonResponse,
+  CompleteEvent,
   GuideResponse,
   IdealEvent,
   IdealResponse,
@@ -14,7 +15,6 @@ import type {
   ProposalsResponse,
 } from "@/api/types/navigator";
 import { API_BASE_URL } from "@/lib/env";
-import { useAuthStore } from "@/stores/auth";
 
 // ── REST ─────────────────────────────────────────────────────────
 const P = "/api/v1/navigator";
@@ -32,6 +32,8 @@ export const createIdeal = (body: {
   ideal_type: IdealType;
   scores: AxisScores8;
   values_temperament?: AxisScores13;
+  target_disposition?: Record<string, number>;
+  target_interest?: Record<string, number>;
   persona_label?: string;
   reasoning: string;
   source_profile_history_id?: string;
@@ -118,7 +120,6 @@ export async function streamPlaylistChat(
   handlers: PlaylistChatHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
-  const token = useAuthStore.getState().token;
   const res = await fetch(`${API_BASE_URL}${P}/playlists/${playlistId}/chat`, {
     method: "POST",
     credentials: "include",
@@ -126,7 +127,6 @@ export async function streamPlaylistChat(
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ message }),
   });
@@ -176,12 +176,14 @@ export async function streamChat(
     message: string;
     session_id?: string | null;
     working_values?: AxisScores13 | null;
+    working_disposition?: Record<string, number> | null;
+    working_interest?: Record<string, number> | null;
     ideal_type?: IdealType | null;
+    force_finalize?: boolean;
   },
   handlers: ChatStreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
-  const token = useAuthStore.getState().token;
   const res = await fetch(`${API_BASE_URL}${P}/chat/stream`, {
     method: "POST",
     credentials: "include",
@@ -189,7 +191,6 @@ export async function streamChat(
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
   });
@@ -225,6 +226,12 @@ export async function streamChat(
         else if (event === "ideal") {
           try {
             handlers.onIdeal?.(JSON.parse(content) as IdealEvent);
+          } catch {
+            /* ignore */
+          }
+        } else if (event === "complete") {
+          try {
+            handlers.onComplete?.(JSON.parse(content) as CompleteEvent);
           } catch {
             /* ignore */
           }

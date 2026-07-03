@@ -23,12 +23,28 @@ class ProfilerAgent:
     """Profiler 능력(프로파일·비교·영상요약)을 묶어 노출하는 파사드."""
 
     async def run_profile(
-        self, user_id: str, email: str, *, analysis_limit: int | None = None
+        self,
+        user_id: str,
+        email: str,
+        *,
+        analysis_limit: int | None = None,
+        analysis_source_ids: list[str] | None = None,
+        batch_id: str | None = None,
     ) -> dict:
-        """catalog → video_summary → 행동 프로파일 생성·DB 저장."""
+        """catalog → video_summary → 행동 프로파일 생성·DB 저장.
+
+        analysis_source_ids가 주어지면 그 배치 소스들의 영상만으로 스코프해 분석한다.
+        batch_id는 스냅샷에 박제된다.
+        """
         from app.agents.profiler.graph import run_profiler_async
 
-        return await run_profiler_async(user_id, email, analysis_limit=analysis_limit)
+        return await run_profiler_async(
+            user_id,
+            email,
+            analysis_limit=analysis_limit,
+            analysis_source_ids=analysis_source_ids,
+            batch_id=batch_id,
+        )
 
     async def compare(
         self, user_id: str, from_snapshot_id: str, to_snapshot_id: str

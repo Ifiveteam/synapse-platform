@@ -7,6 +7,7 @@ import { connectDriveFolder } from "@/lib/google-picker";
 import {
   getDriveConnection,
   listDriveFiles,
+  sealBatch,
   triggerDriveFile,
   type DriveConnection,
   type DriveFile,
@@ -20,11 +21,6 @@ type Tab = "upload" | "drive";
 
 /** 업로드 POST 진행 중(서버 소스 생성 전) 임시 표시 항목. */
 type UploadingFile = { id: string; fileName: string };
-
-function authHeaders(): HeadersInit {
-  const token = useAuthStore.getState().token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -96,15 +92,17 @@ function DirectUploadTab({
   }, []);
 
   // 파일 1건 업로드 (진행 중 임시 표시). 결과 상태 문자열 반환.
-  const uploadOne = useCallback(async (file: File): Promise<string | null> => {
+  const uploadOne = useCallback(
+    async (file: File, batchId: string): Promise<string | null> => {
     const id = crypto.randomUUID();
     setUploadingFiles((prev) => [...prev, { id, fileName: file.name }]);
     const form = new FormData();
     form.append("file", file);
+    form.append("batch_id", batchId);
     try {
       const res = await fetch(`${API}/indexer/analyze`, {
         method: "POST",
-        headers: authHeaders(),
+        credentials: "include",
         body: form,
       });
       if (!res.ok) {
@@ -138,7 +136,14 @@ function DirectUploadTab({
     const files = selectedFiles;
     setSelectedFiles([]);
     setSelectError("");
-    const results = await Promise.all(files.map((f) => uploadOne(f)));
+    // 이 클릭 = 한 배치. 업로드 응답을 다 받은 뒤 seal("다 보냄")로 배치를 닫는다.
+    const batchId = crypto.randomUUID();
+    const results = await Promise.all(files.map((f) => uploadOne(f, batchId)));
+    try {
+      await sealBatch(batchId);
+    } catch {
+      // seal 실패 시 서버 자동-seal 안전망이 배치를 마무리한다
+    }
     const started = results.filter((r) => r === "started").length;
     if (started > 0) {
       toast.success(`${started}개 파일 업로드 완료 — 분석을 시작했어요`);
@@ -457,7 +462,7 @@ function DriveTab({
   resetKey: number;
   showGuideHint: boolean;
 }) {
-  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
   const [conn, setConn] = useState<DriveConnection | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [message, setMessage] = useState("");
@@ -467,11 +472,11 @@ function DriveTab({
   const [batchRunning, setBatchRunning] = useState(false);
 
   useEffect(() => {
-    if (!token) return;
+    if (!user) return;
     getDriveConnection()
       .then(setConn)
       .catch(() => setConn({ connected: false, folder_name: null }));
-  }, [token]);
+  }, [user]);
 
   const connected = Boolean(conn?.connected);
 
@@ -496,11 +501,11 @@ function DriveTab({
 
   // 연동됐으면 폴더 파일 목록 로드 + 상태 갱신 폴링 (대기중→분류중→분석됨 반영)
   useEffect(() => {
-    if (!token || !connected) return;
+    if (!user || !connected) return;
     void refreshFiles();
     const timer = setInterval(() => void refreshFiles(), 5000);
     return () => clearInterval(timer);
-  }, [token, connected, refreshFiles]);
+  }, [user, connected, refreshFiles]);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -517,9 +522,16 @@ function DriveTab({
       if (ids.length === 0 || batchRunning) return;
       setBatchRunning(true);
       try {
+        // 이 클릭 = 한 배치. 트리거를 모두 보낸 뒤 seal로 닫는다.
+        const batchId = crypto.randomUUID();
         const results = await Promise.all(
-          ids.map((id) => triggerDriveFile(id).catch(() => null)),
+          ids.map((id) => triggerDriveFile(id, batchId).catch(() => null)),
         );
+        try {
+          await sealBatch(batchId);
+        } catch {
+          // seal 실패 시 서버 자동-seal 안전망이 처리
+        }
         const started = results.filter((r) => r?.status === "started").length;
         if (started > 0) {
           toast.success(`${started}개 파일 분석을 시작했어요`);
@@ -550,7 +562,7 @@ function DriveTab({
     }
   }, []);
 
-  if (!token) {
+  if (!user) {
     return (
       <div className="flex flex-col items-center gap-4 py-14 text-center">
         <p className="text-sm text-gray-500">Google 계정 연동이 필요합니다</p>

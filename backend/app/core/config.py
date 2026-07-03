@@ -41,6 +41,19 @@ class Settings:
     def debug(self) -> bool:
         return os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")
 
+    @property
+    def profiler_batch_scope_enabled(self) -> bool:
+        """배치 스코프 분석 on/off (킬스위치).
+
+        false면 배치 오케스트레이션은 유지하되 프로파일은 통합본(최근 2달 전체)으로
+        산출한다 → 문제 시 기존 동작으로 즉시 롤백.
+        """
+        return os.getenv("PROFILER_BATCH_SCOPE_ENABLED", "true").lower() not in (
+            "false",
+            "0",
+            "no",
+        )
+
 
 @lru_cache
 def get_settings() -> Settings:
