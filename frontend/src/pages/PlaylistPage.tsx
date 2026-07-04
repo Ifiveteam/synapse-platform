@@ -36,9 +36,28 @@ import type {
   PlaylistSummary,
 } from "@/api/types/navigator";
 import { IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
+import { cn } from "@/lib/utils";
 import { ROUTES } from "@/routes";
 
 type Row = PlaylistSummary & { idealId: string; idealLabel: string };
+
+/** 재생목록 갱신 주기 (UI 선택값 — 백엔드 연동은 추후) */
+const PERIOD_OPTIONS = [
+  { value: "daily", label: "매일" },
+  { value: "weekly", label: "매주" },
+  { value: "monthly", label: "매월" },
+] as const;
+type PeriodValue = (typeof PERIOD_OPTIONS)[number]["value"];
+
+/** 토글(세그먼트) 버튼 공통 스타일 */
+function pillClass(active: boolean) {
+  return cn(
+    "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
+    active
+      ? "border-primary bg-primary/10 text-primary"
+      : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground",
+  );
+}
 
 export function PlaylistPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -51,6 +70,9 @@ export function PlaylistPage() {
   const [sortDesc, setSortDesc] = useState(true);
   const [creating, setCreating] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  // 새 재생목록 팝업 선택값 (토글)
+  const [pickIdealId, setPickIdealId] = useState<string | null>(null);
+  const [pickPeriod, setPickPeriod] = useState<PeriodValue>("weekly");
 
   // 상세
   const [selected, setSelected] = useState<PlaylistResponse | null>(null);
@@ -206,9 +228,16 @@ export function PlaylistPage() {
   };
 
   const handleNewClick = () => {
-    // 특정 이상향이 필터에 선택돼 있으면 바로, "모든 이상향"이면 항상 고르게
-    if (filterIdeal !== "all") return void createFor(filterIdeal);
+    // 필터에 특정 이상향이 잡혀있으면 그걸 기본 선택, "모든 이상향"이면 미선택으로 시작
+    setPickIdealId(filterIdeal !== "all" ? filterIdeal : null);
+    setPickPeriod("weekly");
     setShowPicker((v) => !v);
+  };
+
+  const handleCreateFromPicker = () => {
+    if (!pickIdealId) return;
+    // 주기(pickPeriod)는 현재 UI 선택값 — 백엔드 연동은 추후.
+    void createFor(pickIdealId);
   };
 
   const handleRefreshItem = async (videoId: string) => {
@@ -609,9 +638,9 @@ export function PlaylistPage() {
             className="absolute inset-0 bg-black/40"
             onClick={() => setShowPicker(false)}
           />
-          <div className="border-border bg-card relative z-10 w-full max-w-sm rounded-2xl border p-5 shadow-xl">
-            <div className="mb-1 flex items-center justify-between">
-              <h3 className="text-base font-semibold">이상향 선택</h3>
+          <div className="border-border bg-card relative z-10 w-full max-w-md rounded-2xl border p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-base font-semibold">새 재생목록</h3>
               <button
                 type="button"
                 onClick={() => setShowPicker(false)}
@@ -621,35 +650,59 @@ export function PlaylistPage() {
                 <X size={18} />
               </button>
             </div>
-            <p className="text-muted-foreground mb-4 text-sm">
-              어느 이상향으로 재생목록을 만들까요?
-            </p>
+
             {ideals.length === 0 ? (
               <p className="text-muted-foreground text-sm">
                 이상향이 없어요. 먼저 이상향을 만들어 주세요.
               </p>
             ) : (
-              <ul className="flex flex-col gap-2">
-                {ideals.map((i) => (
-                  <li key={i.id}>
-                    <button
-                      type="button"
-                      onClick={() => void createFor(i.id)}
-                      className="border-border hover:border-primary/40 hover:bg-secondary flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors"
-                    >
-                      <Target size={18} className="text-muted-foreground shrink-0" />
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium">
-                          {idealLabel(i)}
-                        </span>
-                        <span className="text-muted-foreground block truncate text-xs">
-                          {i.reasoning || IDEAL_TYPE_LABEL[i.ideal_type]}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <div className="flex flex-col gap-5">
+                {/* 이상향 토글 */}
+                <div>
+                  <p className="mb-2 flex items-center gap-1.5 text-sm font-medium">
+                    <Target size={15} className="text-muted-foreground" />
+                    이상향
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {ideals.map((i) => (
+                      <button
+                        key={i.id}
+                        type="button"
+                        onClick={() => setPickIdealId(i.id)}
+                        className={pillClass(pickIdealId === i.id)}
+                      >
+                        {idealLabel(i)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 주기 토글 */}
+                <div>
+                  <p className="mb-2 text-sm font-medium">주기</p>
+                  <div className="flex flex-wrap gap-2">
+                    {PERIOD_OPTIONS.map((o) => (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => setPickPeriod(o.value)}
+                        className={pillClass(pickPeriod === o.value)}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleCreateFromPicker}
+                  disabled={!pickIdealId || creating}
+                  className="mt-1 gap-1.5"
+                >
+                  <Plus size={15} className={creating ? "animate-spin" : ""} />
+                  {creating ? "생성 중…" : "만들기"}
+                </Button>
+              </div>
             )}
           </div>
         </div>

@@ -14,16 +14,15 @@ import { useSidebarStore } from "@/stores/sidebar";
 function IdealCard({
   item,
   onApply,
+  embedded = false,
 }: {
   item: IdealResponse;
   onApply: (id: string) => void;
+  embedded?: boolean;
 }) {
   const navigate = useNavigate();
-  return (
-    <Link
-      to={ROUTES.idealDetail(item.id)}
-      className="bg-card text-card-foreground border-border hover:border-primary/40 flex items-start gap-4 rounded-2xl border px-4 py-4 shadow-sm transition-colors"
-    >
+  const inner = (
+    <>
       <div className="bg-accent text-accent-foreground flex h-12 w-12 shrink-0 items-center justify-center rounded-xl">
         <Target size={22} />
       </div>
@@ -75,6 +74,20 @@ function IdealCard({
           </div>
         </div>
       </div>
+    </>
+  );
+
+  const className =
+    "bg-card text-card-foreground border-border hover:border-primary/40 flex items-start gap-4 rounded-2xl border px-4 py-4 shadow-sm transition-colors";
+
+  // 허브(embedded)에선 개별 링크 대신 박스 전체 클릭(→ 이상향 관리)에 맡긴다.
+  if (embedded) {
+    return <div className={className}>{inner}</div>;
+  }
+
+  return (
+    <Link to={ROUTES.idealDetail(item.id)} className={className}>
+      {inner}
     </Link>
   );
 }
@@ -85,12 +98,14 @@ function IdealList({
   error,
   onApply,
   activeOnly = false,
+  embedded = false,
 }: {
   ideals: IdealResponse[];
   loading: boolean;
   error: string | null;
   onApply: (id: string) => void;
   activeOnly?: boolean;
+  embedded?: boolean;
 }) {
   if (loading) {
     return <p className="text-muted-foreground text-sm">불러오는 중…</p>;
@@ -102,19 +117,17 @@ function IdealList({
   if (activeOnly) {
     const active = ideals.find((item) => item.is_active);
     if (!active) {
+      // 허브(embedded)에선 박스 전체 클릭(→ 이상향 관리)에 맡긴다.
       return (
-        <Link
-          to={ROUTES.idealSetup}
-          className="border-border text-muted-foreground hover:border-primary/40 hover:text-foreground flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed transition-colors"
-        >
+        <div className="border-border text-muted-foreground flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed">
           <Plus size={20} />
           <span className="text-sm font-medium">적용 중인 이상향이 없습니다</span>
-        </Link>
+        </div>
       );
     }
     return (
       <div className="flex flex-col gap-4">
-        <IdealCard item={active} onApply={onApply} />
+        <IdealCard item={active} onApply={onApply} embedded={embedded} />
       </div>
     );
   }
@@ -202,24 +215,16 @@ export function IdealManagementPage({
           ) : (
             <h1 className="text-2xl font-semibold tracking-tight">이상향 관리</h1>
           )}
-          {embedded && (
-            <Link
-              to={ROUTES.idealManagement}
-              className="text-muted-foreground hover:text-foreground text-xs underline-offset-2 hover:underline"
-            >
-              전체 보기
-            </Link>
-          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button size="sm" variant="outline" className="gap-1.5" asChild>
-            <Link to={ROUTES.playlists}>
+            <Link to={ROUTES.playlists} onClick={(e) => e.stopPropagation()}>
               <ListVideo size={16} />
               재생목록
             </Link>
           </Button>
           <Button size="sm" className="gap-1.5" asChild>
-            <Link to={ROUTES.idealSetup}>
+            <Link to={ROUTES.idealSetup} onClick={(e) => e.stopPropagation()}>
               <Plus size={16} />
               새로 추가
             </Link>
@@ -233,6 +238,7 @@ export function IdealManagementPage({
         error={error}
         onApply={handleApply}
         activeOnly={activeOnly}
+        embedded={embedded}
       />
     </div>
   );

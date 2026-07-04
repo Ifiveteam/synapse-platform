@@ -27,6 +27,25 @@ const COLORS = [
   "#14b8a6",
 ];
 
+export interface InterestLegendItem {
+  axis: string;
+  value: number;
+  pct: number;
+  color: string;
+}
+
+/** 도넛과 동일한 필터·색상 순서로 범례 항목을 만든다 (별도 박스 렌더용). */
+export function buildInterestLegend(data: InterestDatum[]): InterestLegendItem[] {
+  const chartData = data.filter((d) => d.value > 0);
+  const total = chartData.reduce((s, d) => s + d.value, 0);
+  return chartData.map((d, i) => ({
+    axis: d.axis,
+    value: d.value,
+    pct: total > 0 ? Math.round((d.value / total) * 100) : 0,
+    color: COLORS[i % COLORS.length],
+  }));
+}
+
 function PieTooltip({
   active,
   payload,
@@ -49,13 +68,20 @@ function PieTooltip({
   );
 }
 
-/** 관심사 도메인 비율을 도넛(원) 그래프로 표시. size 지정 시 고정 높이(컴팩트). */
+/** 관심사 도메인 비율을 도넛(원) 그래프로 표시. size 지정 시 고정 높이(컴팩트).
+ *  innerRadius/outerRadius로 도넛 크기(=여백)를 조절할 수 있다. */
 export function InterestPie({
   data,
   size,
+  showLegend = true,
+  innerRadius = "45%",
+  outerRadius = "72%",
 }: {
   data: InterestDatum[];
   size?: number;
+  showLegend?: boolean;
+  innerRadius?: string | number;
+  outerRadius?: string | number;
 }) {
   const chartData = data.filter((d) => d.value > 0);
   const total = chartData.reduce((s, d) => s + d.value, 0);
@@ -87,8 +113,8 @@ export function InterestPie({
             nameKey="axis"
             cx="50%"
             cy="50%"
-            innerRadius="45%"
-            outerRadius="72%"
+            innerRadius={innerRadius}
+            outerRadius={outerRadius}
             paddingAngle={2}
             stroke="none"
           >
@@ -97,12 +123,14 @@ export function InterestPie({
             ))}
           </Pie>
           <Tooltip content={<PieTooltip total={total} />} />
-          <Legend
-            verticalAlign="bottom"
-            iconType="circle"
-            iconSize={8}
-            wrapperStyle={{ fontSize: 11 }}
-          />
+          {showLegend && (
+            <Legend
+              verticalAlign="bottom"
+              iconType="circle"
+              iconSize={8}
+              wrapperStyle={{ fontSize: 11 }}
+            />
+          )}
         </PieChart>
       </ResponsiveContainer>
     </div>

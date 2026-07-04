@@ -8,6 +8,7 @@ import {
   CircleDot,
   Loader2,
   Plus,
+  X,
 } from "lucide-react";
 
 import { fetchMyAnalyses } from "@/api/analyses";
@@ -25,41 +26,17 @@ import { ROUTES } from "@/routes";
 
 type FilterTab = "all" | "completed" | "pending";
 
-interface AnalysisListItemProps {
-  item: AnalysisResultItem;
-  compareMode: boolean;
-  selected: boolean;
-  selectionDisabled: boolean;
-  onToggleSelect: (id: string) => void;
-}
-
 function AnalysisListItem({
   item,
-  compareMode,
-  selected,
-  selectionDisabled,
-  onToggleSelect,
-}: AnalysisListItemProps) {
+  embedded = false,
+}: {
+  item: AnalysisResultItem;
+  embedded?: boolean;
+}) {
   const pending = isAnalysisPending(item.status);
-  const selectable = compareMode && !pending;
 
   const content = (
     <>
-      {compareMode && (
-        <div
-          className={cn(
-            "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
-            selected
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-muted-foreground/40 bg-background",
-            !selectable && "opacity-0",
-          )}
-          aria-hidden={!selectable}
-        >
-          {selected ? <Check size={14} strokeWidth={3} /> : null}
-        </div>
-      )}
-
       <div className="bg-accent text-accent-foreground flex h-11 w-11 shrink-0 items-center justify-center rounded-full">
         <CircleDot size={20} />
       </div>
@@ -79,7 +56,7 @@ function AnalysisListItem({
           : "완료"}
       </Badge>
 
-      {!compareMode && !pending && (
+      {!pending && (
         <ChevronRight size={18} className="text-muted-foreground shrink-0" />
       )}
     </>
@@ -93,21 +70,12 @@ function AnalysisListItem({
     );
   }
 
-  if (compareMode) {
+  // 허브(embedded)에선 개별 링크 대신 박스 전체 클릭(→ 전체 목록)에 맡긴다.
+  if (embedded) {
     return (
-      <button
-        type="button"
-        disabled={selectionDisabled}
-        onClick={() => onToggleSelect(item.id)}
-        className={cn(
-          "border-border flex w-full items-center gap-4 rounded-2xl border bg-card px-4 py-4 text-left transition-colors",
-          selected && "border-primary ring-primary/20 ring-2",
-          !selectionDisabled && "hover:bg-secondary/60",
-          selectionDisabled && !selected && "cursor-not-allowed opacity-50",
-        )}
-      >
+      <div className="border-border flex items-center gap-4 rounded-2xl border bg-card px-4 py-4">
         {content}
-      </button>
+      </div>
     );
   }
 
@@ -164,6 +132,94 @@ function InProgressGroup({ items }: { items: AnalysisResultItem[] }) {
   );
 }
 
+/** 비교할 완료 분석 2개를 고르는 팝업. 같은 항목 중복 선택 불가, 정확히 2개만. */
+function CompareModal({
+  items,
+  selectedIds,
+  onToggle,
+  onClose,
+  onConfirm,
+}: {
+  items: AnalysisResultItem[];
+  selectedIds: string[];
+  onToggle: (id: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="border-border bg-card relative z-10 flex max-h-[80vh] w-full max-w-md flex-col rounded-2xl border p-5 shadow-xl">
+        <div className="mb-1 flex items-center justify-between">
+          <h3 className="text-base font-semibold">비교분석</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground"
+            aria-label="닫기"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <p className="text-muted-foreground mb-4 text-sm">
+          비교할 완료 분석 2개를 선택하세요. ({selectedIds.length}/2)
+        </p>
+
+        <ul className="-mx-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1">
+          {items.map((item) => {
+            const selected = selectedIds.includes(item.id);
+            const disabled = !selected && selectedIds.length >= 2;
+            return (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onToggle(item.id)}
+                  className={cn(
+                    "border-border flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors",
+                    selected && "border-primary ring-primary/20 ring-2",
+                    !disabled && "hover:bg-secondary/60",
+                    disabled && "cursor-not-allowed opacity-50",
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
+                      selected
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-muted-foreground/40 bg-background",
+                    )}
+                  >
+                    {selected && <Check size={14} strokeWidth={3} />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{item.title}</p>
+                    <p className="text-muted-foreground mt-0.5 text-xs">
+                      {item.date}
+                    </p>
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+
+        <Button
+          onClick={onConfirm}
+          disabled={selectedIds.length !== 2}
+          className="mt-4 shrink-0"
+        >
+          비교 보기
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function MyAnalysesPage({
   embedded = false,
   latestOnly = false,
@@ -174,7 +230,7 @@ export function MyAnalysesPage({
   const [items, setItems] = useState<AnalysisResultItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [compareMode, setCompareMode] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const completedItems = useMemo(
@@ -226,7 +282,7 @@ export function MyAnalysesPage({
     [items],
   );
   const showJobGroup =
-    !compareMode && !latestOnly && jobItems.length > 0 && filter !== "completed";
+    !latestOnly && jobItems.length > 0 && filter !== "completed";
 
   const filteredSnapshots = useMemo(
     () => (filter === "pending" ? [] : snapshotItems),
@@ -250,17 +306,10 @@ export function MyAnalysesPage({
     setPage(1);
   };
 
-  const exitCompareMode = () => {
-    setCompareMode(false);
-    setSelectedIds([]);
-  };
-
-  const enterCompareMode = () => {
+  const openCompare = () => {
     if (!canCompare) return;
-    setCompareMode(true);
     setSelectedIds([]);
-    setFilter("completed");
-    setPage(1);
+    setShowCompare(true);
   };
 
   const toggleSelect = (id: string) => {
@@ -290,6 +339,7 @@ export function MyAnalysesPage({
       return ta - tb;
     });
 
+    setShowCompare(false);
     navigate(ROUTES.analysisCompare(sorted[0].id, sorted[1].id));
   };
 
@@ -312,22 +362,12 @@ export function MyAnalysesPage({
                 개인성향 분석 목록
               </h1>
             )}
-            <span className="text-muted-foreground text-sm">최신순 정렬</span>
-            {embedded && (
-              <Link
-                to={ROUTES.myAnalyses}
-                className="text-muted-foreground hover:text-foreground text-xs underline-offset-2 hover:underline"
-              >
-                전체 보기
-              </Link>
+            {!embedded && (
+              <span className="text-muted-foreground text-sm">최신순 정렬</span>
             )}
           </div>
 
-          {latestOnly ? null : compareMode ? (
-            <p className="text-primary mt-3 text-sm font-medium">
-              비교할 완료된 분석 2개를 선택하세요.
-            </p>
-          ) : (
+          {!latestOnly && (
             <Tabs
               value={filter}
               onValueChange={handleFilterChange}
@@ -349,37 +389,30 @@ export function MyAnalysesPage({
         </div>
 
         <div className="flex shrink-0 flex-col items-stretch gap-2">
-          {!compareMode && (
-            <Button size="sm" className="gap-1.5" asChild>
-              <Link to={ROUTES.upload}>
-                <Plus size={16} />
-                새로 추가
-              </Link>
+          <Button size="sm" className="gap-1.5" asChild>
+            <Link to={ROUTES.upload} onClick={(e) => e.stopPropagation()}>
+              <Plus size={16} />
+              새로 추가
+            </Link>
+          </Button>
+          {!latestOnly && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              disabled={!canCompare}
+              onClick={openCompare}
+              title={
+                canCompare
+                  ? undefined
+                  : "완료된 분석이 2개 이상이면 비교할 수 있습니다."
+              }
+            >
+              <ArrowLeftRight size={16} />
+              비교분석
             </Button>
           )}
-          {!latestOnly &&
-            (!compareMode ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="gap-1.5"
-                disabled={!canCompare}
-                onClick={enterCompareMode}
-                title={
-                  canCompare
-                    ? undefined
-                    : "완료된 분석이 2개 이상이면 비교할 수 있습니다."
-                }
-              >
-                <ArrowLeftRight size={16} />
-                비교분석
-              </Button>
-            ) : (
-              <Button type="button" size="sm" variant="ghost" onClick={exitCompareMode}>
-                취소
-              </Button>
-            ))}
         </div>
       </div>
 
@@ -406,48 +439,19 @@ export function MyAnalysesPage({
               />
             ))}
           {visibleSnapshots.map((item) => (
-            <AnalysisListItem
-              key={item.id}
-              item={item}
-              compareMode={compareMode}
-              selected={selectedIds.includes(item.id)}
-              selectionDisabled={
-                compareMode &&
-                selectedIds.length >= 2 &&
-                !selectedIds.includes(item.id)
-              }
-              onToggleSelect={toggleSelect}
-            />
+            <AnalysisListItem key={item.id} item={item} embedded={embedded} />
           ))}
           {!showJobGroup && visibleSnapshots.length === 0 && (
             <div className="border-border text-muted-foreground rounded-2xl border border-dashed px-6 py-16 text-center text-sm">
               {items.length === 0
                 ? "아직 분석 결과가 없습니다. 시청 기록을 업로드한 뒤 프로파일러가 완료되면 여기에 표시됩니다."
-                : compareMode
-                  ? "완료된 분석이 2개 이상 필요합니다."
-                  : "해당하는 분석 결과가 없습니다."}
+                : "해당하는 분석 결과가 없습니다."}
             </div>
           )}
         </div>
       )}
 
-      {compareMode && (
-        <div className="bg-background/95 border-border sticky bottom-0 mt-6 flex items-center justify-between gap-3 border-t py-4 backdrop-blur-sm">
-          <p className="text-muted-foreground text-sm">
-            {selectedIds.length}/2 선택
-          </p>
-          <Button
-            type="button"
-            size="sm"
-            disabled={selectedIds.length !== 2}
-            onClick={handleCompare}
-          >
-            비교 보기
-          </Button>
-        </div>
-      )}
-
-      {!loading && !error && !compareMode && !latestOnly && totalPages > 1 && (
+      {!loading && !error && !latestOnly && totalPages > 1 && (
         <div className="mt-8 flex items-center justify-center gap-2">
           <Button
             type="button"
@@ -484,6 +488,16 @@ export function MyAnalysesPage({
             <ChevronRight size={16} />
           </Button>
         </div>
+      )}
+
+      {showCompare && (
+        <CompareModal
+          items={completedItems}
+          selectedIds={selectedIds}
+          onToggle={toggleSelect}
+          onClose={() => setShowCompare(false)}
+          onConfirm={handleCompare}
+        />
       )}
     </div>
   );
