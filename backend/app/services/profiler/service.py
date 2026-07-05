@@ -204,6 +204,22 @@ class ProfilerService:
                 return None
             return await profile_dict_with_catalog(session, row)
 
+    async def delete_analysis_async(self, user_id: str, snapshot_id: str) -> bool:
+        from app.core.database.session import AsyncSessionLocal
+        from app.repositories.profiler_repository import (
+            delete_profile_snapshot,
+            fetch_profile_snapshot,
+        )
+
+        uid = uuid.UUID(user_id)
+        sid = uuid.UUID(snapshot_id)
+        async with AsyncSessionLocal() as session:
+            row = await fetch_profile_snapshot(session, uid, sid)
+            if row is None:
+                return False
+            await delete_profile_snapshot(session, row)
+            return True
+
     async def run_job_async(self, job_id: str) -> None:
         # 세마포어로 동시 실행 제한 — 슬롯 대기 동안 job은 PENDING 유지
         async with self._semaphore:

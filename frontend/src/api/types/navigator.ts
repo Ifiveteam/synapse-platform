@@ -27,8 +27,25 @@ export interface ProposalItem {
   persona_label: string;
   reasoning: string;
 }
+export type ProposalStatus = "ready" | "pending" | "failed";
+
 export interface ProposalsResponse {
+  status: ProposalStatus;
   proposals: ProposalItem[];
+}
+
+export type ActiveProposalState = "none" | "pending" | "ready";
+
+export interface ActiveProposalResponse {
+  state: ActiveProposalState;
+  source_profile_history_id: string | null;
+}
+
+export interface NavigatorChatMessage {
+  id: number;
+  role: string;
+  content: string;
+  created_at: string;
 }
 
 export interface IdealResponse {
@@ -86,9 +103,11 @@ export interface PlaylistItemResponse {
   thumbnail_url: string;
   url: string;
   reason: string;
+  published_at: string;
 }
 export type PlaylistStatus = "pending" | "ready" | "failed";
 export type PlaylistSaveStatus = "none" | "saving" | "saved" | "failed";
+export type PlaylistPeriod = "none" | "daily" | "weekly" | "monthly";
 
 export interface PlaylistResponse {
   id: string;
@@ -98,6 +117,7 @@ export interface PlaylistResponse {
   items: PlaylistItemResponse[];
   status: PlaylistStatus;
   save_status: PlaylistSaveStatus;
+  refresh_period: PlaylistPeriod;
   youtube_playlist_id: string | null;
   created_at: string;
   updated_at: string;
@@ -108,6 +128,7 @@ export interface PlaylistSummary {
   item_count: number;
   status: PlaylistStatus;
   save_status: PlaylistSaveStatus;
+  refresh_period: PlaylistPeriod;
   youtube_playlist_id: string | null;
   created_at: string;
 }
@@ -127,6 +148,7 @@ export interface IdealEvent {
   interest: Record<string, number>;
   behavior: AxisScores8;
   values_temperament: AxisScores13;
+  keywords?: string[]; // 대화에서 뽑은 구체 관심 키워드
 }
 
 export interface CompleteEvent extends IdealEvent {

@@ -27,6 +27,7 @@ class NavigatorState(TypedDict):
     working_ideal: NotRequired[dict[str, float]]
     working_disposition: NotRequired[dict[str, float]]
     working_interest: NotRequired[dict[str, float]]
+    working_keywords: NotRequired[list[str]]  # 대화에서 뽑은 구체 관심 키워드
     ideal_type: NotRequired[str]
     ideal_reasoning: NotRequired[str]
     persona_label: NotRequired[str]

@@ -63,10 +63,19 @@ class ProfileScoresOutput(BaseModel):
 
 
 class ProfileInsightOutput(BaseModel):
-    """user_profile_history 해석 컬럼 (LLM 산출)."""
+    """user_profile_history 해석 (LLM 산출).
+
+    summary_text·persona_label·behavior_reasoning·dominant_traits·tone_of_user 는
+    컬럼에 저장되고, strengths·weaknesses·content_preferences 는
+    supporting_evidence.insight(JSONB)에 저장된다.
+    """
 
     summary_text: str
     persona_label: str | None = None
     behavior_reasoning: str | None = None
     dominant_traits: list[str] = Field(default_factory=list)
     tone_of_user: str | None = None
+    # ── 의미 중심 확장 (JSONB 저장) ──
+    strengths: str | None = None
+    weaknesses: str | None = None
+    content_preferences: list[str] = Field(default_factory=list)

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { useAuthStore } from "@/stores/auth";
+import { cn } from "@/lib/utils";
 import { API_BASE_URL } from "@/lib/env";
 import { connectDriveFolder } from "@/lib/google-picker";
 import {
@@ -327,23 +328,23 @@ function GuideSteps({
   tip: string;
 }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div>
         <p className="mb-1 text-sm font-semibold text-gray-800">{intro.title}</p>
         <p className="text-xs leading-relaxed text-gray-500">{intro.body}</p>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {steps.map((s) => (
           <div
             key={s.num}
-            className="flex gap-4 rounded-xl border border-gray-100 bg-gray-50 p-4"
+            className="flex gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3.5"
           >
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100 text-xs font-bold text-violet-700">
               {s.num}
             </div>
             <div className="flex-1">
               <p className="text-sm font-semibold text-gray-800">{s.title}</p>
-              <p className="mt-0.5 text-xs text-gray-500">{s.desc}</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-gray-500">{s.desc}</p>
               {s.url && (
                 <a
                   href={s.url}
@@ -358,7 +359,7 @@ function GuideSteps({
           </div>
         ))}
       </div>
-      <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-700">
+      <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-2.5 text-xs leading-relaxed text-amber-700">
         {tip}
       </div>
     </div>
@@ -371,27 +372,27 @@ function UploadGuide() {
     <GuideSteps
       intro={{
         title: "Takeout ZIP 준비하기",
-        body: "YouTube 시청 기록을 Google Takeout에서 ZIP(또는 JSON)으로 내려받아 왼쪽에 올리면 시청 패턴을 분석합니다.",
+        body: "Google Takeout에서 YouTube 기록을 내려받아 왼쪽에 올리면 분석돼요.",
       }}
       steps={[
         {
           num: 1,
-          title: "takeout.google.com 접속",
-          desc: "구글 계정으로 로그인 후 Takeout 페이지로 이동합니다.",
+          title: "Takeout 접속",
+          desc: "구글 로그인 후 Takeout으로 이동.",
           url: "https://takeout.google.com",
         },
         {
           num: 2,
-          title: "YouTube만 선택 + 형식 JSON 권장",
-          desc: '"모두 선택 해제" 후 "YouTube 및 YouTube Music"만 체크하세요. → "여러 형식"에서 "기록(시청 기록)"을 JSON으로 바꾸면 가장 정확합니다. (HTML도 지원하지만 시각 정확도는 JSON이 더 좋아요.)',
+          title: "YouTube만 선택 (JSON 권장)",
+          desc: '"모두 선택 해제" → "YouTube 및 YouTube Music"만 체크. 형식은 "기록"을 JSON으로 두면 가장 정확해요.',
         },
         {
           num: 3,
-          title: "내보내기 → ZIP 다운로드",
-          desc: '받는 방법을 "다운로드 링크 전송", 형식을 ZIP으로 두고 내보냅니다. 완료되면 ZIP 파일을 내려받으세요.',
+          title: "ZIP으로 내보내기",
+          desc: "형식을 ZIP으로 내보낸 뒤 파일을 내려받으세요.",
         },
       ]}
-      tip="내려받은 ZIP(또는 JSON)을 왼쪽 영역에 끌어다 놓거나 '파일 직접 선택'으로 올리면 바로 분석이 시작돼요. 여러 개도 한 번에 가능합니다."
+      tip="내려받은 ZIP·JSON을 왼쪽에 끌어다 놓거나 직접 선택하면 바로 분석돼요. 여러 개도 한 번에 가능."
     />
   );
 }
@@ -402,32 +403,32 @@ function DriveGuide() {
     <GuideSteps
       intro={{
         title: "Google Takeout이란?",
-        body: "구글이 제공하는 데이터 내보내기 서비스입니다. Takeout을 Drive에 쌓이게 하고 폴더를 1회 연동하면 새 기록이 생길 때마다 자동으로 분석됩니다.",
+        body: "구글의 데이터 내보내기 서비스예요. Takeout을 Drive에 쌓고 폴더를 1회 연동하면 새 기록이 생길 때마다 자동 분석돼요.",
       }}
       steps={[
         {
           num: 1,
-          title: "takeout.google.com 접속",
-          desc: "구글 계정으로 로그인 후 Takeout 페이지로 이동합니다.",
+          title: "Takeout 접속",
+          desc: "구글 로그인 후 Takeout으로 이동.",
           url: "https://takeout.google.com",
         },
         {
           num: 2,
-          title: "YouTube만 선택 + 형식 JSON 권장",
-          desc: '"모두 선택 해제" 후 "YouTube 및 YouTube Music"만 체크하세요. → "여러 형식"에서 "기록(시청 기록)"을 JSON으로 바꾸면 가장 정확합니다.',
+          title: "YouTube만 선택 (JSON 권장)",
+          desc: '"모두 선택 해제" → "YouTube 및 YouTube Music"만 체크. 형식은 "기록"을 JSON 권장.',
         },
         {
           num: 3,
-          title: "받는 방법 → Google Drive",
-          desc: 'ZIP 형식 + "Drive에 추가"로 설정합니다. 정기 분석을 원하면 "2개월마다 1년 동안"으로 설정하면 새 기록이 폴더에 자동으로 쌓입니다.',
+          title: "받는 방법 → Drive",
+          desc: '"Drive에 추가" 선택. "2개월마다 1년"으로 두면 새 기록이 폴더에 자동으로 쌓여요.',
         },
         {
           num: 4,
-          title: "Drive 폴더 1회 연동",
-          desc: '왼쪽 "폴더 연동"으로 Takeout 폴더를 선택하세요. 이후 새 Takeout이 쌓일 때마다 자동으로 분석됩니다. 전체 드라이브 권한은 필요 없어요.',
+          title: "Drive 폴더 연동",
+          desc: '왼쪽 "폴더 연동"에서 Takeout 폴더 선택. 이후 자동 분석돼요.',
         },
       ]}
-      tip="내보내기 완료까지 수 분~수 시간 걸릴 수 있어요. 폴더를 한 번 연동해두면 이후 새 파일이 쌓일 때마다 자동 분석됩니다."
+      tip="폴더를 한 번 연동해두면 새 파일이 쌓일 때마다 자동 분석돼요."
     />
   );
 }
@@ -446,7 +447,7 @@ function TabWithGuide({
     return <div className="p-6">{children}</div>;
   }
   return (
-    <div className="grid lg:h-[34rem] lg:grid-cols-[20rem_minmax(0,1fr)]">
+    <div className="grid min-h-0 flex-1 lg:grid-cols-[24rem_minmax(0,1fr)]">
       <aside className="border-border border-b p-6 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-b-0">
         {guide}
       </aside>
@@ -740,8 +741,13 @@ export function UploadPanel({
   ];
 
   return (
-    <div className={className ?? "rounded-2xl border border-border bg-card shadow-sm"}>
-      <div className="border-b border-border px-6 pt-5 pb-0">
+    <div
+      className={cn(
+        "flex min-h-0 flex-col",
+        className ?? "rounded-2xl border border-border bg-card shadow-sm",
+      )}
+    >
+      <div className="border-b border-border px-6 pt-5 pb-0 shrink-0">
         <div className="flex gap-0">
           {tabs.map((t) => (
             <button

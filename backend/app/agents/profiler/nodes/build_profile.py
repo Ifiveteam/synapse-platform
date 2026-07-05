@@ -586,10 +586,25 @@ async def _llm_profile_scores(
     return merge_profile_scores(vt, behavior), stage1_llm, stage2_llm
 
 
+def _render_samples_for_insight(samples: list[dict[str, Any]]) -> str:
+    """요약 프롬프트용 실제 시청 영상 목록 (제목 — 채널 : 한줄요약)."""
+    lines: list[str] = []
+    for s in samples:
+        title = s.get("title") or "(제목없음)"
+        channel = s.get("channel") or "(채널없음)"
+        summary = (s.get("summary_kr") or "").strip()
+        line = f"· {title} — {channel}"
+        if summary:
+            line += f" : {summary}"
+        lines.append(line)
+    return "\n".join(lines) if lines else "(영상 분석 샘플 없음)"
+
+
 async def _llm_insight(
     user_id: str,
     scores: ProfileScoresOutput,
     stats: dict[str, Any],
+    analysis_samples: list[dict[str, Any]],
 ) -> ProfileInsightOutput | None:
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
@@ -600,6 +615,7 @@ async def _llm_insight(
             user_id=user_id,
             scores=scores.model_dump_json(),
             catalog_stats=json.dumps(stats, ensure_ascii=False),
+            analysis_samples=_render_samples_for_insight(analysis_samples),
         )
         return await invoke_gemini_structured(
             [
@@ -664,7 +680,7 @@ async def build_profile_node(state: ProfilerState) -> dict[str, Any]:
 
         insight = None
         if llm_used:
-            insight = await _llm_insight(state["user_id"], scores, stats)
+            insight = await _llm_insight(state["user_id"], scores, stats, samples)
         if insight is None:
             insight = _template_insight(scores, stats)
             log.append("build_profile: insight template")
@@ -678,6 +694,12 @@ async def build_profile_node(state: ProfilerState) -> dict[str, Any]:
         "catalog_stats": stats,
         "analysis_samples": samples[:10],
         "llm_used": llm_used,
+        # 의미 중심 확장 필드(컬럼 아님) — supporting_evidence.insight로 저장·노출
+        "insight": {
+            "strengths": insight.strengths,
+            "weaknesses": insight.weaknesses,
+            "content_preferences": insight.content_preferences,
+        },
     }
 
     try:

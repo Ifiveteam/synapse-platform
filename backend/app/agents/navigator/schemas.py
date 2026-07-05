@@ -115,6 +115,14 @@ class IdealValuesDesign(BaseModel):
     reasoning: str = Field(
         default="", description="이 방향을 설계한 근거 (한국어 2~4문장)"
     )
+    interest_keywords: list[str] = Field(
+        default_factory=list,
+        description=(
+            "대화에서 드러난 **구체적인 관심 토픽/키워드**(9개 도메인보다 세부). "
+            "예: 'AI 개발', '등산', '주식 투자', '요리 브이로그'. 재생목록 검색 씨앗용. "
+            "대화에서 구체 단서가 없으면 빈 목록."
+        ),
+    )
 
     def values(self) -> dict[str, float]:
         return {axis: float(getattr(self, axis)) for axis in VALUES_TEMPERAMENT_AXES}
@@ -205,6 +213,7 @@ class PlaylistItem(BaseModel):
     channel: str = ""
     channel_id: str = ""
     thumbnail_url: str = ""
+    published_at: str = ""  # RSS 발행일(ISO) — 최신 우선·오래된 영상 제외용
     reason: str = Field(default="", description="이 영상이 이상향에 맞는 한 줄 이유")
 
     @property

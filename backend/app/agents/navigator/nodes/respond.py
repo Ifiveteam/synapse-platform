@@ -34,6 +34,8 @@ async def ask(state: NavigatorState) -> dict[str, Any]:
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=CHAT_TEMPERATURE,
+                # 대화 답변은 확장 사고 불필요 → thinking 끄면 첫 토큰이 훨씬 빨라짐
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
         async for chunk in stream:
@@ -43,9 +45,9 @@ async def ask(state: NavigatorState) -> dict[str, Any]:
     except Exception:
         logger.exception("Navigator ask stream failed")
         writer({"event": "token", "content": STREAM_ERROR_MESSAGE})
+        # current_step은 assess와 병렬 실행 시 동시 쓰기 충돌이라 생략
         return {
             "final_response": STREAM_ERROR_MESSAGE,
-            "current_step": "ask",
             "error": STREAM_ERROR_MESSAGE,
         }
 
@@ -53,5 +55,4 @@ async def ask(state: NavigatorState) -> dict[str, Any]:
     return {
         "final_response": final_response,
         "messages": [AIMessage(content=final_response)],
-        "current_step": "ask",
     }
