@@ -47,6 +47,7 @@ async def discover(state: PlaylistState, config: RunnableConfig) -> dict[str, An
             grounding=grounding,
             current_interest=state.get("current_interest"),
             raise_domains=state.get("raise_domains"),
+            taste_keywords=state.get("taste_keywords"),
             broaden=attempts > 0,
         ),
         user_content="채널 검색어를 만드세요.",

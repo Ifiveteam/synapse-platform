@@ -1,7 +1,10 @@
 import { apiFetchAuth } from "@/api/client";
 import type {
+  ActiveProposalResponse,
   AxisScores8,
   AxisScores13,
+  NavigatorChatMessage,
+  PlaylistPeriod,
   ChatStreamHandlers,
   ComparisonResponse,
   CompleteEvent,
@@ -37,6 +40,7 @@ export const createIdeal = (body: {
   target_interest?: Record<string, number>;
   persona_label?: string;
   reasoning: string;
+  taste_keywords?: string[];
   source_profile_history_id?: string;
 }) =>
   apiFetchAuth<IdealResponse>(`${P}/ideal`, {
@@ -46,11 +50,24 @@ export const createIdeal = (body: {
 
 export const listIdeals = () => apiFetchAuth<IdealResponse[]>(`${P}/ideals`);
 
+/** 진행 중(추천 생성 중)인 이상향 설계 여부 — 관리 배너용 */
+export const getActiveProposal = () =>
+  apiFetchAuth<ActiveProposalResponse>(`${P}/proposals/active`);
+
+/** 설계 대화 이력 — '이어서 설계하기'로 돌아왔을 때 복원용 */
+export const getChatHistory = (sessionId: string) =>
+  apiFetchAuth<NavigatorChatMessage[]>(
+    `${P}/chat/history?session_id=${encodeURIComponent(sessionId)}`,
+  );
+
 export const getIdeal = (id: string) =>
   apiFetchAuth<IdealResponse>(`${P}/ideal/${id}`);
 
 export const applyIdeal = (id: string) =>
   apiFetchAuth<IdealResponse>(`${P}/ideal/${id}/apply`, { method: "POST" });
+
+export const deleteIdeal = (id: string) =>
+  apiFetchAuth<void>(`${P}/ideal/${id}`, { method: "DELETE" });
 
 export const getComparison = (id: string) =>
   apiFetchAuth<ComparisonResponse>(`${P}/ideal/${id}/comparison`);
@@ -84,9 +101,22 @@ export async function getCurrentAxes(
 }
 
 // ── 재생목록 ───────────────────────────────────────────────────────
-export const createPlaylist = (idealId: string) =>
+export const createPlaylist = (
+  idealId: string,
+  refreshPeriod: PlaylistPeriod = "none",
+) =>
   apiFetchAuth<PlaylistResponse>(`${P}/ideal/${idealId}/playlists`, {
     method: "POST",
+    body: JSON.stringify({ refresh_period: refreshPeriod }),
+  });
+
+export const setPlaylistPeriod = (
+  playlistId: string,
+  refreshPeriod: PlaylistPeriod,
+) =>
+  apiFetchAuth<PlaylistResponse>(`${P}/playlists/${playlistId}/period`, {
+    method: "PATCH",
+    body: JSON.stringify({ refresh_period: refreshPeriod }),
   });
 
 export const listPlaylists = (idealId: string) =>

@@ -43,8 +43,13 @@ async def invoke_structured(
     user_content: str,
     schema: type[TSchema],
     temperature: float = 0.0,
+    thinking: bool = True,
 ) -> TSchema:
-    """Gemini 2.5 Flash Structured Output(Pydantic)을 반환한다."""
+    """Gemini 2.5 Flash Structured Output(Pydantic)을 반환한다.
+
+    thinking=False면 확장 사고를 꺼서 지연을 줄인다(간단한 추출용). 품질이 중요한
+    호출(재생목록 검색어·큐레이션 등)은 기본값(thinking=True)을 쓴다.
+    """
     client = get_client()
     response = await client.aio.models.generate_content(
         model=GEMINI_MODEL,
@@ -54,6 +59,9 @@ async def invoke_structured(
             temperature=temperature,
             response_mime_type="application/json",
             response_schema=schema,
+            thinking_config=(
+                None if thinking else types.ThinkingConfig(thinking_budget=0)
+            ),
         ),
     )
     raw = (response.text or "").strip()
@@ -69,6 +77,7 @@ async def invoke_structured_safe(
     user_content: str,
     schema: type[TSchema],
     temperature: float = 0.0,
+    thinking: bool = True,
 ) -> TSchema | None:
     """Structured Output 호출. 실패 시 None."""
     try:
@@ -77,6 +86,7 @@ async def invoke_structured_safe(
             user_content=user_content,
             schema=schema,
             temperature=temperature,
+            thinking=thinking,
         )
     except Exception:
         logger.exception("Navigator Gemini Structured Output failed")

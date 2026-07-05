@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, UniqueConstraint, text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -36,10 +36,15 @@ class NavigatorProposalCache(TimestampMixin, Base):
         nullable=False,
     )
 
+    # 생성 상태: pending(백그라운드 생성 중) | ready(완료) | failed(실패)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="ready"
+    )
     # ProposalsResponse.proposals (3안 전체: 13축+8축+persona+reasoning) 직렬화본
-    proposals_json: Mapped[list] = mapped_column(JSONB, nullable=False)
-    generated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
+    # pending 상태에선 아직 없을 수 있어 nullable.
+    proposals_json: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     # 생성 당시 시청기록 수 (현재 수와 다르면 stale 힌트)
     catalog_count: Mapped[int | None] = mapped_column(Integer, nullable=True)

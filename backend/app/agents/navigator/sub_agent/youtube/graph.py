@@ -83,6 +83,7 @@ async def run_playlist(
     current_interest: dict[str, float] | None = None,
     target_interest: dict[str, float] | None = None,
     target_disposition: dict[str, float] | None = None,
+    taste_keywords: list[str] | None = None,
 ) -> PlaylistBuild:
     """생성 루프 실행 → 보여줄 10개 + 저수지 + 발굴 채널."""
     current_interest = current_interest or {}
@@ -95,6 +96,7 @@ async def run_playlist(
         "current_interest": current_interest,
         "raise_domains": _raise_domains(current_interest, target_interest or {}),
         "target_disposition": target_disposition or {},
+        "taste_keywords": taste_keywords or [],
     }
     final = await _get_graph().ainvoke(initial, config=build_run_config(store))
 

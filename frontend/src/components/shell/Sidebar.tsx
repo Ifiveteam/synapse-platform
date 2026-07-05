@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Activity,
   Bookmark,
+  Menu,
   MessageSquare,
   Moon,
   Pencil,
@@ -241,17 +242,27 @@ export function Sidebar() {
         )}
       >
         {expanded ? (
-          <button
-            type="button"
-            onClick={handleBrandClick}
-            title="홈"
-            className="hover:bg-secondary flex w-full min-w-0 items-center gap-2 rounded-xl px-1 py-1 text-left transition-colors"
-          >
-            <BrandLogo expanded />
-            <span className="text-foreground truncate text-sm font-semibold">
-              Synapse
-            </span>
-          </button>
+          <div className="flex w-full min-w-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={handleBrandClick}
+              title="홈"
+              className="hover:bg-secondary flex min-w-0 flex-1 items-center gap-2 rounded-xl px-1 py-1 text-left transition-colors"
+            >
+              <BrandLogo expanded />
+              <span className="text-foreground truncate text-sm font-semibold">
+                Synapse
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSidebarExpanded(false)}
+              title="사이드바 접기"
+              className="text-muted-foreground hover:text-foreground hover:bg-secondary flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors"
+            >
+              <Menu size={16} />
+            </button>
+          </div>
         ) : (
           <button
             type="button"

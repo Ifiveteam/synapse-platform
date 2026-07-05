@@ -2,7 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Target } from "lucide-react";
 
-import { InterestPie } from "@/components/analyses/interest-pie";
+import {
+  InterestPie,
+  buildInterestLegend,
+} from "@/components/analyses/interest-pie";
 import { CompareBars } from "@/components/ideals/CompareBars";
 import { RadarCompareChart } from "@/components/ideals/RadarCompareChart";
 import { Badge } from "@/components/ui/badge";
@@ -200,24 +203,58 @@ export function IdealDetailPage() {
                   </div>
                 </div>
                 <div className="flex justify-center">
-                  <RadarCompareChart axes={dispRadar} size={260} />
+                  <RadarCompareChart axes={dispRadar} size={280} labelMargin={40} />
                 </div>
               </div>
             )}
             {curPie.length > 0 && (
               <div>
                 <p className="mb-2 text-sm font-semibold">관심 도메인</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <p className="text-muted-foreground mb-1 text-center text-xs">
-                      현재
-                    </p>
-                    <InterestPie data={curPie} size={160} />
+                <div className="flex items-start gap-3">
+                  <div className="flex min-w-0 flex-1 items-start justify-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-muted-foreground mb-1 text-center text-xs">
+                        현재
+                      </p>
+                      <InterestPie
+                        data={curPie}
+                        size={190}
+                        showLegend={false}
+                        innerRadius="52%"
+                        outerRadius="94%"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-primary mb-1 text-center text-xs">
+                        이상향
+                      </p>
+                      <InterestPie
+                        data={idealPie}
+                        size={190}
+                        showLegend={false}
+                        innerRadius="52%"
+                        outerRadius="94%"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-primary mb-1 text-center text-xs">이상향</p>
-                    <InterestPie data={idealPie} size={160} />
-                  </div>
+                  <ul className="border-border flex w-28 shrink-0 flex-col gap-1 rounded-xl border p-2.5">
+                    {[...buildInterestLegend(curPie)]
+                      .sort((a, b) => b.value - a.value)
+                      .map((l) => (
+                        <li
+                          key={l.axis}
+                          className="flex items-center gap-1.5 text-[10px] leading-tight"
+                        >
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ background: l.color }}
+                          />
+                          <span className="flex-1 whitespace-nowrap">
+                            {l.axis}
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
                 </div>
               </div>
             )}

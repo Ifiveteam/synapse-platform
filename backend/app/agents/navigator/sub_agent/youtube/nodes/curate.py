@@ -11,6 +11,7 @@ from app.agents.navigator.schemas import Playlist, PlaylistItem
 from app.agents.navigator.sub_agent.youtube.constants import (
     CURATE_TEMPERATURE,
     MAX_ITEMS_TOTAL,
+    MAX_PER_CHANNEL,
     PRERANK_POOL,
 )
 from app.agents.navigator.sub_agent.youtube.prompts import build_curate_prompt
@@ -59,6 +60,8 @@ async def curate(state: PlaylistState) -> dict[str, Any]:
     pool = candidates
     if len(pool) > PRERANK_POOL:
         pool = await _prerank(pool, f"{persona_label} {reasoning}", PRERANK_POOL)
+    # 가급적 최신 — 발행일 최신순 정렬(ISO 문자열 정렬=시간순). LLM·폴백이 최근 영상을 우선.
+    pool = sorted(pool, key=lambda v: v.published_at or "", reverse=True)
 
     res = await invoke_structured_safe(
         system_instruction=build_curate_prompt(
@@ -74,21 +77,38 @@ async def curate(state: PlaylistState) -> dict[str, Any]:
 
     items: list[PlaylistItem] = []
     used: set[str] = set()
+    per_channel: dict[str, int] = {}
+
+    def _add(v: PlaylistItem, *, reason: str | None = None) -> None:
+        items.append(v.model_copy(update={"reason": reason}) if reason else v)
+        used.add(v.video_id)
+        per_channel[v.channel] = per_channel.get(v.channel, 0) + 1
+
+    # 1차: LLM 선택 — 단, 한 채널이 MAX_PER_CHANNEL을 넘지 않게(다양성)
     if res:
         for p in res.picks:
-            if 0 <= p.index < len(pool) and pool[p.index].video_id not in used:
-                items.append(pool[p.index].model_copy(update={"reason": p.reason}))
-                used.add(pool[p.index].video_id)
             if len(items) >= MAX_ITEMS_TOTAL:
                 break
+            if not (0 <= p.index < len(pool)):
+                continue
+            v = pool[p.index]
+            if v.video_id in used or per_channel.get(v.channel, 0) >= MAX_PER_CHANNEL:
+                continue
+            _add(v, reason=p.reason)
 
-    # 폴백: 부족하면 풀 상위로 채움
+    # 2차 폴백: 채널 상한 지키며 풀 상위로 채움
+    for v in pool:
+        if len(items) >= MAX_ITEMS_TOTAL:
+            break
+        if v.video_id not in used and per_channel.get(v.channel, 0) < MAX_PER_CHANNEL:
+            _add(v)
+
+    # 3차 폴백: 그래도 부족하면 상한 무시하고 채움(10개 보장)
     for v in pool:
         if len(items) >= MAX_ITEMS_TOTAL:
             break
         if v.video_id not in used:
-            items.append(v)
-            used.add(v.video_id)
+            _add(v)
 
     summary = (res.summary if res else "") or f"{persona_label}에 맞춘 추천 재생목록"
     return {"result": Playlist(summary=summary, items=items[:MAX_ITEMS_TOTAL])}

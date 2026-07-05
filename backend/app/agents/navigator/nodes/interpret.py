@@ -51,6 +51,7 @@ async def assess(state: NavigatorState) -> dict[str, Any]:
         else "제 취향을 편하게 물어봐 주세요.",
         schema=InterviewTurn,
         temperature=INTERPRET_TEMPERATURE,
+        thinking=False,  # 대화 응답 지연 최소화 (추출 위주라 사고 불필요)
     )
 
     updates: dict[str, Any] = {"current_step": "assess"}
@@ -64,12 +65,18 @@ async def assess(state: NavigatorState) -> dict[str, Any]:
         working_ideal = derive_8_from_13(working_values)
         working_disp = clamp_disposition(design.target_disposition.as_dict())
         working_int = coerce_interest_targets(design.target_interest, cur_interest)
+        # 구체 키워드는 턴마다 누적(중복 제거, 순서 유지)
+        prior_kw = state.get("working_keywords") or []
+        working_keywords = list(
+            dict.fromkeys([*prior_kw, *(design.interest_keywords or [])])
+        )
         updates.update(
             {
                 "working_values": working_values,
                 "working_ideal": working_ideal,
                 "working_disposition": working_disp,
                 "working_interest": working_int,
+                "working_keywords": working_keywords,
                 "ideal_reasoning": design.reasoning,
                 "persona_label": design.persona_label,
                 "taste_notes": result.taste_notes or state.get("taste_notes", ""),
@@ -83,6 +90,7 @@ async def assess(state: NavigatorState) -> dict[str, Any]:
         working_int = state.get("working_interest")
         working_ideal = state.get("working_ideal")
         working_values = state.get("working_values")
+        working_keywords = state.get("working_keywords") or []
 
     # 성향·도메인(+폴드용 8/13) 실시간 이벤트
     writer(
@@ -94,6 +102,7 @@ async def assess(state: NavigatorState) -> dict[str, Any]:
                     "interest": working_int or {},
                     "behavior": working_ideal or {},
                     "values_temperament": working_values or {},
+                    "keywords": working_keywords or [],
                 },
                 ensure_ascii=False,
             ),
