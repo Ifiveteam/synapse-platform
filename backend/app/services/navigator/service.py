@@ -167,6 +167,8 @@ async def _generate_playlist_bg(
                 ],
                 reservoir_json=[it.model_dump() for it in build.reservoir],
                 status="ready" if build.playlist.items else "failed",
+                # 자동 갱신 주기 판정 기준 시각 — 생성·재생성마다 갱신
+                last_refreshed_at=datetime.now(UTC),
             )
         except Exception:
             logger.exception("playlist background generation failed: %s", playlist_id)

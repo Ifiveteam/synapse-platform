@@ -47,7 +47,6 @@ type Row = PlaylistSummary & { idealId: string; idealLabel: string };
 /** 재생목록 갱신 주기 (UI 선택값 — 백엔드 연동은 추후) */
 const PERIOD_OPTIONS = [
   { value: "none", label: "없음" },
-  { value: "daily", label: "매일" },
   { value: "weekly", label: "매주" },
   { value: "monthly", label: "매월" },
 ] as const;

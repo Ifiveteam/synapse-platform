@@ -383,12 +383,15 @@ class NavigatorRepository:
         status: str | None = None,
         save_status: str | None = None,
         refresh_period: str | None = None,
+        last_refreshed_at: datetime | None = None,
     ) -> NavigatorPlaylist | None:
         row = await self.get_playlist(user_id=user_id, playlist_id=playlist_id)
         if row is None:
             return None
         if refresh_period is not None:
             row.refresh_period = refresh_period
+        if last_refreshed_at is not None:
+            row.last_refreshed_at = last_refreshed_at
         if items_json is not None:
             row.items_json = items_json
         if channels_json is not None:

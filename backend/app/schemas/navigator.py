@@ -190,7 +190,7 @@ class PlaylistItemResponse(BaseModel):
 
 PlaylistStatus = Literal["pending", "ready", "failed"]
 PlaylistSaveStatus = Literal["none", "saving", "saved", "failed"]
-PlaylistPeriod = Literal["none", "daily", "weekly", "monthly"]
+PlaylistPeriod = Literal["none", "weekly", "monthly"]
 
 
 class PlaylistResponse(BaseModel):

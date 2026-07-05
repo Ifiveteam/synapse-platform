@@ -1,16 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ListVideo, Loader2, Plus, Target, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  applyIdeal,
-  deleteIdeal,
-  getActiveProposal,
-  listIdeals,
-} from "@/api/navigator";
-import { fetchMyAnalyses } from "@/api/analyses";
+import { applyIdeal, deleteIdeal, getActiveProposal } from "@/api/navigator";
 import type { IdealResponse } from "@/api/types/navigator";
 import { IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
 import { cn } from "@/lib/utils";
@@ -195,7 +189,11 @@ export function IdealManagementPage({
   embedded = false,
   activeOnly = false,
 }: { embedded?: boolean; activeOnly?: boolean } = {}) {
-  const [ideals, setIdeals] = useState<IdealResponse[]>([]);
+  const ideals = useSidebarStore((s) => s.ideals);
+  const analyses = useSidebarStore((s) => s.analyses);
+  const loadIdeals = useSidebarStore((s) => s.loadIdeals);
+  const loadAnalyses = useSidebarStore((s) => s.loadAnalyses);
+  const refreshIdeals = useSidebarStore((s) => s.refreshIdeals);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [designState, setDesignState] = useState<"none" | "pending" | "ready">(
@@ -205,41 +203,18 @@ export function IdealManagementPage({
   const [designTitle, setDesignTitle] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<IdealResponse | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const setActiveIdealLabel = useSidebarStore((s) => s.setActiveIdealLabel);
-  const loadIdealPersona = useSidebarStore((s) => s.loadIdealPersona);
 
-  const syncSidebar = useCallback(
-    (list: IdealResponse[]) => {
-      const active = list.find((x) => x.is_active);
-      if (active) {
-        setActiveIdealLabel(
-          active.persona_label || IDEAL_TYPE_LABEL[active.ideal_type],
-        );
-      } else {
-        // 적용 이상향 없음 → 최신 분석 페르소나로 폴백
-        void loadIdealPersona();
-      }
-    },
-    [setActiveIdealLabel, loadIdealPersona],
-  );
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const list = await listIdeals();
-      setIdeals(list);
-      syncSidebar(list);
-    } catch {
-      setError("이상향을 불러오지 못했습니다. 로그인 상태를 확인하세요.");
-    } finally {
-      setLoading(false);
-    }
-  }, [syncSidebar]);
-
+  // 이상향 목록 — 스토어 단일 소스(동시 호출 dedupe). 마운트마다 최신화, 사이드바와 공유.
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    setLoading(true);
+    void loadIdeals().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadIdeals]);
 
   // 진행 중인 이상향 설계 감지 — pending(생성 중)이면 4초 폴링해 ready로 갱신
   useEffect(() => {
@@ -263,32 +238,23 @@ export function IdealManagementPage({
     };
   }, []);
 
-  // 설계 기반 분석의 제목 해석 (분석 목록에서 id 매칭)
+  // 설계 기반 분석 제목 — 스토어 분석 목록에서 매칭 (필요 시 로드)
+  useEffect(() => {
+    if (designSourceId) void loadAnalyses();
+  }, [designSourceId, loadAnalyses]);
+
   useEffect(() => {
     if (!designSourceId) {
       setDesignTitle(null);
       return;
     }
-    let cancelled = false;
-    void fetchMyAnalyses()
-      .then((list) => {
-        if (cancelled) return;
-        setDesignTitle(
-          list.find((a) => a.id === designSourceId)?.title ?? null,
-        );
-      })
-      .catch(() => {
-        /* 무시 */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [designSourceId]);
+    setDesignTitle(analyses.find((a) => a.id === designSourceId)?.title ?? null);
+  }, [designSourceId, analyses]);
 
   const handleApply = async (id: string) => {
     try {
       await applyIdeal(id);
-      await load();
+      await refreshIdeals();
     } catch {
       setError("적용에 실패했습니다.");
     }
@@ -300,7 +266,7 @@ export function IdealManagementPage({
     try {
       await deleteIdeal(deleteTarget.id);
       setDeleteTarget(null);
-      await load();
+      await refreshIdeals();
     } catch {
       setError("삭제에 실패했습니다.");
     } finally {
