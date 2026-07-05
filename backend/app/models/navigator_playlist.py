@@ -42,6 +42,10 @@ class NavigatorPlaylist(TimestampMixin, Base):
     save_status: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("'none'")
     )
+    # 자동 갱신 주기 — none / daily / weekly / monthly (스케줄러 연동은 별도)
+    refresh_period: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'none'")
+    )
 
     # 자동 "{persona_label} #N", 사용자 수정 가능
     title: Mapped[str | None] = mapped_column(Text, nullable=True)

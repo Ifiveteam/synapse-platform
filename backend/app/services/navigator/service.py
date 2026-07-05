@@ -7,8 +7,9 @@ import json
 import logging
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
-from fastapi import Depends, HTTPException, status
+from fastapi import BackgroundTasks, Depends, HTTPException, status
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,6 +55,7 @@ from app.repositories.profiler_repository import (
     fetch_profile_snapshot,
 )
 from app.schemas.navigator import (
+    ActiveProposalResponse,
     AxisGapItem,
     AxisScores8,
     AxisScores13,
@@ -63,6 +65,7 @@ from app.schemas.navigator import (
     DomainPair,
     GuideResponse,
     IdealResponse,
+    NavigatorChatMessage,
     NavigatorChatRequest,
     PlaylistItemResponse,
     PlaylistResponse,
@@ -83,6 +86,19 @@ _PLAYLIST_404 = "Playlist not found."
 logger = logging.getLogger(__name__)
 
 _bg_tasks: set[asyncio.Task] = set()
+
+# pending이 이 시간(초) 넘게 유지되면 워커 유실로 보고 재생성 허용 (고착 방지)
+_PROPOSAL_STALE_SECONDS = 180
+
+
+async def run_generate_proposals(user_id: uuid.UUID, snapshot_id: uuid.UUID) -> None:
+    """BackgroundTasks 실행 진입점 — 자체 세션으로 3안 생성·저장한다.
+
+    응답 후 실행되므로 요청 세션이 아닌 새 세션을 열어야 한다.
+    """
+    async with AsyncSessionLocal() as session:
+        service = NavigatorService(db=session, agent=get_navigator_agent())
+        await service._generate_and_store(user_id, snapshot_id)
 
 
 def _spawn_bg(coro) -> None:
@@ -109,6 +125,7 @@ async def _domain_signals(session, user_id, persona) -> dict[str, dict]:
         "current_interest": interest_from_portrait(portrait),
         "target_interest": dict(persona.target_interest or {}),
         "target_disposition": dict(persona.target_disposition or {}),
+        "taste_keywords": list(persona.taste_keywords or []),
     }
 
 
@@ -294,6 +311,7 @@ def _playlist_to_response(row) -> PlaylistResponse:
         items=items,
         status=row.status,
         save_status=row.save_status,
+        refresh_period=getattr(row, "refresh_period", "none") or "none",
         youtube_playlist_id=row.youtube_playlist_id,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -307,6 +325,7 @@ def _playlist_summary(row) -> PlaylistSummary:
         item_count=len(row.items_json or []),
         status=row.status,
         save_status=row.save_status,
+        refresh_period=getattr(row, "refresh_period", "none") or "none",
         youtube_playlist_id=row.youtube_playlist_id,
         created_at=row.created_at,
     )
@@ -349,58 +368,132 @@ class NavigatorService:
         }
         return profile_21, current_8axis, top_interests, portrait, row.id
 
-    async def get_proposals(
+    async def get_or_start_proposals(
         self,
         *,
         user_id: uuid.UUID,
         source_profile_history_id: uuid.UUID | None = None,
         refresh: bool = False,
+        background_tasks: BackgroundTasks,
     ) -> ProposalsResponse:
-        (
-            profile_21,
-            _current,
-            top_interests,
-            portrait,
-            snapshot_id,
-        ) = await self._load_profile_or_404(user_id, source_profile_history_id)
+        """추천 3안을 비동기로 생성/조회한다.
 
-        # 캐시 히트: 같은 (user, snapshot)이면 저장된 3안 그대로 (refresh 아니면)
-        if not refresh:
-            cached = await self.repo.get_proposal_cache(
-                user_id=user_id, snapshot_id=snapshot_id
-            )
-            if cached is not None and cached.proposals_json:
-                return ProposalsResponse(
-                    proposals=[
-                        ProposalItem.model_validate(p) for p in cached.proposals_json
-                    ]
+        - ready 캐시 있음(+refresh 아님) → 즉시 3안 반환
+        - 없음/refresh/stale-pending → 백그라운드 생성 예약 후 pending 반환
+        - pending → pending, failed → failed (프론트가 refresh로 재시도)
+        """
+        snapshot_id = source_profile_history_id
+        if snapshot_id is None:
+            snapshot_id = await self.repo.latest_snapshot_id(user_id=user_id)
+            if snapshot_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="분석 스냅샷이 없습니다.",
                 )
 
-        # 생성 → 캐시 저장 → 반환
-        proposals = await self.agent.propose(profile_21, portrait, top_interests)
-        cur_disp = disposition_from_portrait(portrait)
-        cur_interest = interest_from_portrait(portrait)
-        items = [
-            ProposalItem(
-                ideal_type=p.ideal_type.value,
-                scores=AxisScores8(**p.scores8),
-                values_temperament=AxisScores13(**p.values13),
-                disposition=_disposition_pairs(cur_disp, p.target_disposition),
-                interest=_domain_pairs(cur_interest, p.target_interest),
-                persona_label=p.persona_label
-                or persona_from_scores(p.values13, p.scores8),
-                reasoning=p.reasoning,
-            )
-            for p in proposals
-        ]
-        catalog_count = await self.repo.count_catalog(user_id=user_id)
-        await self.repo.save_proposal_cache(
-            user_id=user_id,
-            snapshot_id=snapshot_id,
-            proposals_json=[item.model_dump() for item in items],
-            catalog_count=catalog_count,
+        cached = await self.repo.get_proposal_cache(
+            user_id=user_id, snapshot_id=snapshot_id
         )
-        return ProposalsResponse(proposals=items)
+
+        async def _schedule() -> None:
+            await self.repo.mark_proposal_pending(
+                user_id=user_id, snapshot_id=snapshot_id
+            )
+            background_tasks.add_task(run_generate_proposals, user_id, snapshot_id)
+
+        if refresh or cached is None:
+            await _schedule()
+            return ProposalsResponse(status="pending")
+
+        if cached.status == "ready" and cached.proposals_json:
+            return ProposalsResponse(
+                status="ready",
+                proposals=[
+                    ProposalItem.model_validate(p) for p in cached.proposals_json
+                ],
+            )
+
+        if cached.status == "pending":
+            updated = cached.updated_at
+            if updated is not None and updated.tzinfo is None:
+                updated = updated.replace(tzinfo=UTC)
+            stale = (
+                updated is None
+                or (datetime.now(UTC) - updated).total_seconds()
+                > _PROPOSAL_STALE_SECONDS
+            )
+            if stale:  # 워커 유실 등으로 고착된 pending → 재예약
+                await _schedule()
+            return ProposalsResponse(status="pending")
+
+        # failed 또는 ready인데 json 비어있음 → 프론트가 refresh로 재시도
+        return ProposalsResponse(status="failed")
+
+    async def get_chat_history(
+        self, *, user_id: uuid.UUID, session_id: str
+    ) -> list[NavigatorChatMessage]:
+        """설계 대화 이력 (세션 복원용)."""
+        return await self.repo.get_chat_history(session_id=session_id, user_id=user_id)
+
+    async def get_active_proposal(
+        self, *, user_id: uuid.UUID
+    ) -> ActiveProposalResponse:
+        """진행 중인 이상향 설계 상태 — 관리 배너용.
+
+        pending(생성 중) 또는 ready(추천 준비됨·아직 설계 중)이면 배너를 띄운다.
+        """
+        row = await self.repo.get_latest_proposal(user_id=user_id)
+        state = row.status if row and row.status in ("pending", "ready") else "none"
+        return ActiveProposalResponse(
+            state=state,
+            source_profile_history_id=(
+                str(row.source_profile_history_id) if row and state != "none" else None
+            ),
+        )
+
+    async def _generate_and_store(
+        self, user_id: uuid.UUID, snapshot_id: uuid.UUID
+    ) -> None:
+        """(백그라운드) 3안 생성 → ready 저장. 실패 시 failed 마킹."""
+        try:
+            (
+                profile_21,
+                _current,
+                top_interests,
+                portrait,
+                _snap,
+            ) = await self._load_profile_or_404(user_id, snapshot_id)
+
+            proposals = await self.agent.propose(profile_21, portrait, top_interests)
+            cur_disp = disposition_from_portrait(portrait)
+            cur_interest = interest_from_portrait(portrait)
+            items = [
+                ProposalItem(
+                    ideal_type=p.ideal_type.value,
+                    scores=AxisScores8(**p.scores8),
+                    values_temperament=AxisScores13(**p.values13),
+                    disposition=_disposition_pairs(cur_disp, p.target_disposition),
+                    interest=_domain_pairs(cur_interest, p.target_interest),
+                    persona_label=p.persona_label
+                    or persona_from_scores(p.values13, p.scores8),
+                    reasoning=p.reasoning,
+                )
+                for p in proposals
+            ]
+            catalog_count = await self.repo.count_catalog(user_id=user_id)
+            await self.repo.save_proposal_cache(
+                user_id=user_id,
+                snapshot_id=snapshot_id,
+                proposals_json=[item.model_dump() for item in items],
+                catalog_count=catalog_count,
+            )
+        except Exception:
+            logger.exception(
+                "proposals 생성 실패 user=%s snapshot=%s", user_id, snapshot_id
+            )
+            await self.repo.mark_proposal_failed(
+                user_id=user_id, snapshot_id=snapshot_id
+            )
 
     async def stream_chat(
         self, request: NavigatorChatRequest, *, user_id: uuid.UUID
@@ -524,8 +617,11 @@ class NavigatorService:
             values_temperament=values13,
             target_disposition=request.target_disposition,
             target_interest=request.target_interest,
+            taste_keywords=request.taste_keywords or None,
             source_profile_history_id=row.id,
         )
+        # 확정 완료 → 그 스냅샷의 '진행 중' 추천 캐시를 consumed 처리(배너 제거)
+        await self.repo.mark_proposal_confirmed(user_id=user_id, snapshot_id=row.id)
         return _ideal_to_response(persona)
 
     async def list_ideals(self, *, user_id: uuid.UUID) -> list[IdealResponse]:
@@ -551,6 +647,14 @@ class NavigatorService:
                 status_code=status.HTTP_404_NOT_FOUND, detail=_IDEAL_404
             )
         return _ideal_to_response(persona)
+
+    async def delete_ideal(self, *, user_id: uuid.UUID, ideal_id: uuid.UUID) -> None:
+        """이상향 삭제 (연관 재생목록도 함께)."""
+        ok = await self.repo.delete_ideal(user_id=user_id, ideal_id=ideal_id)
+        if not ok:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=_IDEAL_404
+            )
 
     async def _ideal_or_404(
         self, user_id: uuid.UUID, ideal_id: uuid.UUID
@@ -682,7 +786,7 @@ class NavigatorService:
 
     # ── 재생목록 (navigator_playlist, 이상향 1개 : N개) ──────────────
     async def create_playlist(
-        self, *, user_id: uuid.UUID, ideal_id: uuid.UUID
+        self, *, user_id: uuid.UUID, ideal_id: uuid.UUID, refresh_period: str = "none"
     ) -> PlaylistResponse:
         """빈 pending 행을 즉시 만들고, 실제 생성은 백그라운드로 돌린다.
 
@@ -702,6 +806,7 @@ class NavigatorService:
             channels_json=[],
             reservoir_json=[],
             status="pending",
+            refresh_period=refresh_period,
         )
         _spawn_bg(
             _generate_playlist_bg(
@@ -767,6 +872,19 @@ class NavigatorService:
             )
         return _playlist_to_response(row)
 
+    async def set_playlist_period(
+        self, *, user_id: uuid.UUID, playlist_id: uuid.UUID, refresh_period: str
+    ) -> PlaylistResponse:
+        """재생목록 자동 갱신 주기 변경 (none/daily/weekly/monthly)."""
+        row = await self.repo.update_playlist(
+            user_id=user_id, playlist_id=playlist_id, refresh_period=refresh_period
+        )
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=_PLAYLIST_404
+            )
+        return _playlist_to_response(row)
+
     async def delete_playlist(
         self, *, user_id: uuid.UUID, playlist_id: uuid.UUID
     ) -> None:
@@ -811,39 +929,23 @@ class NavigatorService:
     async def regenerate_playlist(
         self, *, user_id: uuid.UUID, playlist_id: uuid.UUID
     ) -> PlaylistResponse:
-        """재생목록을 통째로 재생성(채널 재발굴→큐레이션) 후 같은 행에 갱신."""
+        """재생목록을 **비동기로** 재생성 — pending 표시 후 백그라운드 생성(create와 동일 UX).
+
+        생성이 오래 걸려 요청을 막지 않도록, 상태만 pending으로 바꾸고 백그라운드에서
+        같은 행을 재생성한다. 프론트가 pending을 폴링해 완료되면 채운다.
+        """
         row = await self.repo.get_playlist(user_id=user_id, playlist_id=playlist_id)
         if row is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=_PLAYLIST_404
             )
-        persona = await self._ideal_or_404(user_id, row.ideal_id)
-        persona_label = persona.persona_label or "추천 재생목록"
-        values13 = persona.values_temperament or {}
-        ideal_type, reasoning = decode_description(persona.description)
-        signals = await _domain_signals(self.db, user_id, persona)
-
-        build = await self.agent.generate_playlist(
-            store=self.repo,
-            user_id=user_id,
-            persona_label=persona_label,
-            values13=values13,
-            ideal_type=ideal_type,
-            reasoning=reasoning,
-            **signals,
-        )
-        # 재생성 결과가 비면 기존 재생목록을 덮어쓰지 않는다 (날아가는 것 방지)
-        if not build.playlist.items:
-            return _playlist_to_response(row)
         saved = await self.repo.update_playlist(
-            user_id=user_id,
-            playlist_id=playlist_id,
-            items_json=[it.model_dump() for it in build.playlist.items],
-            channels_json=[
-                {"channel_id": c.channel_id, "title": c.title} for c in build.channels
-            ],
-            reservoir_json=[it.model_dump() for it in build.reservoir],
-            summary=build.playlist.summary,
+            user_id=user_id, playlist_id=playlist_id, status="pending"
+        )
+        _spawn_bg(
+            _generate_playlist_bg(
+                user_id=user_id, ideal_id=row.ideal_id, playlist_id=playlist_id
+            )
         )
         return _playlist_to_response(saved or row)
 

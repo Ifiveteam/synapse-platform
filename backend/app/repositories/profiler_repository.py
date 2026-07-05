@@ -54,6 +54,14 @@ async def fetch_profile_snapshot(
     ).scalar_one_or_none()
 
 
+async def delete_profile_snapshot(
+    session: AsyncSession, row: UserProfileHistory
+) -> None:
+    """분석 스냅샷 삭제. 연관 추천 캐시는 FK CASCADE, 이상향/소스는 SET NULL."""
+    await session.delete(row)
+    await session.commit()
+
+
 async def fetch_catalog_rows(
     session: AsyncSession, user_id: uuid.UUID
 ) -> list[UserWatchCatalog]:

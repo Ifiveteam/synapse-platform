@@ -17,6 +17,7 @@ from app.agents.navigator.schemas import NavigatorStreamEvent, PlaylistItem
 from app.agents.navigator.sub_agent.youtube.client import (
     fetch_channel_uploads,
     filter_out_shorts,
+    is_too_old,
     search_channels,
 )
 from app.agents.navigator.sub_agent.youtube.constants import (
@@ -36,6 +37,7 @@ def _to_item(v) -> PlaylistItem:
         channel=v.channel,
         channel_id=v.channel_id,
         thumbnail_url=v.thumbnail_url,
+        published_at=v.published_at,
     )
 
 
@@ -83,7 +85,12 @@ async def refresh_item(
         fresh: list[PlaylistItem] = []
         for vids in results:
             for v in vids:
-                if v.video_id in shown or v.video_id in watched or v.video_id in seen:
+                if (
+                    v.video_id in shown
+                    or v.video_id in watched
+                    or v.video_id in seen
+                    or is_too_old(v.published_at)
+                ):
                     continue
                 seen.add(v.video_id)
                 fresh.append(_to_item(v))
@@ -173,7 +180,11 @@ async def edit_playlist(
                 if c.channel_id not in known:
                     new_channels.append({"channel_id": c.channel_id, "title": c.title})
                 for v in vids:
-                    if v.video_id not in shown and v.video_id not in watched:
+                    if (
+                        v.video_id not in shown
+                        and v.video_id not in watched
+                        and not is_too_old(v.published_at)
+                    ):
                         new_videos.append(_to_item(v))
             new_videos = await filter_out_shorts(new_videos)  # 쇼츠 제외
 
@@ -194,7 +205,11 @@ async def edit_playlist(
         fetched: list[PlaylistItem] = []
         for vids in results:
             for v in vids:
-                if v.video_id not in shown and v.video_id not in watched:
+                if (
+                    v.video_id not in shown
+                    and v.video_id not in watched
+                    and not is_too_old(v.published_at)
+                ):
                     fetched.append(_to_item(v))
         reservoir_pool.extend(await filter_out_shorts(fetched))  # 쇼츠 제외
 

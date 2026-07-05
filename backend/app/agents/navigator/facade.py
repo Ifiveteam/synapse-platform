@@ -91,6 +91,7 @@ class NavigatorAgent:
         current_interest: dict[str, float] | None = None,
         target_interest: dict[str, float] | None = None,
         target_disposition: dict[str, float] | None = None,
+        taste_keywords: list[str] | None = None,
     ) -> PlaylistBuild:
         """YouTube 재생목록 서브에이전트에 위임 — 목표 도메인 발굴→RSS→큐레이션."""
         return await run_playlist(
@@ -103,6 +104,7 @@ class NavigatorAgent:
             current_interest=current_interest,
             target_interest=target_interest,
             target_disposition=target_disposition,
+            taste_keywords=taste_keywords,
         )
 
     async def refresh_item(

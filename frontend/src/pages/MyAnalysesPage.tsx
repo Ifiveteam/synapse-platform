@@ -8,10 +8,11 @@ import {
   CircleDot,
   Loader2,
   Plus,
+  Trash2,
   X,
 } from "lucide-react";
 
-import { fetchMyAnalyses } from "@/api/analyses";
+import { deleteMyAnalysis, fetchMyAnalyses } from "@/api/analyses";
 import { ApiError } from "@/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,9 +30,11 @@ type FilterTab = "all" | "completed" | "pending";
 function AnalysisListItem({
   item,
   embedded = false,
+  onDelete,
 }: {
   item: AnalysisResultItem;
   embedded?: boolean;
+  onDelete?: (item: AnalysisResultItem) => void;
 }) {
   const pending = isAnalysisPending(item.status);
 
@@ -55,6 +58,21 @@ function AnalysisListItem({
               : "분석 중"
           : "완료"}
       </Badge>
+
+      {onDelete && !pending && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDelete(item);
+          }}
+          className="text-muted-foreground hover:text-destructive shrink-0 rounded-full p-1 transition-colors"
+          aria-label="삭제"
+        >
+          <Trash2 size={16} />
+        </button>
+      )}
 
       {!pending && (
         <ChevronRight size={18} className="text-muted-foreground shrink-0" />
@@ -232,6 +250,24 @@ export function MyAnalysesPage({
   const [error, setError] = useState<string | null>(null);
   const [showCompare, setShowCompare] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [deleteTarget, setDeleteTarget] = useState<AnalysisResultItem | null>(
+    null,
+  );
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteMyAnalysis(deleteTarget.id);
+      setItems((prev) => prev.filter((x) => x.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch {
+      setError("삭제에 실패했습니다.");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const completedItems = useMemo(
     () => items.filter((item) => item.status === "completed"),
@@ -298,7 +334,7 @@ export function MyAnalysesPage({
     currentPage * ANALYSIS_PAGE_SIZE,
   );
   const visibleSnapshots = latestOnly
-    ? filteredSnapshots.slice(0, 1)
+    ? filteredSnapshots.slice(0, 3) // 허브에서는 최신 3개까지
     : pageSnapshots;
 
   const handleFilterChange = (value: string) => {
@@ -439,7 +475,12 @@ export function MyAnalysesPage({
               />
             ))}
           {visibleSnapshots.map((item) => (
-            <AnalysisListItem key={item.id} item={item} embedded={embedded} />
+            <AnalysisListItem
+              key={item.id}
+              item={item}
+              embedded={embedded}
+              onDelete={embedded ? undefined : setDeleteTarget}
+            />
           ))}
           {!showJobGroup && visibleSnapshots.length === 0 && (
             <div className="border-border text-muted-foreground rounded-2xl border border-dashed px-6 py-16 text-center text-sm">
@@ -498,6 +539,48 @@ export function MyAnalysesPage({
           onClose={() => setShowCompare(false)}
           onConfirm={handleCompare}
         />
+      )}
+
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => !deleting && setDeleteTarget(null)}
+          />
+          <div className="border-border bg-card relative z-10 w-full max-w-sm rounded-2xl border p-5 shadow-xl">
+            <h3 className="text-base font-semibold">분석 삭제</h3>
+            <p className="text-muted-foreground mt-2 text-sm">
+              <span className="text-foreground font-medium">
+                {deleteTarget.title}
+              </span>{" "}
+              분석을 삭제하시겠습니까? 되돌릴 수 없습니다.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+              >
+                취소
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => void handleDelete()}
+                disabled={deleting}
+              >
+                <Trash2 size={15} className={deleting ? "animate-pulse" : ""} />
+                {deleting ? "삭제 중…" : "삭제"}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

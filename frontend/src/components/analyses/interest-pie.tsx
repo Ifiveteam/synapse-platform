@@ -14,18 +14,36 @@ export interface InterestDatum {
   value: number;
 }
 
-// 9개 관심사 도메인용 팔레트
+// 9개 관심사 도메인용 팔레트 — 서로 뚜렷이 구분되고 인접 인덱스끼리도 색상이 멀도록 교차 배치
 const COLORS = [
-  "#7c3aed",
-  "#2563eb",
-  "#0ea5e9",
-  "#10b981",
-  "#f59e0b",
-  "#ef4444",
-  "#ec4899",
-  "#8b5cf6",
-  "#14b8a6",
+  "#3b82f6", // 파랑
+  "#f59e0b", // 주황
+  "#10b981", // 초록
+  "#ec4899", // 분홍
+  "#eab308", // 노랑
+  "#8b5cf6", // 보라
+  "#06b6d4", // 청록
+  "#ef4444", // 빨강
+  "#84cc16", // 라임
 ];
+
+// 도메인마다 색을 고정 — 분석·이상향·설계 등 모든 화면에서 같은 도메인 = 같은 색.
+// (값 순위가 아니라 도메인명 기준이라, 현재/이상향 도넛과 범례가 항상 일치)
+const DOMAIN_ORDER = [
+  "스포츠",
+  "인물·일상",
+  "예능",
+  "영화·애니",
+  "게임",
+  "음악",
+  "라이프·취미",
+  "뉴스·시사",
+  "지식·교육",
+];
+function colorForDomain(axis: string, fallbackIndex: number): string {
+  const i = DOMAIN_ORDER.indexOf(axis);
+  return COLORS[(i >= 0 ? i : fallbackIndex) % COLORS.length];
+}
 
 export interface InterestLegendItem {
   axis: string;
@@ -42,7 +60,7 @@ export function buildInterestLegend(data: InterestDatum[]): InterestLegendItem[]
     axis: d.axis,
     value: d.value,
     pct: total > 0 ? Math.round((d.value / total) * 100) : 0,
-    color: COLORS[i % COLORS.length],
+    color: colorForDomain(d.axis, i),
   }));
 }
 
@@ -119,7 +137,7 @@ export function InterestPie({
             stroke="none"
           >
             {chartData.map((d, i) => (
-              <Cell key={d.axis} fill={COLORS[i % COLORS.length]} />
+              <Cell key={d.axis} fill={colorForDomain(d.axis, i)} />
             ))}
           </Pie>
           <Tooltip content={<PieTooltip total={total} />} />

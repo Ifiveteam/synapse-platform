@@ -127,6 +127,19 @@ async def get_my_analysis_snapshot(
     return _to_db_profile_response(profile)
 
 
+@router.delete("/me/analyses/{snapshot_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_my_analysis(
+    snapshot_id: str, user=Depends(get_current_user_dep)
+) -> None:
+    """분석 스냅샷 삭제 (연관 추천 캐시도 함께, 이상향은 참조만 해제)."""
+    ok = await profiler_service.delete_analysis_async(str(user.id), snapshot_id)
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analysis snapshot not found",
+        )
+
+
 @router.get("/profile/{user_id}", response_model=DbProfileResponse)
 async def get_profile(user_id: str) -> DbProfileResponse:
     return await _get_db_profile_or_404(user_id)

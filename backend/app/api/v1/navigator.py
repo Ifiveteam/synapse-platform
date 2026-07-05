@@ -14,18 +14,22 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from app.api.v1.auth import get_current_user_dep
 from app.models.user import User
 from app.schemas.navigator import (
+    ActiveProposalResponse,
     ComparisonResponse,
     ConfirmIdealRequest,
+    CreatePlaylistRequest,
     GuideResponse,
     IdealResponse,
+    NavigatorChatMessage,
     NavigatorChatRequest,
     PlaylistChatRequest,
+    PlaylistPeriodRequest,
     PlaylistResponse,
     PlaylistSummary,
     ProposalsResponse,
@@ -40,6 +44,7 @@ router = APIRouter(prefix="/navigator", tags=["Navigator Agent"])
 
 @router.get("/proposals", response_model=ProposalsResponse)
 async def get_proposals(
+    background_tasks: BackgroundTasks,
     source_profile_history_id: str | None = Query(
         default=None, description="기준 분석 스냅샷 (없으면 최신)"
     ),
@@ -47,9 +52,10 @@ async def get_proposals(
     user: User = Depends(get_current_user_dep),
     navigator_service: NavigatorService = Depends(),
 ) -> ProposalsResponse:
-    """선택한(없으면 최신) 21축 프로필을 근거로 반대·강점심화·균형 이상향을 제안한다.
+    """선택한(없으면 최신) 21축 프로필 기반 3안을 **비동기로** 생성/조회한다.
 
-    같은 (유저+스냅샷)이면 캐시된 3안을 재사용한다. refresh=true로 새로 생성.
+    - ready 캐시(+refresh 아님) → 즉시 3안. 없음/refresh/stale → 백그라운드 생성 예약
+      후 status=pending 반환(프론트가 폴링). refresh=true로 새로 생성.
     """
     snapshot_id: uuid.UUID | None = None
     if source_profile_history_id:
@@ -60,8 +66,32 @@ async def get_proposals(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="invalid source_profile_history_id",
             ) from exc
-    return await navigator_service.get_proposals(
-        user_id=user.id, source_profile_history_id=snapshot_id, refresh=refresh
+    return await navigator_service.get_or_start_proposals(
+        user_id=user.id,
+        source_profile_history_id=snapshot_id,
+        refresh=refresh,
+        background_tasks=background_tasks,
+    )
+
+
+@router.get("/proposals/active", response_model=ActiveProposalResponse)
+async def active_proposal(
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> ActiveProposalResponse:
+    """진행 중(추천 생성 중)인 이상향 설계가 있는지 — 관리 화면 배너용."""
+    return await navigator_service.get_active_proposal(user_id=user.id)
+
+
+@router.get("/chat/history", response_model=list[NavigatorChatMessage])
+async def chat_history(
+    session_id: str = Query(..., description="설계 대화 세션 id"),
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> list[NavigatorChatMessage]:
+    """설계 대화 이력 — '이어서 설계하기'로 돌아왔을 때 세션 복원용."""
+    return await navigator_service.get_chat_history(
+        user_id=user.id, session_id=session_id
     )
 
 
@@ -122,6 +152,16 @@ async def apply_ideal(
     return await navigator_service.apply_ideal(user_id=user.id, ideal_id=ideal_id)
 
 
+@router.delete("/ideal/{ideal_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ideal(
+    ideal_id: uuid.UUID,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> None:
+    """이상향 삭제 (연관 재생목록도 함께 삭제)."""
+    await navigator_service.delete_ideal(user_id=user.id, ideal_id=ideal_id)
+
+
 @router.get("/ideal/{ideal_id}/comparison", response_model=ComparisonResponse)
 async def get_comparison(
     ideal_id: uuid.UUID,
@@ -149,11 +189,16 @@ async def get_guide(
 @router.post("/ideal/{ideal_id}/playlists", response_model=PlaylistResponse)
 async def create_playlist(
     ideal_id: uuid.UUID,
+    body: CreatePlaylistRequest | None = None,
     user: User = Depends(get_current_user_dep),
     navigator_service: NavigatorService = Depends(),
 ) -> PlaylistResponse:
     """이상향+시청기록 근거로 새 재생목록 생성 (영상 10개 + 저수지)."""
-    return await navigator_service.create_playlist(user_id=user.id, ideal_id=ideal_id)
+    return await navigator_service.create_playlist(
+        user_id=user.id,
+        ideal_id=ideal_id,
+        refresh_period=(body.refresh_period if body else "none"),
+    )
 
 
 @router.get("/ideal/{ideal_id}/playlists", response_model=list[PlaylistSummary])
@@ -188,6 +233,19 @@ async def rename_playlist(
     """재생목록 제목 수정."""
     return await navigator_service.rename_playlist(
         user_id=user.id, playlist_id=playlist_id, title=body.title
+    )
+
+
+@router.patch("/playlists/{playlist_id}/period", response_model=PlaylistResponse)
+async def set_playlist_period(
+    playlist_id: uuid.UUID,
+    body: PlaylistPeriodRequest,
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> PlaylistResponse:
+    """재생목록 자동 갱신 주기 변경 (none/daily/weekly/monthly)."""
+    return await navigator_service.set_playlist_period(
+        user_id=user.id, playlist_id=playlist_id, refresh_period=body.refresh_period
     )
 
 

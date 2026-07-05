@@ -69,7 +69,21 @@ class ProposalItem(BaseModel):
 
 
 class ProposalsResponse(BaseModel):
-    proposals: list[ProposalItem]  # OPPOSITE / DEEPEN / BALANCE 3종
+    # 비동기 생성 상태: ready(완료·proposals 채움) | pending(생성 중) | failed(실패)
+    status: str = "ready"
+    proposals: list[ProposalItem] = Field(
+        default_factory=list
+    )  # OPPOSITE/DEEPEN/BALANCE
+
+
+class ActiveProposalResponse(BaseModel):
+    """이상향 관리 배너용 — 진행 중인 설계 상태.
+
+    none: 없음 · pending: 추천 생성 중 · ready: 추천 준비됨(아직 설계/확정 안 함)
+    """
+
+    state: str = "none"
+    source_profile_history_id: str | None = None
 
 
 class NavigatorChatRequest(BaseModel):
@@ -97,6 +111,8 @@ class ConfirmIdealRequest(BaseModel):
     target_interest: dict[str, float] | None = None
     persona_label: str = ""
     reasoning: str = ""
+    # 대화에서 뽑은 구체 관심 키워드(재생목록 검색 씨앗). 대화 안 했으면 빈 목록.
+    taste_keywords: list[str] = Field(default_factory=list)
     source_profile_history_id: str | None = None
 
 
@@ -169,10 +185,12 @@ class PlaylistItemResponse(BaseModel):
     thumbnail_url: str = ""
     url: str
     reason: str = ""
+    published_at: str = ""  # 영상 발행일(ISO) — 없으면 빈 문자열
 
 
 PlaylistStatus = Literal["pending", "ready", "failed"]
 PlaylistSaveStatus = Literal["none", "saving", "saved", "failed"]
+PlaylistPeriod = Literal["none", "daily", "weekly", "monthly"]
 
 
 class PlaylistResponse(BaseModel):
@@ -183,6 +201,7 @@ class PlaylistResponse(BaseModel):
     items: list[PlaylistItemResponse]
     status: PlaylistStatus = "ready"
     save_status: PlaylistSaveStatus = "none"
+    refresh_period: PlaylistPeriod = "none"
     youtube_playlist_id: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -196,6 +215,7 @@ class PlaylistSummary(BaseModel):
     item_count: int = 0
     status: PlaylistStatus = "ready"
     save_status: PlaylistSaveStatus = "none"
+    refresh_period: PlaylistPeriod = "none"
     youtube_playlist_id: str | None = None
     created_at: datetime
 
@@ -209,6 +229,14 @@ class SaveStartResponse(BaseModel):
 
 class RenamePlaylistRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
+
+
+class CreatePlaylistRequest(BaseModel):
+    refresh_period: PlaylistPeriod = "none"
+
+
+class PlaylistPeriodRequest(BaseModel):
+    refresh_period: PlaylistPeriod
 
 
 class RefreshItemRequest(BaseModel):

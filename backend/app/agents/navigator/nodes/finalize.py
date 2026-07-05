@@ -29,6 +29,7 @@ def _complete_payload(state: NavigatorState) -> str:
             "values_temperament": state.get("working_values") or {},
             "persona_label": state.get("persona_label") or "",
             "reasoning": state.get("ideal_reasoning") or "",
+            "keywords": state.get("working_keywords") or [],
             "ideal_type": "CUSTOM",
         },
         ensure_ascii=False,

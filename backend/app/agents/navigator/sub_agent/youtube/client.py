@@ -12,11 +12,15 @@ import logging
 import os
 import re
 import xml.etree.ElementTree as ET
+from datetime import UTC, datetime, timedelta
 from typing import Protocol, TypeVar
 
 import httpx
 
-from app.agents.navigator.sub_agent.youtube.constants import SHORTS_MAX_SECONDS
+from app.agents.navigator.sub_agent.youtube.constants import (
+    MAX_VIDEO_AGE_DAYS,
+    SHORTS_MAX_SECONDS,
+)
 from app.agents.navigator.sub_agent.youtube.schemas import ChannelRef, YoutubeVideo
 
 logger = logging.getLogger(__name__)
@@ -221,6 +225,19 @@ async def filter_out_shorts(items: list[_T]) -> list[_T]:
         return items
     big = 10**9
     return [it for it in items if durations.get(it.video_id, big) > SHORTS_MAX_SECONDS]
+
+
+def is_too_old(published_at: str) -> bool:
+    """발행일이 MAX_VIDEO_AGE_DAYS보다 오래면 True. 날짜 모르면 관대하게 False."""
+    if not published_at:
+        return False
+    try:
+        dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt < datetime.now(UTC) - timedelta(days=MAX_VIDEO_AGE_DAYS)
 
 
 async def fetch_channel_uploads(

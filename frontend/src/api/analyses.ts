@@ -43,6 +43,12 @@ export async function fetchMyAnalyses(): Promise<AnalysisResultItem[]> {
   return res.items.map(mapListItem);
 }
 
+export async function deleteMyAnalysis(snapshotId: string): Promise<void> {
+  await apiFetchAuth<void>(`${PREFIX}/me/analyses/${snapshotId}`, {
+    method: "DELETE",
+  });
+}
+
 export async function fetchMyAnalysisSnapshot(
   snapshotId: string,
 ): Promise<DbProfileResponse> {
