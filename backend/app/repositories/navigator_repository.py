@@ -228,6 +228,23 @@ class NavigatorRepository:
         )
         await self.db.commit()
 
+    async def dismiss_latest_proposal(self, *, user_id: uuid.UUID) -> bool:
+        """진행 중(pending/ready) 최신 추천을 dismissed로 마킹 — '진행 중' 배너 제거용."""
+        row = await self.get_latest_proposal(user_id=user_id)
+        if row is None or row.status not in ("pending", "ready"):
+            return False
+        await self.db.execute(
+            update(NavigatorProposalCache)
+            .where(
+                NavigatorProposalCache.user_id == user_id,
+                NavigatorProposalCache.source_profile_history_id
+                == row.source_profile_history_id,
+            )
+            .values(status="dismissed", updated_at=datetime.now(UTC))
+        )
+        await self.db.commit()
+        return True
+
     async def mark_proposal_confirmed(
         self, *, user_id: uuid.UUID, snapshot_id: uuid.UUID
     ) -> None:

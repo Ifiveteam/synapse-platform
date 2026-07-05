@@ -293,6 +293,7 @@ def _ideal_to_response(persona: UserIdealPersona) -> IdealResponse:
         persona_label=persona.persona_label or "",
         reasoning=reasoning,
         is_active=persona.is_active,
+        created_at=persona.created_at,
         updated_at=persona.updated_at,
     )
 
@@ -382,7 +383,7 @@ class NavigatorService:
 
         - ready 캐시 있음(+refresh 아님) → 즉시 3안 반환
         - 없음/refresh/stale-pending → 백그라운드 생성 예약 후 pending 반환
-        - pending → pending, failed → failed (프론트가 refresh로 재시도)
+        - pending → pending, failed/dismissed → 자동 재생성 예약(자가 치유)
         """
         snapshot_id = source_profile_history_id
         if snapshot_id is None:
@@ -428,14 +429,20 @@ class NavigatorService:
                 await _schedule()
             return ProposalsResponse(status="pending")
 
-        # failed 또는 ready인데 json 비어있음 → 프론트가 refresh로 재시도
-        return ProposalsResponse(status="failed")
+        # failed / dismissed / ready인데 json 비어있음 → 자가 치유: 자동 재생성 예약 후 pending.
+        # (생성 중 서버 리로드·재시작으로 작업이 죽어도 다음 폴링이 알아서 복구 → '실패' 안 뜸)
+        await _schedule()
+        return ProposalsResponse(status="pending")
 
     async def get_chat_history(
         self, *, user_id: uuid.UUID, session_id: str
     ) -> list[NavigatorChatMessage]:
         """설계 대화 이력 (세션 복원용)."""
         return await self.repo.get_chat_history(session_id=session_id, user_id=user_id)
+
+    async def dismiss_active_proposal(self, *, user_id: uuid.UUID) -> None:
+        """진행 중인 이상향 설계(추천) 배너를 닫는다 — 최신 pending/ready를 dismissed로."""
+        await self.repo.dismiss_latest_proposal(user_id=user_id)
 
     async def get_active_proposal(
         self, *, user_id: uuid.UUID

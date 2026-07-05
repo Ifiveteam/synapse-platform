@@ -127,6 +127,7 @@ class IdealResponse(BaseModel):
     persona_label: str = ""
     reasoning: str = ""
     is_active: bool = False
+    created_at: datetime
     updated_at: datetime
 
 

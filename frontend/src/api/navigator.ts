@@ -54,6 +54,10 @@ export const listIdeals = () => apiFetchAuth<IdealResponse[]>(`${P}/ideals`);
 export const getActiveProposal = () =>
   apiFetchAuth<ActiveProposalResponse>(`${P}/proposals/active`);
 
+/** 진행 중인 이상향 설계 배너 닫기 (dismiss) */
+export const dismissActiveProposal = () =>
+  apiFetchAuth<void>(`${P}/proposals/active`, { method: "DELETE" });
+
 /** 설계 대화 이력 — '이어서 설계하기'로 돌아왔을 때 복원용 */
 export const getChatHistory = (sessionId: string) =>
   apiFetchAuth<NavigatorChatMessage[]>(

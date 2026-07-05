@@ -927,13 +927,17 @@ export function PlaylistPage() {
       ) : (
         <ul className="flex flex-col gap-3">
           {visibleRows.map((r) => (
-            <li key={r.id} className="flex items-center gap-2">
+            <li
+              key={r.id}
+              className="border-border hover:border-primary/40 flex items-center gap-3 rounded-2xl border bg-card px-4 py-3 transition-colors"
+            >
               <button
                 type="button"
                 onClick={() => void openPlaylist(r.id)}
-                className="border-border hover:border-primary/40 flex flex-1 items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3 text-left transition-colors"
+                className="flex min-w-0 flex-1 items-center gap-3 text-left"
               >
-                <div className="min-w-0">
+                <ListVideo size={20} className="text-muted-foreground shrink-0" />
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">
                     {r.title || "제목 없음"}
                   </p>
@@ -956,7 +960,6 @@ export function PlaylistPage() {
                     </span>
                   </div>
                 </div>
-                <ListVideo size={18} className="text-muted-foreground shrink-0" />
               </button>
               <select
                 value={r.refresh_period}
@@ -965,7 +968,7 @@ export function PlaylistPage() {
                 }
                 onClick={(e) => e.stopPropagation()}
                 title="자동 갱신 주기"
-                className="border-border bg-card text-muted-foreground focus:border-primary/50 shrink-0 rounded-lg border px-2 py-2 text-xs outline-none"
+                className="border-border bg-background text-muted-foreground focus:border-primary/50 shrink-0 rounded-lg border px-2 py-1.5 text-xs outline-none"
               >
                 {PERIOD_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>

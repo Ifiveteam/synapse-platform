@@ -58,6 +58,7 @@ export interface IdealResponse {
   persona_label: string;
   reasoning: string;
   is_active: boolean;
+  created_at: string;
   updated_at: string;
 }
 
