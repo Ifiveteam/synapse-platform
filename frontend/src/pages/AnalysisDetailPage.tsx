@@ -13,9 +13,6 @@ import type { DbProfileResponse, InsightExtra } from "@/api/types/profiler";
 import { EmbeddingCatalogGraph } from "@/components/analyses/embedding-catalog-graph";
 import { InterestPie, buildInterestLegend } from "@/components/analyses/interest-pie";
 import { AxisRadar } from "@/components/analyses/axis-radar";
-import { BehaviorSpiderChart } from "@/components/analyses/behavior-spider-chart";
-import { TemperamentBars } from "@/components/analyses/temperament-bars";
-import { ValuesBars } from "@/components/analyses/values-bars";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatAnalysisDate } from "@/lib/analyses/types";
@@ -408,18 +405,6 @@ export function AnalysisDetailPage() {
             </div>
           )}
 
-          <div className="flex flex-col items-stretch gap-4 lg:flex-row">
-            <div className="border-border w-full shrink-0 rounded-2xl border bg-card p-5 lg:w-[400px]">
-              <BehaviorSpiderChart scores={profile.scores} />
-              <div className="border-border mt-5 border-t pt-5">
-                <TemperamentBars scores={profile.scores} />
-              </div>
-            </div>
-
-            <div className="border-border min-h-0 min-w-0 flex-1 rounded-2xl border bg-card p-4">
-              <ValuesBars scores={profile.scores} />
-            </div>
-          </div>
         </div>
       </div>
 

@@ -58,6 +58,7 @@ export interface IdealResponse {
   persona_label: string;
   reasoning: string;
   is_active: boolean;
+  created_at: string;
   updated_at: string;
 }
 
@@ -107,7 +108,7 @@ export interface PlaylistItemResponse {
 }
 export type PlaylistStatus = "pending" | "ready" | "failed";
 export type PlaylistSaveStatus = "none" | "saving" | "saved" | "failed";
-export type PlaylistPeriod = "none" | "daily" | "weekly" | "monthly";
+export type PlaylistPeriod = "none" | "weekly" | "monthly";
 
 export interface PlaylistResponse {
   id: string;

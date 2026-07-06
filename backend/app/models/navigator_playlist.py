@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import ForeignKey, Index, Text, text
+from sqlalchemy import DateTime, ForeignKey, Index, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -42,9 +43,13 @@ class NavigatorPlaylist(TimestampMixin, Base):
     save_status: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("'none'")
     )
-    # 자동 갱신 주기 — none / daily / weekly / monthly (스케줄러 연동은 별도)
+    # 자동 갱신 주기 — none / weekly / monthly (스케줄러가 주기 도래 시 재생성)
     refresh_period: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("'none'")
+    )
+    # 마지막 (재)생성 시각 — 스케줄러 주기 도래 판정용 (생성·재생성마다 갱신)
+    last_refreshed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     # 자동 "{persona_label} #N", 사용자 수정 가능

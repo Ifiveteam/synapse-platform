@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ListVideo, Loader2, Plus, Target, Trash2 } from "lucide-react";
 
@@ -7,10 +7,9 @@ import { Button } from "@/components/ui/button";
 import {
   applyIdeal,
   deleteIdeal,
+  dismissActiveProposal,
   getActiveProposal,
-  listIdeals,
 } from "@/api/navigator";
-import { fetchMyAnalyses } from "@/api/analyses";
 import type { IdealResponse } from "@/api/types/navigator";
 import { IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
 import { cn } from "@/lib/utils";
@@ -43,6 +42,9 @@ function IdealCard({
             </p>
             <p className="text-muted-foreground mt-0.5 text-xs">
               {IDEAL_TYPE_LABEL[item.ideal_type]}
+              <span className="ml-2">
+                {new Date(item.created_at).toLocaleDateString("ko-KR")}
+              </span>
             </p>
             <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
               {item.reasoning || "설명 없음"}
@@ -169,9 +171,15 @@ function IdealList({
     );
   }
 
+  // 적용 중을 맨 위로, 그 다음 최신순(created_at desc)
+  const sortedIdeals = [...ideals].sort((a, b) => {
+    if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
   return (
     <div className="flex flex-col gap-4">
-      {ideals.map((item) => (
+      {sortedIdeals.map((item) => (
         <IdealCard
           key={item.id}
           item={item}
@@ -195,7 +203,11 @@ export function IdealManagementPage({
   embedded = false,
   activeOnly = false,
 }: { embedded?: boolean; activeOnly?: boolean } = {}) {
-  const [ideals, setIdeals] = useState<IdealResponse[]>([]);
+  const ideals = useSidebarStore((s) => s.ideals);
+  const analyses = useSidebarStore((s) => s.analyses);
+  const loadIdeals = useSidebarStore((s) => s.loadIdeals);
+  const loadAnalyses = useSidebarStore((s) => s.loadAnalyses);
+  const refreshIdeals = useSidebarStore((s) => s.refreshIdeals);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [designState, setDesignState] = useState<"none" | "pending" | "ready">(
@@ -205,41 +217,20 @@ export function IdealManagementPage({
   const [designTitle, setDesignTitle] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<IdealResponse | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const setActiveIdealLabel = useSidebarStore((s) => s.setActiveIdealLabel);
-  const loadIdealPersona = useSidebarStore((s) => s.loadIdealPersona);
+  const [dismissConfirm, setDismissConfirm] = useState(false);
+  const [dismissing, setDismissing] = useState(false);
 
-  const syncSidebar = useCallback(
-    (list: IdealResponse[]) => {
-      const active = list.find((x) => x.is_active);
-      if (active) {
-        setActiveIdealLabel(
-          active.persona_label || IDEAL_TYPE_LABEL[active.ideal_type],
-        );
-      } else {
-        // 적용 이상향 없음 → 최신 분석 페르소나로 폴백
-        void loadIdealPersona();
-      }
-    },
-    [setActiveIdealLabel, loadIdealPersona],
-  );
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const list = await listIdeals();
-      setIdeals(list);
-      syncSidebar(list);
-    } catch {
-      setError("이상향을 불러오지 못했습니다. 로그인 상태를 확인하세요.");
-    } finally {
-      setLoading(false);
-    }
-  }, [syncSidebar]);
-
+  // 이상향 목록 — 스토어 단일 소스(동시 호출 dedupe). 마운트마다 최신화, 사이드바와 공유.
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    setLoading(true);
+    void loadIdeals().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadIdeals]);
 
   // 진행 중인 이상향 설계 감지 — pending(생성 중)이면 4초 폴링해 ready로 갱신
   useEffect(() => {
@@ -263,34 +254,38 @@ export function IdealManagementPage({
     };
   }, []);
 
-  // 설계 기반 분석의 제목 해석 (분석 목록에서 id 매칭)
+  // 설계 기반 분석 제목 — 스토어 분석 목록에서 매칭 (필요 시 로드)
+  useEffect(() => {
+    if (designSourceId) void loadAnalyses();
+  }, [designSourceId, loadAnalyses]);
+
   useEffect(() => {
     if (!designSourceId) {
       setDesignTitle(null);
       return;
     }
-    let cancelled = false;
-    void fetchMyAnalyses()
-      .then((list) => {
-        if (cancelled) return;
-        setDesignTitle(
-          list.find((a) => a.id === designSourceId)?.title ?? null,
-        );
-      })
-      .catch(() => {
-        /* 무시 */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [designSourceId]);
+    setDesignTitle(analyses.find((a) => a.id === designSourceId)?.title ?? null);
+  }, [designSourceId, analyses]);
 
   const handleApply = async (id: string) => {
     try {
       await applyIdeal(id);
-      await load();
+      await refreshIdeals();
     } catch {
       setError("적용에 실패했습니다.");
+    }
+  };
+
+  const handleDismissDesign = async () => {
+    setDismissing(true);
+    try {
+      await dismissActiveProposal();
+      setDesignState("none");
+      setDismissConfirm(false);
+    } catch {
+      /* 실패해도 다음 폴링에서 정정 */
+    } finally {
+      setDismissing(false);
     }
   };
 
@@ -300,7 +295,7 @@ export function IdealManagementPage({
     try {
       await deleteIdeal(deleteTarget.id);
       setDeleteTarget(null);
-      await load();
+      await refreshIdeals();
     } catch {
       setError("삭제에 실패했습니다.");
     } finally {
@@ -373,9 +368,23 @@ export function IdealManagementPage({
                     : "추천 3안이 준비됐어요. 이어서 골라 저장해 보세요."}
                 </p>
               </div>
-              <span className="border-primary text-primary hover:bg-primary/5 shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors">
-                이어서 분석하기
-              </span>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="border-primary text-primary hover:bg-primary/5 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors">
+                  이어서 분석하기
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDismissConfirm(true);
+                  }}
+                  title="진행 중 설계 닫기"
+                  className="text-muted-foreground hover:text-destructive rounded-lg p-1 transition-colors"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
             </div>
           </div>
         </Link>
@@ -429,6 +438,46 @@ export function IdealManagementPage({
               >
                 <Trash2 size={15} className={deleting ? "animate-pulse" : ""} />
                 {deleting ? "삭제 중…" : "삭제"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dismissConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => !dismissing && setDismissConfirm(false)}
+          />
+          <div className="border-border bg-card relative z-10 w-full max-w-sm rounded-2xl border p-5 shadow-xl">
+            <h3 className="text-base font-semibold">진행 중 설계 닫기</h3>
+            <p className="text-muted-foreground mt-2 text-sm">
+              진행 중인 이상향 설계(추천 3안)를 닫으시겠습니까? 다시 하려면 새로
+              시작해야 합니다.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDismissConfirm(false)}
+                disabled={dismissing}
+              >
+                취소
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => void handleDismissDesign()}
+                disabled={dismissing}
+              >
+                <Trash2 size={15} className={dismissing ? "animate-pulse" : ""} />
+                {dismissing ? "닫는 중…" : "닫기"}
               </Button>
             </div>
           </div>
