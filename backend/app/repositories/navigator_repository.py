@@ -228,6 +228,23 @@ class NavigatorRepository:
         )
         await self.db.commit()
 
+    async def dismiss_latest_proposal(self, *, user_id: uuid.UUID) -> bool:
+        """진행 중(pending/ready) 최신 추천을 dismissed로 마킹 — '진행 중' 배너 제거용."""
+        row = await self.get_latest_proposal(user_id=user_id)
+        if row is None or row.status not in ("pending", "ready"):
+            return False
+        await self.db.execute(
+            update(NavigatorProposalCache)
+            .where(
+                NavigatorProposalCache.user_id == user_id,
+                NavigatorProposalCache.source_profile_history_id
+                == row.source_profile_history_id,
+            )
+            .values(status="dismissed", updated_at=datetime.now(UTC))
+        )
+        await self.db.commit()
+        return True
+
     async def mark_proposal_confirmed(
         self, *, user_id: uuid.UUID, snapshot_id: uuid.UUID
     ) -> None:
@@ -383,12 +400,15 @@ class NavigatorRepository:
         status: str | None = None,
         save_status: str | None = None,
         refresh_period: str | None = None,
+        last_refreshed_at: datetime | None = None,
     ) -> NavigatorPlaylist | None:
         row = await self.get_playlist(user_id=user_id, playlist_id=playlist_id)
         if row is None:
             return None
         if refresh_period is not None:
             row.refresh_period = refresh_period
+        if last_refreshed_at is not None:
+            row.last_refreshed_at = last_refreshed_at
         if items_json is not None:
             row.items_json = items_json
         if channels_json is not None:

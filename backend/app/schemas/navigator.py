@@ -127,6 +127,7 @@ class IdealResponse(BaseModel):
     persona_label: str = ""
     reasoning: str = ""
     is_active: bool = False
+    created_at: datetime
     updated_at: datetime
 
 
@@ -190,7 +191,7 @@ class PlaylistItemResponse(BaseModel):
 
 PlaylistStatus = Literal["pending", "ready", "failed"]
 PlaylistSaveStatus = Literal["none", "saving", "saved", "failed"]
-PlaylistPeriod = Literal["none", "daily", "weekly", "monthly"]
+PlaylistPeriod = Literal["none", "weekly", "monthly"]
 
 
 class PlaylistResponse(BaseModel):

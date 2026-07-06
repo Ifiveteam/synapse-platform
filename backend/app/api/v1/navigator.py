@@ -83,6 +83,15 @@ async def active_proposal(
     return await navigator_service.get_active_proposal(user_id=user.id)
 
 
+@router.delete("/proposals/active", status_code=status.HTTP_204_NO_CONTENT)
+async def dismiss_active_proposal(
+    user: User = Depends(get_current_user_dep),
+    navigator_service: NavigatorService = Depends(),
+) -> None:
+    """진행 중인 이상향 설계 배너 닫기 (최신 추천을 dismissed 처리)."""
+    await navigator_service.dismiss_active_proposal(user_id=user.id)
+
+
 @router.get("/chat/history", response_model=list[NavigatorChatMessage])
 async def chat_history(
     session_id: str = Query(..., description="설계 대화 세션 id"),

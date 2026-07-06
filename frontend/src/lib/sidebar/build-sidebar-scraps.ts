@@ -1,6 +1,6 @@
 import type { ArchiverSessionSummary } from "@/api/archiver";
 import type { ScrapItem } from "@/api/scraps";
-import type { SidebarScrap } from "@/lib/sidebar/mock";
+import type { SidebarScrap } from "@/lib/sidebar/types";
 
 function normalizeUrl(url: string | null | undefined): string {
   if (!url?.trim()) return "";

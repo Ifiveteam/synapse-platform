@@ -38,6 +38,9 @@ async def lifespan(app: FastAPI):
         batch_reconcile_loop,
         reconcile_stuck_batches,
     )
+    from app.services.playlist_refresh_scheduler import (
+        scheduler_loop as playlist_refresh_loop,
+    )
     from app.services.takeout_scheduler import scheduler_loop
 
     # 재시작으로 인메모리 큐가 비었으므로, 이전 프로세스의 진행 중(pending/running)
@@ -55,12 +58,13 @@ async def lifespan(app: FastAPI):
 
     task = asyncio.create_task(scheduler_loop())
     reconcile_task = asyncio.create_task(batch_reconcile_loop())
+    playlist_task = asyncio.create_task(playlist_refresh_loop())
     try:
         yield
     finally:
-        for t in (task, reconcile_task):
+        for t in (task, reconcile_task, playlist_task):
             t.cancel()
-        for t in (task, reconcile_task):
+        for t in (task, reconcile_task, playlist_task):
             try:
                 await t
             except asyncio.CancelledError:

@@ -12,8 +12,7 @@ import {
   X,
 } from "lucide-react";
 
-import { deleteMyAnalysis, fetchMyAnalyses } from "@/api/analyses";
-import { ApiError } from "@/api/client";
+import { deleteMyAnalysis } from "@/api/analyses";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -24,6 +23,7 @@ import {
 } from "@/lib/analyses/types";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/routes";
+import { useSidebarStore } from "@/stores/sidebar";
 
 type FilterTab = "all" | "completed" | "pending";
 
@@ -243,9 +243,11 @@ export function MyAnalysesPage({
   latestOnly = false,
 }: { embedded?: boolean; latestOnly?: boolean } = {}) {
   const navigate = useNavigate();
+  const items = useSidebarStore((s) => s.analyses);
+  const loadAnalyses = useSidebarStore((s) => s.loadAnalyses);
+  const removeAnalysis = useSidebarStore((s) => s.removeAnalysis);
   const [filter, setFilter] = useState<FilterTab>("all");
   const [page, setPage] = useState(1);
-  const [items, setItems] = useState<AnalysisResultItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCompare, setShowCompare] = useState(false);
@@ -260,7 +262,7 @@ export function MyAnalysesPage({
     setDeleting(true);
     try {
       await deleteMyAnalysis(deleteTarget.id);
-      setItems((prev) => prev.filter((x) => x.id !== deleteTarget.id));
+      removeAnalysis(deleteTarget.id);
       setDeleteTarget(null);
     } catch {
       setError("삭제에 실패했습니다.");
@@ -275,30 +277,18 @@ export function MyAnalysesPage({
   );
   const canCompare = completedItems.length >= 2;
 
+  // 분석 목록 — 스토어 단일 소스(동시 호출 dedupe). 사이드바·허브와 공유.
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const list = await fetchMyAnalyses();
-        if (!cancelled) setItems(list);
-      } catch (err) {
-        if (!cancelled) {
-          setError(
-            err instanceof ApiError
-              ? err.message
-              : "분석 목록을 불러오지 못했습니다.",
-          );
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+    setLoading(true);
+    setError(null);
+    void loadAnalyses().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadAnalyses]);
 
   // 진행 중(job) 항목은 **배치별로** 그룹 박스 하나씩, 완료 스냅샷만 개별 + 페이지네이션
   const jobItems = useMemo(() => items.filter((i) => i.kind === "job"), [items]);
