@@ -40,6 +40,7 @@ class NavigatorState(TypedDict):
     sufficient: NotRequired[
         bool
     ]  # AI가 이상향 만들 만큼 충분하다고 판단(마무리 안내용)
+    user_wants_finalize: NotRequired[bool]  # LLM 판단: 사용자가 마무리에 동의/요청함
     decision: NotRequired[str]  # "ask" | "finalize"
 
     # 산출

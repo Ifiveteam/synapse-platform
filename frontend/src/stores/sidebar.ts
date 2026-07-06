@@ -189,6 +189,9 @@ export const useSidebarStore = create<SidebarStore>()(
       partialize: (s) => ({
         activeIdealLabel: s.activeIdealLabel,
         chats: s.chats,
+        // 목록도 캐시 → /me 재진입 시 즉시 표시 후 백그라운드 갱신(stale-while-revalidate)
+        analyses: s.analyses,
+        ideals: s.ideals,
       }),
     },
   ),

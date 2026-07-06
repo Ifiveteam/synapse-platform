@@ -110,6 +110,8 @@ async def assess(state: NavigatorState) -> dict[str, Any]:
     )
 
     updates["sufficient"] = sufficient
+    # LLM 판단을 state에 기록 → 그래프 route_after_assess가 finalize 여부에 사용
+    updates["user_wants_finalize"] = user_wants
     finalize = _should_finalize(
         force=bool(state.get("force_finalize", False)),
         user_wants=user_wants,

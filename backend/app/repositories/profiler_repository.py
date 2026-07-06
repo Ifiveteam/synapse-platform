@@ -9,6 +9,7 @@ from typing import Any, Mapping, Sequence
 from sqlalchemy import desc, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.models.analysis_source_catalog import AnalysisSourceCatalog
 from app.models.user_profile_history import UserProfileHistory
@@ -33,8 +34,16 @@ async def fetch_latest_profile(
 async def fetch_profile_history_list(
     session: AsyncSession, user_id: uuid.UUID
 ) -> list[UserProfileHistory]:
+    # 목록 전용 — id·snapshot_date·portrait만 사용하므로 무거운 JSONB
+    # (supporting_evidence·scores·dominant_traits 등)는 load_only로 defer한다.
     result = await session.execute(
         select(UserProfileHistory)
+        .options(
+            load_only(
+                UserProfileHistory.snapshot_date,
+                UserProfileHistory.portrait,
+            )
+        )
         .where(UserProfileHistory.user_id == user_id)
         .order_by(desc(UserProfileHistory.snapshot_date))
     )

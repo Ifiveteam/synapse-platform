@@ -738,6 +738,7 @@ async def build_profile_node(state: ProfilerState) -> dict[str, Any]:
             "profile_scores": scores,
             "profile_insight": insight,
             "supporting_evidence": supporting,
+            "portrait": portrait_payload,
             "snapshot_id": str(snapshot_id),
             "llm_used": llm_used,
             "current_step": "build_profile",

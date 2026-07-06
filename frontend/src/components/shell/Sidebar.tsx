@@ -81,6 +81,47 @@ function BrandLogo({ expanded }: { expanded: boolean }) {
   );
 }
 
+export function UserAvatar({
+  picture,
+  name,
+  size,
+}: {
+  picture?: string | null;
+  name: string;
+  size: number;
+}) {
+  const { theme } = useThemeStore();
+  const [failed, setFailed] = useState(false);
+
+  // 사진이 없거나 로드 실패(구글 아바타 ORB 차단 등) 시 Synapse 로고로 폴백
+  if (!picture || failed) {
+    return (
+      <img
+        src={logoUrl}
+        alt={name}
+        width={size}
+        height={size}
+        className={cn(
+          "shrink-0 object-contain",
+          theme === "dark" && "invert brightness-200",
+        )}
+      />
+    );
+  }
+
+  return (
+    <img
+      src={picture}
+      alt={name}
+      width={size}
+      height={size}
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="shrink-0 rounded-full object-cover"
+    />
+  );
+}
+
 function SectionLabel({ children }: { children: ReactNode }) {
   return (
     <p className="text-muted-foreground px-3 pt-3 pb-1 text-[10px] font-semibold tracking-widest uppercase">
@@ -221,10 +262,8 @@ export function Sidebar() {
       setSidebarExpanded(true);
       return;
     }
-    if (pathname === ROUTES.home) {
-      setSidebarExpanded(false);
-      return;
-    }
+    // 큐레이터 대화를 리셋하고 깨끗한 첫 홈으로 이동
+    clearMessages();
     navigate(ROUTES.home);
   };
 
@@ -293,19 +332,7 @@ export function Sidebar() {
                 pathname === ROUTES.ME.HOME && "bg-accent text-accent-foreground",
               )}
             >
-              {user.picture ? (
-                <img
-                  src={user.picture}
-                  alt={user.name}
-                  width={32}
-                  height={32}
-                  className="shrink-0 rounded-full"
-                />
-              ) : (
-                <div className="bg-accent text-accent-foreground flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold">
-                  {user.name[0]}
-                </div>
-              )}
+              <UserAvatar picture={user.picture} name={user.name} size={32} />
               {expanded && (
                 <span className="flex min-w-0 flex-1 items-center gap-1.5">
                   {activeIdealLabel && (

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Activity, Settings, Target } from "lucide-react";
 
 import { ProfileEditModal } from "@/components/auth/profile-edit-modal";
+import { UserAvatar } from "@/components/shell/Sidebar";
 import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/routes";
 import { useAuthStore } from "@/stores/auth";
@@ -24,19 +25,11 @@ export function AccountSidePanel() {
       {/* 프로필 */}
       <div className="border-border bg-card rounded-2xl border p-5">
         <div className="flex items-center gap-3">
-          {user?.picture ? (
-            <img
-              src={user.picture}
-              alt={user.name}
-              width={44}
-              height={44}
-              className="shrink-0 rounded-full"
-            />
-          ) : (
-            <div className="bg-accent text-accent-foreground flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-base font-bold">
-              {user?.name?.[0] ?? "?"}
-            </div>
-          )}
+          <UserAvatar
+            picture={user?.picture}
+            name={user?.name ?? "게스트"}
+            size={44}
+          />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <p className="truncate text-sm font-semibold">
