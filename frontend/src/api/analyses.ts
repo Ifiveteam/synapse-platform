@@ -49,6 +49,20 @@ export async function deleteMyAnalysis(snapshotId: string): Promise<void> {
   });
 }
 
+/** 진행중 분석(배치) 취소 — 배치와 소속 소스 삭제 */
+export async function deleteMyAnalysisBatch(batchId: string): Promise<void> {
+  await apiFetchAuth<void>(`${PREFIX}/me/analyses/batch/${batchId}`, {
+    method: "DELETE",
+  });
+}
+
+/** 진행중 분석(단일 소스) 취소 */
+export async function deleteMyAnalysisSource(sourceId: string): Promise<void> {
+  await apiFetchAuth<void>(`${PREFIX}/me/analyses/source/${sourceId}`, {
+    method: "DELETE",
+  });
+}
+
 export async function fetchMyAnalysisSnapshot(
   snapshotId: string,
 ): Promise<DbProfileResponse> {

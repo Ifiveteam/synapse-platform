@@ -217,6 +217,13 @@ class ProfilerService:
             row = await fetch_profile_snapshot(session, uid, sid)
             if row is None:
                 return False
+            # 이 분석의 소스(dedup 레코드)도 함께 삭제 → 같은 파일 재분석 허용.
+            # (스냅샷 삭제는 FK SET NULL이라 source_key가 남아 재분석이 막히던 문제 해결)
+            from app.repositories.analysis_source_repository import (
+                delete_sources_by_profile_history,
+            )
+
+            await delete_sources_by_profile_history(session, uid, sid)
             await delete_profile_snapshot(session, row)
             return True
 

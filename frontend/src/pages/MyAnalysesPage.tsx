@@ -12,7 +12,11 @@ import {
   X,
 } from "lucide-react";
 
-import { deleteMyAnalysis } from "@/api/analyses";
+import {
+  deleteMyAnalysis,
+  deleteMyAnalysisBatch,
+  deleteMyAnalysisSource,
+} from "@/api/analyses";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -108,7 +112,13 @@ function AnalysisListItem({
 }
 
 /** 진행 중인 배치(같이 올린 파일들)를 한 박스로 — 파일별 상태 + 박스 레벨 단계. */
-function InProgressGroup({ items }: { items: AnalysisResultItem[] }) {
+function InProgressGroup({
+  items,
+  onDelete,
+}: {
+  items: AnalysisResultItem[];
+  onDelete?: (items: AnalysisResultItem[]) => void;
+}) {
   const isProfiling = items.some((it) => it.stage === "profiling");
   const fileBadge = (it: AnalysisResultItem): string => {
     if (isProfiling) return "분류 완료";
@@ -133,6 +143,20 @@ function InProgressGroup({ items }: { items: AnalysisResultItem[] }) {
           {isProfiling && <Loader2 className="size-3 animate-spin" />}
           {isProfiling ? "분석 중" : "진행 중"}
         </Badge>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete(items);
+            }}
+            className="text-muted-foreground hover:text-destructive shrink-0 rounded-full p-1 transition-colors"
+            aria-label="삭제"
+          >
+            <Trash2 size={16} />
+          </button>
+        )}
       </div>
       <div className="border-border mt-3 space-y-1.5 border-t pt-3">
         {items.map((it) => (
@@ -246,15 +270,19 @@ export function MyAnalysesPage({
   const items = useSidebarStore((s) => s.analyses);
   const loadAnalyses = useSidebarStore((s) => s.loadAnalyses);
   const removeAnalysis = useSidebarStore((s) => s.removeAnalysis);
+  const refreshAnalyses = useSidebarStore((s) => s.refreshAnalyses);
   const [filter, setFilter] = useState<FilterTab>("all");
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
+  // 캐시된 목록이 있으면 스피너 없이 바로 표시(백그라운드 갱신)
+  const [loading, setLoading] = useState(items.length === 0);
   const [error, setError] = useState<string | null>(null);
   const [showCompare, setShowCompare] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<AnalysisResultItem | null>(
     null,
   );
+  // 진행중(배치/소스) 삭제 대상 — 그룹 items
+  const [deleteJob, setDeleteJob] = useState<AnalysisResultItem[] | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const handleDelete = async () => {
@@ -271,6 +299,22 @@ export function MyAnalysesPage({
     }
   };
 
+  const handleDeleteJob = async () => {
+    if (!deleteJob || deleteJob.length === 0) return;
+    setDeleting(true);
+    try {
+      const batchId = deleteJob[0].batchId;
+      if (batchId) await deleteMyAnalysisBatch(batchId);
+      else await deleteMyAnalysisSource(deleteJob[0].id);
+      await refreshAnalyses(); // 서버 기준 재동기화 (그룹 전체 반영)
+      setDeleteJob(null);
+    } catch {
+      setError("삭제에 실패했습니다.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const completedItems = useMemo(
     () => items.filter((item) => item.status === "completed"),
     [items],
@@ -280,7 +324,7 @@ export function MyAnalysesPage({
   // 분석 목록 — 스토어 단일 소스(동시 호출 dedupe). 사이드바·허브와 공유.
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    if (items.length === 0) setLoading(true); // 캐시 없을 때만 스피너
     setError(null);
     void loadAnalyses().finally(() => {
       if (!cancelled) setLoading(false);
@@ -288,6 +332,7 @@ export function MyAnalysesPage({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadAnalyses]);
 
   // 진행 중(job) 항목은 **배치별로** 그룹 박스 하나씩, 완료 스냅샷만 개별 + 페이지네이션
@@ -442,26 +487,27 @@ export function MyAnalysesPage({
         </div>
       </div>
 
-      {loading && (
+      {loading && items.length === 0 && (
         <div className="text-muted-foreground flex flex-1 items-center justify-center gap-2 py-16 text-sm">
           <Loader2 className="size-4 animate-spin" />
           목록 불러오는 중…
         </div>
       )}
 
-      {!loading && error && (
+      {error && (
         <div className="border-border text-destructive rounded-2xl border border-dashed px-6 py-16 text-center text-sm">
           {error}
         </div>
       )}
 
-      {!loading && !error && (
+      {(!loading || items.length > 0) && !error && (
         <div className="flex flex-1 flex-col gap-3">
           {showJobGroup &&
             jobGroups.map((group) => (
               <InProgressGroup
                 key={group[0].batchId ?? group[0].id}
                 items={group}
+                onDelete={setDeleteJob}
               />
             ))}
           {visibleSnapshots.map((item) => (
@@ -531,7 +577,7 @@ export function MyAnalysesPage({
         />
       )}
 
-      {deleteTarget && (
+      {(deleteTarget || deleteJob) && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           role="dialog"
@@ -539,13 +585,17 @@ export function MyAnalysesPage({
         >
           <div
             className="absolute inset-0 bg-black/40"
-            onClick={() => !deleting && setDeleteTarget(null)}
+            onClick={() => {
+              if (deleting) return;
+              setDeleteTarget(null);
+              setDeleteJob(null);
+            }}
           />
           <div className="border-border bg-card relative z-10 w-full max-w-sm rounded-2xl border p-5 shadow-xl">
             <h3 className="text-base font-semibold">분석 삭제</h3>
             <p className="text-muted-foreground mt-2 text-sm">
               <span className="text-foreground font-medium">
-                {deleteTarget.title}
+                {deleteTarget ? deleteTarget.title : "진행 중인 분석"}
               </span>{" "}
               분석을 삭제하시겠습니까? 되돌릴 수 없습니다.
             </p>
@@ -553,7 +603,10 @@ export function MyAnalysesPage({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setDeleteTarget(null)}
+                onClick={() => {
+                  setDeleteTarget(null);
+                  setDeleteJob(null);
+                }}
                 disabled={deleting}
               >
                 취소
@@ -562,7 +615,9 @@ export function MyAnalysesPage({
                 variant="destructive"
                 size="sm"
                 className="gap-1.5"
-                onClick={() => void handleDelete()}
+                onClick={() =>
+                  void (deleteTarget ? handleDelete() : handleDeleteJob())
+                }
                 disabled={deleting}
               >
                 <Trash2 size={15} className={deleting ? "animate-pulse" : ""} />

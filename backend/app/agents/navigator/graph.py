@@ -14,10 +14,13 @@ from __future__ import annotations
 from langgraph.graph import END, START, StateGraph
 
 from app.agents.navigator.nodes import ask, assess, finalize
-from app.agents.navigator.nodes._common import latest_user_message
+from app.agents.navigator.nodes._common import (
+    latest_ai_message,
+    latest_user_message,
+)
 from app.agents.navigator.state import NavigatorState
 
-# 사용자가 대화를 끝내고 싶다는 신호(키워드) — 있으면 병렬 답변 대신 finalize로 마무리
+# 사용자가 대화를 끝내고 싶다는 신호(키워드) — 있으면 곧장 마무리
 _STOP_HINTS = (
     "그만",
     "됐어",
@@ -25,32 +28,63 @@ _STOP_HINTS = (
     "끝내",
     "끝낼",
     "이걸로",
-    "이대로",
     "여기까지",
-    "완성",
     "마무리",
     "그만할",
 )
 
+# 직전 네비게이터 발화가 '마무리를 제안'했는지 판별하는 문구
+# (인사말 "만들어볼게요"는 제외되도록 구체 어구만)
+_FINALIZE_OFFER_HINTS = (
+    "만들어도",
+    "만들어가",
+    "구체화",
+    "확정",
+    "이대로",
+    "완성해",
+)
 
-def _wants_finalize(state: NavigatorState) -> bool:
-    """확정 버튼(force_finalize) 또는 '그만/됐어' 같은 종료 의도면 True."""
-    if state.get("force_finalize"):
-        return True
+
+def _stop_keyword(state: NavigatorState) -> bool:
     last = latest_user_message(state)
     return any(hint in last for hint in _STOP_HINTS)
 
 
+def _ai_offered_finalize(state: NavigatorState) -> bool:
+    """직전 AI 발화가 '이대로 만들어도 될까요?'처럼 마무리를 제안한 문맥인지."""
+    last_ai = latest_ai_message(state)
+    return any(hint in last_ai for hint in _FINALIZE_OFFER_HINTS)
+
+
+def _sequential_turn(state: NavigatorState) -> bool:
+    """확정 버튼·종료 키워드·마무리 제안 문맥이면 assess를 먼저 돌리는 순차 턴."""
+    return bool(
+        state.get("force_finalize")
+        or _stop_keyword(state)
+        or _ai_offered_finalize(state)
+    )
+
+
 def route_start(state: NavigatorState) -> list[str] | str:
-    """종료 의도면 assess→finalize 순차, 아니면 assess∥ask 병렬."""
-    if _wants_finalize(state):
+    """마무리 가능성 있는 턴이면 assess 먼저(순차), 아니면 assess∥ask 병렬."""
+    if _sequential_turn(state):
         return "assess"
     return ["assess", "ask"]
 
 
 def route_after_assess(state: NavigatorState) -> str:
-    """종료 의도 턴에서만 finalize로. 일반(병렬) 턴은 ask가 답변을 맡으므로 종료."""
-    return "finalize" if _wants_finalize(state) else END
+    """확정 버튼·키워드·LLM 판단(user_wants_finalize)이면 finalize.
+    마무리 제안 문맥이었지만 LLM이 '아직 아니다'로 보면 질문(ask)으로.
+    일반(병렬) 턴은 ask가 답변을 맡으므로 종료(END)."""
+    if not _sequential_turn(state):
+        return END
+    if (
+        state.get("force_finalize")
+        or _stop_keyword(state)
+        or state.get("user_wants_finalize")
+    ):
+        return "finalize"
+    return "ask"
 
 
 def build_navigator_graph():
@@ -62,7 +96,7 @@ def build_navigator_graph():
     graph.add_conditional_edges(
         "assess",
         route_after_assess,
-        {"finalize": "finalize", END: END},
+        {"finalize": "finalize", "ask": "ask", END: END},
     )
     graph.add_edge("ask", END)
     graph.add_edge("finalize", END)

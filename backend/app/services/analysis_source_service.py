@@ -43,6 +43,30 @@ def upload_source_key(content: bytes) -> str:
     return f"upload:{digest}"
 
 
+async def delete_analysis_job_async(
+    user_id: str,
+    *,
+    batch_id: str | None = None,
+    source_id: str | None = None,
+) -> bool:
+    """진행중 분석(배치 또는 단일 소스) 삭제(취소). 소유자 스코프. 삭제 성공 여부."""
+    from app.repositories.analysis_source_repository import (
+        delete_batch_with_sources,
+        delete_source_by_id,
+    )
+
+    uid = uuid.UUID(user_id)
+    async with AsyncSessionLocal() as session:
+        if batch_id:
+            n = await delete_batch_with_sources(session, uid, uuid.UUID(batch_id))
+        elif source_id:
+            n = await delete_source_by_id(session, uid, uuid.UUID(source_id))
+        else:
+            n = 0
+        await session.commit()
+    return n > 0
+
+
 async def complete_source_async(
     source_id: uuid.UUID | str | None,
     profile_history_id: uuid.UUID | str | None,

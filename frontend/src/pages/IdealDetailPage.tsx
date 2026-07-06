@@ -6,12 +6,9 @@ import {
   InterestPie,
   buildInterestLegend,
 } from "@/components/analyses/interest-pie";
-import { CompareBars } from "@/components/ideals/CompareBars";
 import { RadarCompareChart } from "@/components/ideals/RadarCompareChart";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TEMPERAMENT_AXES } from "@/lib/analyses/temperament";
-import { VALUES_AXES } from "@/lib/analyses/values";
 import { applyIdeal, getComparison, getGuide, getIdeal } from "@/api/navigator";
 import type {
   ComparisonResponse,
@@ -21,22 +18,6 @@ import type {
 import { IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
 import { ROUTES } from "@/routes";
 import { useSidebarStore } from "@/stores/sidebar";
-
-function GapBadge({ gap }: { gap: number }) {
-  if (gap === 0) return <span className="text-muted-foreground text-xs">±0</span>;
-  const up = gap > 0;
-  return (
-    <span
-      className={
-        up
-          ? "text-primary text-xs font-medium"
-          : "text-muted-foreground text-xs font-medium"
-      }
-    >
-      {up ? "▲" : "▼"} {Math.abs(Math.round(gap))}
-    </span>
-  );
-}
 
 export function IdealDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -276,52 +257,6 @@ export function IdealDetailPage() {
           </div>
         )}
 
-        {/* 자세히: 행동 8축 · 가치관/기질 (폴드) */}
-        <details className="border-border mt-5 border-t pt-4">
-          <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-xs select-none">
-            자세히 보기 (행동 8축 · 가치관/기질)
-          </summary>
-          <div className="mt-4 space-y-5">
-            {hasTargets && (
-              <div className="flex justify-center">
-                <RadarCompareChart axes={axes} size={220} />
-              </div>
-            )}
-            <div className="flex flex-col gap-2">
-              {comparison.gaps.map((g) => (
-                <div
-                  key={g.axis}
-                  className="flex items-center justify-between text-xs"
-                >
-                  <span className="font-medium">{g.label_ko}</span>
-                  <span className="text-muted-foreground flex items-center gap-2">
-                    현재 {Math.round(g.current)} → 목표 {Math.round(g.ideal)}{" "}
-                    <GapBadge gap={g.gap} />
-                  </span>
-                </div>
-              ))}
-            </div>
-            {comparison.current_vt && comparison.ideal_vt && (
-              <div className="space-y-5">
-                <p className="text-muted-foreground text-xs">
-                  가치관·기질 (막대=현재 · 목표선=이상향)
-                </p>
-                <CompareBars
-                  title="가치관"
-                  axes={VALUES_AXES}
-                  current={comparison.current_vt}
-                  ideal={comparison.ideal_vt}
-                />
-                <CompareBars
-                  title="기질"
-                  axes={TEMPERAMENT_AXES}
-                  current={comparison.current_vt}
-                  ideal={comparison.ideal_vt}
-                />
-              </div>
-            )}
-          </div>
-        </details>
       </section>
 
       {/* 행동 가이드 */}

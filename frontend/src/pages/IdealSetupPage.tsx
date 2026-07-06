@@ -5,18 +5,14 @@ import { ArrowLeft, Check, ChevronRight, Send } from "lucide-react";
 import { fetchMyAnalyses, fetchMyAnalysisSnapshot } from "@/api/analyses";
 import type { DbProfileResponse } from "@/api/types/profiler";
 import { InterestPie, buildInterestLegend } from "@/components/analyses/interest-pie";
-import { CompareBars } from "@/components/ideals/CompareBars";
 import { RadarCompareChart } from "@/components/ideals/RadarCompareChart";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { TEMPERAMENT_AXES } from "@/lib/analyses/temperament";
 import type { AnalysisResultItem } from "@/lib/analyses/types";
-import { VALUES_AXES } from "@/lib/analyses/values";
 import {
   createIdeal,
   getChatHistory,
-  getCurrentAxes,
   getProposals,
   streamChat,
 } from "@/api/navigator";
@@ -27,19 +23,9 @@ import type {
   IdealType,
   ProposalItem,
 } from "@/api/types/navigator";
-import { AXIS_LABELS, IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
+import { IDEAL_TYPE_DESC, IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/routes";
-
-const AXIS_ORDER = Object.keys(AXIS_LABELS);
-
-function buildAxes(current: AxisScores8, ideal: AxisScores8) {
-  return AXIS_ORDER.map((k) => ({
-    label: AXIS_LABELS[k],
-    current: current[k] ?? 0,
-    ideal: ideal[k] ?? 0,
-  }));
-}
 
 /** 추천 3안이 준비될 때까지 폴링한다 (백엔드가 백그라운드로 생성). */
 async function pollProposals(
@@ -267,8 +253,8 @@ function ProposalCard({
       {proposal.persona_label && (
         <p className="mt-2 text-sm font-semibold">{proposal.persona_label}</p>
       )}
-      <p className="text-muted-foreground mt-1 line-clamp-3 text-xs leading-relaxed">
-        {proposal.reasoning}
+      <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+        {IDEAL_TYPE_DESC[proposal.ideal_type]}
       </p>
     </button>
   );
@@ -318,18 +304,10 @@ function IdealCharts({
   dispRadar,
   curPie,
   idealPie,
-  current8,
-  working8,
-  working13,
-  snapshot,
 }: {
   dispRadar: { label: string; current: number; ideal: number }[];
   curPie: { axis: string; value: number }[];
   idealPie: { axis: string; value: number }[] | null;
-  current8: AxisScores8;
-  working8: AxisScores8 | null;
-  working13: AxisScores13 | null;
-  snapshot: DbProfileResponse | null;
 }) {
   return (
     <div className="border-border h-full space-y-4 rounded-2xl border bg-card px-4 py-4">
@@ -412,37 +390,6 @@ function IdealCharts({
         </div>
       </div>
 
-      {/* 폴드: 행동 8축 · 가치관/기질 13축 */}
-      {working8 && (
-        <details className="border-border border-t pt-4">
-          <summary className="text-muted-foreground hover:text-foreground cursor-pointer text-xs select-none">
-            자세히 보기 (행동 8축 · 가치관/기질 13축)
-          </summary>
-          <div className="mt-4 space-y-5">
-            <div className="flex justify-center">
-              <RadarCompareChart axes={buildAxes(current8, working8)} size={220} />
-            </div>
-            {snapshot && working13 && (
-              <>
-                <CompareBars
-                  title="가치관"
-                  subtitle="0=관심 없음 · 100=강하게 추구"
-                  axes={VALUES_AXES}
-                  current={snapshot.scores}
-                  ideal={working13}
-                />
-                <CompareBars
-                  title="기질"
-                  subtitle="시청에서 읽히는 성향 · 0=약함 · 100=강함"
-                  axes={TEMPERAMENT_AXES}
-                  current={snapshot.scores}
-                  ideal={working13}
-                />
-              </>
-            )}
-          </div>
-        </details>
-      )}
     </div>
   );
 }
@@ -458,7 +405,6 @@ function ShowProposals({
 }) {
   const navigate = useNavigate();
   const [proposals, setProposals] = useState<ProposalItem[]>([]);
-  const [current, setCurrent] = useState<AxisScores8>({});
   const [snapshot, setSnapshot] = useState<DbProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -477,6 +423,8 @@ function ShowProposals({
   const [liveValues, setLiveValues] = useState<AxisScores13 | null>(null);
   const [liveKeywords, setLiveKeywords] = useState<string[]>([]);
   const [finalIdeal, setFinalIdeal] = useState<CompleteEvent | null>(null);
+  // 대화 마무리 후 '넘어갈지/더 대화할지' 확인 팝업
+  const [pendingFinalize, setPendingFinalize] = useState(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
   // 새 메시지/토큰마다 대화창을 맨 아래로 자동 스크롤
@@ -548,13 +496,6 @@ function ShowProposals({
           setProposals(prop.proposals);
         }
         setSnapshot(snap);
-        if (snap) {
-          setCurrent(
-            Object.fromEntries(AXIS_ORDER.map((k) => [k, snap.scores[k] ?? 0])),
-          );
-        } else {
-          setCurrent(await getCurrentAxes().catch(() => ({}) as AxisScores8));
-        }
       } catch {
         if (!cancelled)
           setError("제안을 불러오지 못했습니다. (프로필이 필요합니다)");
@@ -645,18 +586,8 @@ function ShowProposals({
               values: d.values_temperament,
               keywords: d.keywords ?? [],
             });
-            // 대화로 마무리(발화·완성 버튼) → 확정 버튼 누른 것처럼 저장 + 다음 페이지
-            void saveIdealAndGo({
-              ideal_type: "CUSTOM",
-              scores: d.behavior,
-              values_temperament: d.values_temperament,
-              target_disposition: d.disposition,
-              target_interest: d.interest,
-              persona_label: d.persona_label || undefined,
-              reasoning: d.reasoning || "",
-              taste_keywords: d.keywords ?? [],
-              source_profile_history_id: analysisId || undefined,
-            });
+            // 바로 넘어가지 말고 확인 팝업 — 마지막 멘트를 읽고 넘어갈지/더 대화할지 선택
+            setPendingFinalize(true);
           },
         },
       );
@@ -776,8 +707,8 @@ function ShowProposals({
         </div>
       </div>
 
-      {/* 좌: 추천 3안 + 성향/관심 차트  ·  우: 채팅(세로 풀높이) */}
-      <div className="flex flex-col gap-4 lg:flex-row">
+      {/* 좌: 추천 3안 + 성향/관심 차트  ·  우: 채팅. 3열 높이 고정(동일) — 채팅으로 안 늘어남 */}
+      <div className="flex flex-col gap-4 lg:h-[calc(100vh-16rem)] lg:flex-row">
         {/* 1열: 이상향 3안 (세로) — 카드 or 펼침 */}
         <div className="flex flex-col gap-3 lg:w-[300px] lg:shrink-0">
           {selectedProposal ? (
@@ -802,12 +733,6 @@ function ShowProposals({
             dispRadar={dispRadar}
             curPie={curPie}
             idealPie={idealPie}
-            current8={current}
-            working8={selectedProposal ? selectedProposal.scores : liveBehavior}
-            working13={
-              selectedProposal ? selectedProposal.values_temperament : liveValues
-            }
-            snapshot={snapshot}
           />
         </div>
 
@@ -838,7 +763,7 @@ function ShowProposals({
               </div>
             ))}
           </div>
-          <div className="border-border flex items-center gap-2 border-t px-3 py-3">
+          <div className="border-border flex items-center gap-2 border-t px-3 pt-3 pb-4">
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -857,20 +782,51 @@ function ShowProposals({
               <Send size={16} />
             </Button>
           </div>
-          <div className="border-border border-t px-3 py-2">
-            <button
-              type="button"
-              onClick={() => void send({ force: true })}
-              disabled={streaming || finalIdeal !== null}
-              className="text-muted-foreground hover:text-foreground text-xs transition-colors disabled:opacity-50"
-            >
-              대화는 이만 — 지금까지 취향으로 이상향 완성하기
-            </button>
-          </div>
         </div>
       </div>
 
-      {/* 하단 버튼 */}
+      {pendingFinalize && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => !busy && setPendingFinalize(false)}
+          />
+          <div className="border-border bg-card relative z-10 w-full max-w-sm rounded-2xl border p-5 shadow-xl">
+            <h3 className="text-base font-semibold">이상향을 완성했어요</h3>
+            {finalIdeal?.persona_label && (
+              <p className="text-primary mt-1 text-sm font-medium">
+                {finalIdeal.persona_label}
+              </p>
+            )}
+            <p className="text-muted-foreground mt-2 text-sm">
+              이 이상향으로 넘어갈까요? 더 이야기하고 싶으면 계속 대화해도 돼요.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPendingFinalize(false)}
+                disabled={busy}
+              >
+                더 대화하기
+              </Button>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={() => confirmCreate()}
+                disabled={busy}
+              >
+                <Check size={15} />
+                이 이상향으로 확정
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
