@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from google.genai import types
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from app.agents.navigator.state import NavigatorState
 
@@ -12,6 +12,15 @@ def latest_user_message(state: NavigatorState) -> str:
     """messages 스택에서 마지막 HumanMessage 본문을 추출한다."""
     for message in reversed(state.get("messages", [])):
         if isinstance(message, HumanMessage):
+            content = message.content
+            return content.strip() if isinstance(content, str) else str(content).strip()
+    return ""
+
+
+def latest_ai_message(state: NavigatorState) -> str:
+    """messages 스택에서 마지막 AIMessage(직전 네비게이터 발화) 본문을 추출한다."""
+    for message in reversed(state.get("messages", [])):
+        if isinstance(message, AIMessage):
             content = message.content
             return content.strip() if isinstance(content, str) else str(content).strip()
     return ""

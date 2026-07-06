@@ -71,6 +71,15 @@ async def begin_source(
     existing = await fetch_source(session, user_id, source_key)
     if existing is not None:
         if existing.status == AnalysisSourceStatus.COMPLETED:
+            # 스냅샷이 삭제돼 고아가 된 완료 소스는 재분석 허용(재큐잉)
+            if existing.profile_history_id is None:
+                bid = await ensure_batch(session, user_id, batch_id)
+                existing.status = AnalysisSourceStatus.PENDING
+                existing.stage = AnalysisSourceStage.INDEXING
+                existing.file_name = file_name
+                existing.batch_id = bid
+                await session.flush()
+                return existing, "queued"
             return existing, "skip_completed"
         if existing.status == AnalysisSourceStatus.RUNNING:
             return existing, "skip_running"
@@ -193,6 +202,51 @@ async def delete_sources_for_user(session: AsyncSession, user_id: uuid.UUID) -> 
     await session.execute(
         delete(UserAnalysisSource).where(UserAnalysisSource.user_id == user_id)
     )
+
+
+async def delete_source_by_id(
+    session: AsyncSession, user_id: uuid.UUID, source_id: uuid.UUID
+) -> int:
+    """단일 진행중 소스 삭제(취소). 삭제된 행 수 반환(소유자 스코프)."""
+    result = await session.execute(
+        delete(UserAnalysisSource).where(
+            UserAnalysisSource.user_id == user_id,
+            UserAnalysisSource.id == source_id,
+        )
+    )
+    return result.rowcount or 0
+
+
+async def delete_batch_with_sources(
+    session: AsyncSession, user_id: uuid.UUID, batch_id: uuid.UUID
+) -> int:
+    """배치와 그에 속한 소스들을 함께 삭제(취소). 삭제된 소스 수 반환."""
+    result = await session.execute(
+        delete(UserAnalysisSource).where(
+            UserAnalysisSource.user_id == user_id,
+            UserAnalysisSource.batch_id == batch_id,
+        )
+    )
+    await session.execute(
+        delete(AnalysisBatch).where(
+            AnalysisBatch.id == batch_id,
+            AnalysisBatch.user_id == user_id,
+        )
+    )
+    return result.rowcount or 0
+
+
+async def delete_sources_by_profile_history(
+    session: AsyncSession, user_id: uuid.UUID, profile_history_id: uuid.UUID
+) -> int:
+    """스냅샷(분석) 삭제 시 그 분석의 소스(dedup 레코드)도 제거 → 같은 파일 재분석 허용."""
+    result = await session.execute(
+        delete(UserAnalysisSource).where(
+            UserAnalysisSource.user_id == user_id,
+            UserAnalysisSource.profile_history_id == profile_history_id,
+        )
+    )
+    return result.rowcount or 0
 
 
 # ---------------------------------------------------------------------------

@@ -208,7 +208,8 @@ export function IdealManagementPage({
   const loadIdeals = useSidebarStore((s) => s.loadIdeals);
   const loadAnalyses = useSidebarStore((s) => s.loadAnalyses);
   const refreshIdeals = useSidebarStore((s) => s.refreshIdeals);
-  const [loading, setLoading] = useState(true);
+  // 캐시된 이상향이 있으면 스피너 없이 바로 표시(백그라운드 갱신)
+  const [loading, setLoading] = useState(ideals.length === 0);
   const [error, setError] = useState<string | null>(null);
   const [designState, setDesignState] = useState<"none" | "pending" | "ready">(
     "none",
@@ -223,13 +224,14 @@ export function IdealManagementPage({
   // 이상향 목록 — 스토어 단일 소스(동시 호출 dedupe). 마운트마다 최신화, 사이드바와 공유.
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    if (ideals.length === 0) setLoading(true); // 캐시 없을 때만 스피너
     void loadIdeals().finally(() => {
       if (!cancelled) setLoading(false);
     });
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadIdeals]);
 
   // 진행 중인 이상향 설계 감지 — pending(생성 중)이면 4초 폴링해 ready로 갱신

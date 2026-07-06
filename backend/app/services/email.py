@@ -35,10 +35,11 @@ def send_email(
     subject: str,
     text: str,
     *,
+    html: str | None = None,
     from_email: str | None = None,
     attachments: list[EmailAttachment] | None = None,
 ) -> MailDeliveryResult:
-    """텍스트 메일 발송. 실패해도 예외를 던지지 않고 MailDeliveryResult로 반환."""
+    """텍스트(+선택 HTML) 메일 발송. 실패해도 예외를 던지지 않고 결과로 반환."""
     api_key = os.getenv("RESEND_API_KEY", "").strip()
     sender = from_email or _get_from_email()
 
@@ -59,6 +60,8 @@ def send_email(
         "subject": subject,
         "text": text,
     }
+    if html:
+        payload["html"] = html
     if attachments:
         payload["attachments"] = [
             {

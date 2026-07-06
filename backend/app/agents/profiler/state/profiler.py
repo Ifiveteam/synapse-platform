@@ -35,6 +35,8 @@ class ProfilerState(TypedDict):
     profile_scores: NotRequired[ProfileScoresOutput]
     profile_insight: NotRequired[ProfileInsightOutput]
     supporting_evidence: NotRequired[dict[str, Any]]
+    # 초상(portrait): 결과 페이지·완료 이메일과 동일한 페르소나/키워드/요약
+    portrait: NotRequired[dict[str, Any] | None]
 
     snapshot_id: NotRequired[str | None]
     llm_used: NotRequired[bool]
