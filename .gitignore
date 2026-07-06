@@ -74,4 +74,7 @@ temp/
 # Pre-commit
 .cache/
 
+# Superpowers brainstorming companion
+.superpowers/
+
 google_tokens.json
