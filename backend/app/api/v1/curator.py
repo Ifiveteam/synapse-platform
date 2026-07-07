@@ -30,6 +30,7 @@ async def stream_chat(
 
     if not request.message and not request.image_base64:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=400, detail="메시지 또는 이미지가 필요합니다.")
 
     return StreamingResponse(

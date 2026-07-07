@@ -18,14 +18,11 @@ export const ROUTES = {
   idealDetail: (id: string) => `/me/ideals/${id}`,
   playlists: "/me/playlists",
   playlistsForIdeal: (id: string) => `/me/playlists?ideal=${id}`,
-  trends: "/trends",
   scraps: "/me/scraps",
   scrapDetail: (id: string) => `/me/scraps/${id}`,
   settings: "/settings",
   download: "/download",
   agentDetail: (slug: AgentId | string) => `/agents/${slug}`,
-  trendPosts: (slug: AgentId | string) => `/agents/${slug}/posts`,
-  trendPost: (slug: AgentId | string, postId: string) =>
-    `/agents/${slug}/posts/${postId}`,
   paymentSuccess: "/payment/success",
+  reporterTrendGraph: "/reporter/trend-graph",
 } as const;

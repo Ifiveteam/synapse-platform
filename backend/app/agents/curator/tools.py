@@ -117,12 +117,14 @@ DB_SCHEMA = """
 
 
 def _emit_chart(writer, chart_type: str, title: str, items: list) -> None:
-    writer({
-        "event": "chart",
-        "content": json.dumps(
-            {"type": chart_type, "title": title, "items": items}, ensure_ascii=False
-        ),
-    })
+    writer(
+        {
+            "event": "chart",
+            "content": json.dumps(
+                {"type": chart_type, "title": title, "items": items}, ensure_ascii=False
+            ),
+        }
+    )
 
 
 def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
@@ -153,7 +155,15 @@ def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
                 return "SELECT 쿼리만 허용됩니다."
 
             # 위험 키워드 차단
-            blocked = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "TRUNCATE", "CREATE"]
+            blocked = [
+                "DROP",
+                "DELETE",
+                "UPDATE",
+                "INSERT",
+                "ALTER",
+                "TRUNCATE",
+                "CREATE",
+            ]
             if any(re.search(rf"\b{kw}\b", clean) for kw in blocked):
                 return "허용되지 않는 쿼리입니다."
 
@@ -166,14 +176,18 @@ def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
             for bad_table in unknown:
                 corrected = next(
                     (
-                        t for t in _KNOWN_TABLES
+                        t
+                        for t in _KNOWN_TABLES
                         if t == bad_table.rstrip("S") or t + "S" == bad_table
                     ),
                     None,
                 )
                 if corrected:
                     safe_sql = re.sub(
-                        rf"\b{bad_table}\b", corrected.lower(), safe_sql, flags=re.IGNORECASE
+                        rf"\b{bad_table}\b",
+                        corrected.lower(),
+                        safe_sql,
+                        flags=re.IGNORECASE,
                     )
                     clean = safe_sql.strip().upper()
 
@@ -190,14 +204,21 @@ def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
             # 한다 (끝에 그냥 붙이면 "... LIMIT 5 WHERE user_id = ..." 같은 문법 오류가 난다).
             if safe_uid not in safe_sql:
                 clause_positions = [
-                    p for p in (
-                        clean.find(kw) for kw in (" GROUP BY", " ORDER BY", " LIMIT", " HAVING")
+                    p
+                    for p in (
+                        clean.find(kw)
+                        for kw in (" GROUP BY", " ORDER BY", " LIMIT", " HAVING")
                     )
                     if p != -1
                 ]
-                insert_at = min(clause_positions) if clause_positions else len(safe_sql.rstrip(";"))
+                insert_at = (
+                    min(clause_positions)
+                    if clause_positions
+                    else len(safe_sql.rstrip(";"))
+                )
                 condition = (
-                    f"AND user_id = '{safe_uid}'" if "WHERE" in clean[:insert_at]
+                    f"AND user_id = '{safe_uid}'"
+                    if "WHERE" in clean[:insert_at]
                     else f"WHERE user_id = '{safe_uid}'"
                 )
                 safe_sql = (
@@ -244,7 +265,9 @@ def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
             query: 검색할 주제나 키워드 (예: "게임", "AI 머신러닝", "요리 레시피")
         """
         writer = get_stream_writer()
-        writer({"event": "status", "content": f"🔍 '{query}' 관련 영상을 검색하는 중..."})
+        writer(
+            {"event": "status", "content": f"🔍 '{query}' 관련 영상을 검색하는 중..."}
+        )
         try:
             from sqlalchemy import text
 
@@ -292,7 +315,12 @@ def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
             query: 검색할 주제나 키워드 (예: "게임 전략", "파이썬 튜토리얼")
         """
         writer = get_stream_writer()
-        writer({"event": "status", "content": f"🔍 '{query}' 관련 영상 분석을 검색하는 중..."})
+        writer(
+            {
+                "event": "status",
+                "content": f"🔍 '{query}' 관련 영상 분석을 검색하는 중...",
+            }
+        )
         try:
             from sqlalchemy import text
 
@@ -312,7 +340,11 @@ def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
                         ORDER BY va.embedding <=> CAST(:vec AS vector)
                         LIMIT :lim
                     """),
-                    {"vec": str(vec), "uid": str(user_id), "lim": ANALYSIS_SEARCH_LIMIT},
+                    {
+                        "vec": str(vec),
+                        "uid": str(user_id),
+                        "lim": ANALYSIS_SEARCH_LIMIT,
+                    },
                 )
             ).fetchall()
 
@@ -375,20 +407,26 @@ def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
             for label, key in axes:
                 current_val = getattr(current_row, key)
                 ideal_val = getattr(ideal_row, key) if ideal_row else None
-                items.append({
-                    "axis": label,
-                    "current": round((current_val or 0) * 100),
-                    "ideal": round((ideal_val or 0) * 100) if ideal_val is not None else None,
-                })
+                items.append(
+                    {
+                        "axis": label,
+                        "current": round((current_val or 0) * 100),
+                        "ideal": round((ideal_val or 0) * 100)
+                        if ideal_val is not None
+                        else None,
+                    }
+                )
 
             chart_title = "현재 vs 이상향 성향 비교" if ideal_row else "현재 성향 8축"
-            writer({
-                "event": "chart",
-                "content": json.dumps(
-                    {"type": "persona_radar", "title": chart_title, "items": items},
-                    ensure_ascii=False,
-                ),
-            })
+            writer(
+                {
+                    "event": "chart",
+                    "content": json.dumps(
+                        {"type": "persona_radar", "title": chart_title, "items": items},
+                        ensure_ascii=False,
+                    ),
+                }
+            )
 
             summary_parts = []
             if ideal_row and ideal_row.persona_label:
@@ -412,7 +450,12 @@ def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
     async def create_playlist() -> str:
         """이상향 페르소나 기반으로 맞춤 재생목록을 생성합니다. '재생목록 만들어줘', '영상 추천 목록 만들어줘' 같은 요청에 사용하세요."""
         writer = get_stream_writer()
-        writer({"event": "status", "content": "🎵 재생목록을 생성하는 중... (시간이 걸릴 수 있어요)"})
+        writer(
+            {
+                "event": "status",
+                "content": "🎵 재생목록을 생성하는 중... (시간이 걸릴 수 있어요)",
+            }
+        )
         try:
             from sqlalchemy import select
 
@@ -440,7 +483,9 @@ def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
             nav_service.repo = NavigatorRepository(db)
             nav_service.agent = get_navigator_agent()
 
-            result = await nav_service.create_playlist(user_id=user_id, ideal_id=persona.id)
+            result = await nav_service.create_playlist(
+                user_id=user_id, ideal_id=persona.id
+            )
             return (
                 f"재생목록을 만들었어요!\n"
                 f"제목: **{result.title}**\n"

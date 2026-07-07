@@ -21,7 +21,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
     force=True,
 )
-logging.getLogger("app.agents.aggregator.workflow").setLevel(logging.INFO)
 logging.getLogger("app.agents.archiver.workflow").setLevel(logging.INFO)
 logging.getLogger("app.agents.archiver.observability").setLevel(logging.INFO)
 # httpx INFO 로그에 URL 쿼리(key= 등)가 그대로 노출되므로 WARNING 이상만 출력
@@ -31,10 +30,13 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """앱 수명주기 — 고아 인덱싱 소스 정리 + Takeout 자동분석 스케줄러 기동/종료."""
+    """앱 수명주기 — 고아 인덱싱 소스 정리 + 백그라운드 스케줄러 기동/종료."""
     from app.core.database.session import AsyncSessionLocal
     from app.repositories.analysis_source_repository import fail_orphan_sources
-    from app.services.takeout_scheduler import scheduler_loop
+    from app.services.aggregator_scheduler import (
+        scheduler_loop as aggregator_scheduler_loop,
+    )
+    from app.services.takeout_scheduler import scheduler_loop as takeout_scheduler_loop
 
     # 재시작으로 인메모리 큐가 비었으므로, 이전 프로세스의 진행 중(pending/running)
     # 소스는 되살릴 수 없다 → failed로 정리(화면에 '분류/분석 중' 영구표시 방지).
@@ -46,15 +48,18 @@ async def lifespan(app: FastAPI):
             "[startup] 고아 인덱싱 소스 %d건 failed 처리", orphaned
         )
 
-    task = asyncio.create_task(scheduler_loop())
+    takeout_task = asyncio.create_task(takeout_scheduler_loop())
+    aggregator_task = asyncio.create_task(aggregator_scheduler_loop())
     try:
         yield
     finally:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        for task in (takeout_task, aggregator_task):
+            task.cancel()
+        for task in (takeout_task, aggregator_task):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(
