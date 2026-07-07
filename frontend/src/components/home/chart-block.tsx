@@ -108,7 +108,7 @@ function PersonaRadarChart({ items, title }: { items: RadarItem[]; title: string
             )}
             {hasIdeal && <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />}
             <Tooltip
-              formatter={(v) => [`${v}점`, ""]}
+              formatter={(v) => [`${Number(v ?? 0)}점`, ""]}
               contentStyle={{ fontSize: 11, borderRadius: 8 }}
             />
           </RadarChart>

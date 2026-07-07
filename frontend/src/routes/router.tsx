@@ -2,8 +2,6 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { ShellLayout } from "@/components/shell/ShellLayout";
 import { AgentDetailPage } from "@/pages/agents/AgentDetailPage";
-import { TrendPostDetailPage } from "@/pages/agents/aggregator/TrendPostDetailPage";
-import { TrendPostsPage } from "@/pages/agents/aggregator/TrendPostsPage";
 import { HomePage } from "@/pages/HomePage";
 import { LoginPage } from "@/pages/LoginPage";
 import { AnalysisComparePage } from "@/pages/AnalysisComparePage";
@@ -21,8 +19,8 @@ import { ScrapDetailPage } from "@/pages/ScrapDetailPage";
 import { ScrapPage } from "@/pages/ScrapPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { PaymentSuccessPage } from "@/pages/PaymentSuccessPage";
+import { TrendGraphDashboard } from "@/pages/reporter/TrendGraphDashboard";
 import { UploadPage } from "@/pages/UploadPage";
-import { TrendDetailPage } from "@/pages/TrendDetailPage";
 import { ROUTES } from "@/routes";
 
 export const router = createBrowserRouter([
@@ -39,17 +37,15 @@ export const router = createBrowserRouter([
       { path: ROUTES.idealSetup, element: <IdealSetupPage /> },
       { path: "/me/ideals/:id", element: <IdealDetailPage /> },
       { path: "/me/playlists", element: <PlaylistPage /> },
-      { path: ROUTES.trends, element: <TrendDetailPage /> },
       { path: ROUTES.scraps, element: <ScrapPage /> },
       { path: "/me/scraps/:id", element: <ScrapDetailPage /> },
       { path: ROUTES.settings, element: <SettingsPage /> },
       { path: ROUTES.paymentSuccess, element: <PaymentSuccessPage /> },
+      { path: ROUTES.reporterTrendGraph, element: <TrendGraphDashboard /> },
       { path: ROUTES.download, element: <DownloadPage /> },
       { path: ROUTES.login, element: <LoginPage /> },
       { path: ROUTES.upload, element: <UploadPage /> },
       { path: "/agents/:slug", element: <AgentDetailPage /> },
-      { path: "/agents/:slug/posts", element: <TrendPostsPage /> },
-      { path: "/agents/:slug/posts/:postId", element: <TrendPostDetailPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],
   },
