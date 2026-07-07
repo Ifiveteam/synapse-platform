@@ -11,7 +11,7 @@ import {
   syncAuthToExtension,
 } from "@/lib/extension-auth-sync";
 import { ROUTES } from "@/routes";
-import { isMockAuthToken, useAuthStore } from "@/stores/auth";
+import { type AuthUser, isMockAuthToken, useAuthStore } from "@/stores/auth";
 import { useShellStore } from "@/stores/shell";
 import { useScrapDetailPanelStore } from "@/stores/scrap-detail-panel";
 import { useSidebarStore } from "@/stores/sidebar";
@@ -33,12 +33,16 @@ function AuthLoading() {
 export function ShellLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { token, user, authReady, setToken, setUser, setAuthReady } = useAuthStore();
-  const prevToken = useRef<string | null>(null);
+  // token은 이제 진짜 로그인 상태에선 항상 null — 목업 개발 로그인 모드 판별용으로만 남아있다.
+  // 실제 로그인 여부는 user(+authReady)로 판단한다.
+  const { token, user, authReady, setUser, setAuthReady } = useAuthStore();
+  const prevUser = useRef<AuthUser | null>(null);
   const openLoginModal = useShellStore((s) => s.openLoginModal);
   const closeLoginModal = useShellStore((s) => s.closeLoginModal);
   const loadChats = useSidebarStore((s) => s.loadChats);
   const loadScraps = useSidebarStore((s) => s.loadScraps);
+  const loadIdealPersona = useSidebarStore((s) => s.loadIdealPersona);
+  const setActiveIdealLabel = useSidebarStore((s) => s.setActiveIdealLabel);
   const clearScraps = useSidebarStore((s) => s.clearScraps);
   const scrapPanelOpen = useScrapDetailPanelStore((s) => s.open);
   const selectedScrapId = useScrapDetailPanelStore((s) => s.selectedScrapId);
@@ -48,10 +52,19 @@ export function ShellLayout() {
     if (user) {
       void loadChats();
       void loadScraps();
+      void loadIdealPersona();
     } else {
       clearScraps();
+      setActiveIdealLabel(null);
     }
-  }, [user, loadChats, loadScraps, clearScraps]);
+  }, [
+    user,
+    loadChats,
+    loadScraps,
+    loadIdealPersona,
+    clearScraps,
+    setActiveIdealLabel,
+  ]);
   const isHomePage = location.pathname === ROUTES.home;
 
   useEffect(() => {
@@ -64,23 +77,24 @@ export function ShellLayout() {
           return;
         }
 
+        const currentUser = useAuthStore.getState().user;
+        // /refresh는 이제 access token을 쿠키로 세팅한다 — 여기선 user만 저장하면 된다.
         const session = await refreshSession();
         if (cancelled) return;
         if (session) {
-          // currentToken이 없을 때만 웰컴 토스트 (신규 로그인)
-          const isFirstLogin = !currentToken && prevToken.current === null;
-          prevToken.current = session.access_token;
-          setToken(session.access_token);
+          // 이전에 로그인된 유저가 없었을 때만 웰컴 토스트 (신규 로그인)
+          const isFirstLogin = !currentUser && prevUser.current === null;
+          prevUser.current = session.user;
           setUser(session.user);
-          void syncAuthToExtension(session.access_token);
+          void syncAuthToExtension();
           closeLoginModal();
           if (isFirstLogin) {
             toast.success(`${session.user.name}님, 환영합니다!`);
           }
-        } else if (!currentToken) {
-          // 쿠키도 없고 저장된 token도 없으면 완전히 비로그인
+        } else if (!currentUser) {
+          // 쿠키도 없고 저장된 user도 없으면 완전히 비로그인
         } else {
-          // 쿠키 갱신 실패지만 저장된 token이 있으면 일단 유지
+          // 쿠키 갱신 실패지만 저장된 user가 있으면 일단 유지
         }
       } finally {
         if (!cancelled) setAuthReady(true);
@@ -91,48 +105,47 @@ export function ShellLayout() {
     return () => {
       cancelled = true;
     };
-  }, [setToken, setUser, setAuthReady, closeLoginModal]);
+  }, [setUser, setAuthReady, closeLoginModal]);
 
   /** 로그인·세션 갱신·로그아웃 시 익스텐션 chrome.storage와 동기화 */
   useEffect(() => {
     if (!authReady) return;
 
-    if (token && user && !isMockAuthToken(token)) {
-      void syncAuthToExtension(token);
+    if (user && !isMockAuthToken(token)) {
+      void syncAuthToExtension();
       return;
     }
 
-    if (!token) {
+    if (!user) {
       clearAuthFromExtension();
     }
   }, [authReady, token, user]);
 
   useEffect(() => {
-    if (token) closeLoginModal();
-  }, [token, closeLoginModal]);
+    if (user) closeLoginModal();
+  }, [user, closeLoginModal]);
 
   useEffect(() => {
     if (!authReady) return;
-    if (!token && !isMockAuthToken(token) && !isPublicPath(location.pathname)) {
+    if (!user && !isPublicPath(location.pathname)) {
       navigate(ROUTES.home, { replace: true });
       openLoginModal();
     }
-  }, [authReady, token, location.pathname, navigate, openLoginModal]);
+  }, [authReady, user, location.pathname, navigate, openLoginModal]);
 
   useEffect(() => {
     if (!authReady) return;
-    if (location.pathname === ROUTES.login && !token) {
+    if (location.pathname === ROUTES.login && !user) {
       openLoginModal();
       navigate(ROUTES.home, { replace: true });
     }
-  }, [authReady, location.pathname, token, openLoginModal, navigate]);
+  }, [authReady, location.pathname, user, openLoginModal, navigate]);
 
   if (!authReady && !isPublicPath(location.pathname)) {
     return <AuthLoading />;
   }
 
-  const canShowShell =
-    Boolean(token) || isMockAuthToken(token) || isPublicPath(location.pathname);
+  const canShowShell = Boolean(user) || isPublicPath(location.pathname);
 
   if (!canShowShell) {
     return <AuthLoading />;

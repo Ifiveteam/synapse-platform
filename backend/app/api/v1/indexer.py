@@ -5,7 +5,7 @@ from collections import Counter
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.indexer.graph import graph
@@ -50,6 +50,7 @@ async def run_analysis(
                 "error": None,
                 "saved_count": None,
                 "user_id": user_id,
+                "analysis_source_id": analysis_source_id,
             }
         )
 
@@ -94,9 +95,12 @@ async def _start_upload_analysis(
     filename: str | None,
     tmp_path: str,
     mode: str | None = None,
+    batch_id: str | None = None,
 ) -> dict:
     source_key = upload_source_key(content)
-    row, action = await begin_source(session, user.id, source_key, filename)
+    row, action = await begin_source(
+        session, user.id, source_key, filename, batch_id=batch_id
+    )
     await session.commit()
 
     if action == "skip_completed":
@@ -130,6 +134,7 @@ async def _start_upload_analysis(
 @router.post("/analyze")
 async def analyze(  # noqa: B008
     file: UploadFile = File(...),  # noqa: B008
+    batch_id: str | None = Form(None),  # noqa: B008
     background_tasks: BackgroundTasks = BackgroundTasks(),  # noqa: B008
     user=Depends(get_current_user_dep),
     session: AsyncSession = Depends(get_db),
@@ -147,12 +152,14 @@ async def analyze(  # noqa: B008
         content=content,
         filename=file.filename,
         tmp_path=tmp_path,
+        batch_id=batch_id,
     )
 
 
 @router.post("/analyze/sample")
 async def analyze_sample(  # noqa: B008
     file: UploadFile = File(...),  # noqa: B008
+    batch_id: str | None = Form(None),  # noqa: B008
     background_tasks: BackgroundTasks = BackgroundTasks(),  # noqa: B008
     user=Depends(get_current_user_dep),
     session: AsyncSession = Depends(get_db),
@@ -171,7 +178,20 @@ async def analyze_sample(  # noqa: B008
         filename=file.filename,
         tmp_path=tmp_path,
         mode="sample",
+        batch_id=batch_id,
     )
+
+
+@router.post("/batch/{batch_id}/seal")
+async def seal_batch_endpoint(
+    batch_id: str,
+    user=Depends(get_current_user_dep),  # noqa: B008
+):
+    """업로드 완료 후 '다 보냄' 신호 — 배치를 닫고 조건 되면 프로파일러 1회 트리거."""
+    from app.services.analysis_source_service import seal_batch_async
+
+    await seal_batch_async(user.id, batch_id, user.email)
+    return {"status": "sealed"}
 
 
 @router.get("/analyze/{task_id}")
@@ -224,10 +244,15 @@ async def get_graph_summary(
 async def get_embedding_graph(
     before: str | None = None,
     after: str | None = None,
+    snapshot_id: str | None = None,
     session: AsyncSession = Depends(get_db),
     user=Depends(get_current_user_dep),
 ):
-    """영상별 임베딩 PCA 2D 투영 그래프. before/after 미지정 시 최근 2달(시청일 기준)."""
+    """영상별 임베딩 PCA 2D 투영 그래프.
+
+    snapshot_id가 주어지고 그 스냅샷이 배치 소속이면 **그 배치 영상만** 투영한다.
+    아니면 before/after 미지정 시 최근 2달(시청일 기준) 전체.
+    """
     from datetime import datetime, timezone
 
     from app.agents.shared.analysis_window import WATCH_CATALOG_WINDOW_DAYS
@@ -245,6 +270,22 @@ async def get_embedding_graph(
             return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
         except ValueError:
             return None
+
+    # 스냅샷의 배치 스코프 — 그 배치 소속 영상만 (시청일 윈도우는 적용 안 함:
+    # 배치 데이터가 유저 최근 2달보다 과거일 수 있어 윈도우로 자르면 비어버림)
+    if snapshot_id:
+        import uuid as _uuid
+
+        from app.repositories.analysis_source_repository import fetch_batch_source_ids
+        from app.repositories.profiler_repository import fetch_profile_snapshot
+
+        snap = await fetch_profile_snapshot(session, user.id, _uuid.UUID(snapshot_id))
+        if snap is not None and snap.batch_id:
+            source_ids = await fetch_batch_source_ids(session, snap.batch_id)
+            rows = await fetch_catalog_embedding_rows(
+                session, user.id, limit=2000, source_ids=source_ids
+            )
+            return build_embedding_graph_payload(rows)
 
     # after 미지정이면 '마지막 시청일 기준 2달'로 기본 필터
     parsed_after = _parse(after)

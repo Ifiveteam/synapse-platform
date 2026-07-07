@@ -9,20 +9,23 @@ export function UploadPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="flex min-h-full max-w-5xl flex-col px-6 py-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">업로드</h1>
-        <p className="text-muted-foreground mt-1 text-sm">시청 기록 업로드</p>
-      </div>
-
-      <UploadPanel className="flex-1" showGuides />
-
-      <div className="mt-6 flex justify-end">
-        <Button type="button" className="gap-1.5" onClick={() => navigate(ROUTES.home)}>
+    <div className="flex min-h-full flex-col px-4 py-5 sm:px-6 sm:py-6">
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">업로드</h1>
+          <p className="text-muted-foreground mt-1 text-sm">시청 기록 업로드</p>
+        </div>
+        <Button
+          type="button"
+          className="shrink-0 gap-1.5"
+          onClick={() => navigate(ROUTES.home)}
+        >
           메인으로
           <ArrowRight size={16} />
         </Button>
       </div>
+
+      <UploadPanel className="flex-1" showGuides />
     </div>
   );
 }

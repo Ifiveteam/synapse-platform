@@ -6,7 +6,11 @@ import asyncio
 from typing import Any
 
 from app.agents.navigator.schemas import PlaylistItem
-from app.agents.navigator.sub_agent.youtube.client import fetch_channel_uploads
+from app.agents.navigator.sub_agent.youtube.client import (
+    fetch_channel_uploads,
+    filter_out_shorts,
+    is_too_old,
+)
 from app.agents.navigator.sub_agent.youtube.constants import UPLOADS_PER_CHANNEL
 from app.agents.navigator.sub_agent.youtube.state import PlaylistState
 
@@ -28,19 +32,25 @@ async def collect(state: PlaylistState) -> dict[str, Any]:
             for ch in to_collect
         )
     )
+    new_items: list[PlaylistItem] = []
     for ch, vids in zip(to_collect, results, strict=True):
         for v in vids:
             if v.video_id in have_vids or v.video_id in watched:
                 continue
-            candidates.append(
+            if is_too_old(v.published_at):  # 3년 이상 오래된 영상 제외
+                continue
+            new_items.append(
                 PlaylistItem(
                     video_id=v.video_id,
                     title=v.title,
                     channel=v.channel or ch.title,
                     channel_id=ch.channel_id,
                     thumbnail_url=v.thumbnail_url,
+                    published_at=v.published_at,
                 )
             )
             have_vids.add(v.video_id)
 
+    new_items = await filter_out_shorts(new_items)  # 쇼츠(≤3분) 제외
+    candidates.extend(new_items)
     return {"candidates": candidates}

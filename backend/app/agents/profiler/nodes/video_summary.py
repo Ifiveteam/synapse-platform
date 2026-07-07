@@ -13,8 +13,9 @@ async def video_summary_node(state: ProfilerState) -> dict[str, Any]:
     """catalog 미분석 행을 영상요약 서브그래프로 처리 → video_analysis."""
     user_id = uuid.UUID(str(state["user_id"]))
     limit = state.get("analysis_limit")
+    analysis_source_ids = state.get("analysis_source_ids")
 
-    result = await run_video_summary(user_id, limit)
+    result = await run_video_summary(user_id, limit, analysis_source_ids)
 
     log_lines = list(state.get("investigation_log") or [])
     log_lines.append(

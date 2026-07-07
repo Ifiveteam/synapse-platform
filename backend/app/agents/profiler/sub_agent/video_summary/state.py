@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 
 class CatalogInput(TypedDict):
@@ -32,6 +32,8 @@ class AnalyzedVideo(TypedDict, total=False):
 class VideoSummaryState(TypedDict):
     user_id: uuid.UUID
     limit: int | None
+    # 배치 스코프: 메인 파이프라인에서 그 배치 소스들만 분석 대상으로 삼는다.
+    analysis_source_ids: NotRequired[list[str] | None]
 
     catalogs: list[CatalogInput]
     analyzed: list[AnalyzedVideo]

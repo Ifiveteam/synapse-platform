@@ -57,6 +57,9 @@ class NavigatorRepository:
         reasoning: str,
         persona_label: str = "",
         values_temperament: dict[str, float] | None = None,
+        target_disposition: dict[str, float] | None = None,
+        target_interest: dict[str, float] | None = None,
+        taste_keywords: list[str] | None = None,
         source_profile_history_id: uuid.UUID | None = None,
     ) -> UserIdealPersona:
         """이상향을 새 행으로 생성한다 (적용 여부는 별도 apply)."""
@@ -64,6 +67,9 @@ class NavigatorRepository:
             user_id=user_id,
             persona_label=persona_label or None,
             values_temperament=values_temperament or None,
+            target_disposition=target_disposition or None,
+            target_interest=target_interest or None,
+            taste_keywords=taste_keywords or None,
             description=encode_description(ideal_type, reasoning),
             source_profile_history_id=source_profile_history_id,
             is_active=False,
@@ -93,6 +99,15 @@ class NavigatorRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    async def delete_ideal(self, *, user_id: uuid.UUID, ideal_id: uuid.UUID) -> bool:
+        """이상향 삭제 (연관 재생목록은 FK CASCADE로 함께 삭제)."""
+        row = await self.get_ideal(user_id=user_id, ideal_id=ideal_id)
+        if row is None:
+            return False
+        await self.db.delete(row)
+        await self.db.commit()
+        return True
 
     async def get_active_ideal(self, *, user_id: uuid.UUID) -> UserIdealPersona | None:
         result = await self.db.execute(
@@ -146,24 +161,115 @@ class NavigatorRepository:
         proposals_json: list,
         catalog_count: int,
     ) -> None:
-        """제안 3안을 (user, snapshot)에 upsert (refresh 시 덮어씀)."""
+        """생성 완료된 3안을 (user, snapshot)에 upsert하고 status=ready로 마킹."""
+        now = datetime.now(UTC)
         stmt = pg_insert(NavigatorProposalCache).values(
             user_id=user_id,
             source_profile_history_id=snapshot_id,
+            status="ready",
             proposals_json=proposals_json,
-            generated_at=datetime.now(UTC),
+            generated_at=now,
             catalog_count=catalog_count,
+            updated_at=now,
         )
         stmt = stmt.on_conflict_do_update(
             constraint="uq_npc_user_snapshot",
             set_={
+                "status": "ready",
                 "proposals_json": stmt.excluded.proposals_json,
                 "generated_at": stmt.excluded.generated_at,
                 "catalog_count": stmt.excluded.catalog_count,
+                "updated_at": now,
             },
         )
         await self.db.execute(stmt)
         await self.db.commit()
+
+    async def get_latest_proposal(
+        self, *, user_id: uuid.UUID
+    ) -> NavigatorProposalCache | None:
+        """가장 최근 추천 생성 캐시 1개 (상태 무관) — 진행 중 배너 판정용."""
+        result = await self.db.execute(
+            select(NavigatorProposalCache)
+            .where(NavigatorProposalCache.user_id == user_id)
+            .order_by(NavigatorProposalCache.updated_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def mark_proposal_pending(
+        self, *, user_id: uuid.UUID, snapshot_id: uuid.UUID
+    ) -> None:
+        """(user, snapshot) 캐시를 pending으로 upsert (생성 예약 표시·락)."""
+        now = datetime.now(UTC)
+        stmt = pg_insert(NavigatorProposalCache).values(
+            user_id=user_id,
+            source_profile_history_id=snapshot_id,
+            status="pending",
+            updated_at=now,
+        )
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_npc_user_snapshot",
+            set_={"status": "pending", "updated_at": now},
+        )
+        await self.db.execute(stmt)
+        await self.db.commit()
+
+    async def mark_proposal_failed(
+        self, *, user_id: uuid.UUID, snapshot_id: uuid.UUID
+    ) -> None:
+        await self.db.execute(
+            update(NavigatorProposalCache)
+            .where(
+                NavigatorProposalCache.user_id == user_id,
+                NavigatorProposalCache.source_profile_history_id == snapshot_id,
+            )
+            .values(status="failed", updated_at=datetime.now(UTC))
+        )
+        await self.db.commit()
+
+    async def dismiss_latest_proposal(self, *, user_id: uuid.UUID) -> bool:
+        """진행 중(pending/ready) 최신 추천을 dismissed로 마킹 — '진행 중' 배너 제거용."""
+        row = await self.get_latest_proposal(user_id=user_id)
+        if row is None or row.status not in ("pending", "ready"):
+            return False
+        await self.db.execute(
+            update(NavigatorProposalCache)
+            .where(
+                NavigatorProposalCache.user_id == user_id,
+                NavigatorProposalCache.source_profile_history_id
+                == row.source_profile_history_id,
+            )
+            .values(status="dismissed", updated_at=datetime.now(UTC))
+        )
+        await self.db.commit()
+        return True
+
+    async def mark_proposal_confirmed(
+        self, *, user_id: uuid.UUID, snapshot_id: uuid.UUID
+    ) -> None:
+        """확정 완료된 (user, snapshot) 캐시를 confirmed로 마킹 — 진행 중 배너 제거용."""
+        await self.db.execute(
+            update(NavigatorProposalCache)
+            .where(
+                NavigatorProposalCache.user_id == user_id,
+                NavigatorProposalCache.source_profile_history_id == snapshot_id,
+            )
+            .values(status="confirmed", updated_at=datetime.now(UTC))
+        )
+        await self.db.commit()
+
+    async def latest_snapshot_id(self, *, user_id: uuid.UUID) -> uuid.UUID | None:
+        """가장 최근 분석 스냅샷 id (source 미지정 시 기준)."""
+        from app.models.user_profile_history import UserProfileHistory
+
+        result = await self.db.execute(
+            select(UserProfileHistory.id)
+            .where(UserProfileHistory.user_id == user_id)
+            .order_by(UserProfileHistory.snapshot_date.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     # ── 가이드 캐시 (persona에 고정) ────────────────────────────────
     async def count_catalog(self, *, user_id: uuid.UUID) -> int:
@@ -238,6 +344,8 @@ class NavigatorRepository:
         items_json: list,
         channels_json: list,
         reservoir_json: list,
+        status: str = "ready",
+        refresh_period: str = "none",
     ) -> NavigatorPlaylist:
         row = NavigatorPlaylist(
             user_id=user_id,
@@ -247,6 +355,8 @@ class NavigatorRepository:
             items_json=items_json,
             channels_json=channels_json,
             reservoir_json=reservoir_json,
+            status=status,
+            refresh_period=refresh_period,
         )
         self.db.add(row)
         await self.db.commit()
@@ -287,10 +397,18 @@ class NavigatorRepository:
         reservoir_json: list | None = None,
         summary: str | None = None,
         youtube_playlist_id: str | None = None,
+        status: str | None = None,
+        save_status: str | None = None,
+        refresh_period: str | None = None,
+        last_refreshed_at: datetime | None = None,
     ) -> NavigatorPlaylist | None:
         row = await self.get_playlist(user_id=user_id, playlist_id=playlist_id)
         if row is None:
             return None
+        if refresh_period is not None:
+            row.refresh_period = refresh_period
+        if last_refreshed_at is not None:
+            row.last_refreshed_at = last_refreshed_at
         if items_json is not None:
             row.items_json = items_json
         if channels_json is not None:
@@ -301,6 +419,10 @@ class NavigatorRepository:
             row.summary = summary
         if youtube_playlist_id is not None:
             row.youtube_playlist_id = youtube_playlist_id
+        if status is not None:
+            row.status = status
+        if save_status is not None:
+            row.save_status = save_status
         await self.db.commit()
         await self.db.refresh(row)
         return row

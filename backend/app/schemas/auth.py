@@ -12,17 +12,18 @@ class UserResponse(BaseModel):
     email: str
     name: str
     picture: str | None
+    plan: str
 
     model_config = {"from_attributes": True}
 
 
 class DevLoginResponse(BaseModel):
-    access_token: str
+    # access_token은 응답 바디에 안 담는다 — HttpOnly 쿠키로만 전달돼 JS가 읽을 수 없다.
     user: UserResponse
 
 
 class RefreshResponse(BaseModel):
-    access_token: str
+    # access_token은 응답 바디에 안 담는다 — HttpOnly 쿠키로만 전달돼 JS가 읽을 수 없다.
     user: UserResponse
 
 
@@ -69,6 +70,16 @@ class DriveConnectResponse(BaseModel):
     """Picker 렌더에 쓸 drive.file access token (단기)."""
 
     access_token: str
+
+
+class YoutubeConnectRequest(BaseModel):
+    """GIS 코드 클라이언트(popup)가 받은 youtube 스코프 authorization code."""
+
+    code: str
+
+
+class YoutubeConnectResponse(BaseModel):
+    connected: bool = True
 
 
 class DriveFolderRequest(BaseModel):

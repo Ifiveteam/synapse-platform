@@ -468,20 +468,32 @@ def _aggregate_semantic_evidence(rows, analyses) -> dict[str, float]:
 
 async def _load_context(
     user_id: uuid.UUID,
+    analysis_source_ids: list[str] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     from app.core.database.session import AsyncSessionLocal
     from app.repositories.profiler_repository import (
+        fetch_catalog_rows_by_sources,
         fetch_recent_catalog_rows,
+        fetch_video_analyses_by_catalog_ids,
         fetch_video_analyses_for_user,
     )
 
     async with AsyncSessionLocal() as session:
-        # 누적 catalog 전체가 아니라 최근 윈도우(인덱서와 공유 상수)만 채점에 사용.
-        rows = await fetch_recent_catalog_rows(
-            session, user_id, WATCH_CATALOG_WINDOW_DAYS
-        )
+        if analysis_source_ids:
+            # 배치 스코프: 그 파일들 소속 영상 합집합의 최근 윈도우(2달 재컷)
+            rows = await fetch_catalog_rows_by_sources(
+                session, user_id, analysis_source_ids, WATCH_CATALOG_WINDOW_DAYS
+            )
+            analyses = await fetch_video_analyses_by_catalog_ids(
+                session, [row.id for row in rows], limit=50
+            )
+        else:
+            # 통합본: 누적 catalog 전체의 최근 윈도우(수동 재분석 등)
+            rows = await fetch_recent_catalog_rows(
+                session, user_id, WATCH_CATALOG_WINDOW_DAYS
+            )
+            analyses = await fetch_video_analyses_for_user(session, user_id, limit=50)
         stats = _build_catalog_stats(rows)
-        analyses = await fetch_video_analyses_for_user(session, user_id, limit=50)
 
     # 영상 의미라벨 근거를 stats에 실어 _axis_evidence_strength가 결합하게 함
     stats["semantic_evidence"] = _aggregate_semantic_evidence(rows, analyses)
@@ -574,10 +586,25 @@ async def _llm_profile_scores(
     return merge_profile_scores(vt, behavior), stage1_llm, stage2_llm
 
 
+def _render_samples_for_insight(samples: list[dict[str, Any]]) -> str:
+    """요약 프롬프트용 실제 시청 영상 목록 (제목 — 채널 : 한줄요약)."""
+    lines: list[str] = []
+    for s in samples:
+        title = s.get("title") or "(제목없음)"
+        channel = s.get("channel") or "(채널없음)"
+        summary = (s.get("summary_kr") or "").strip()
+        line = f"· {title} — {channel}"
+        if summary:
+            line += f" : {summary}"
+        lines.append(line)
+    return "\n".join(lines) if lines else "(영상 분석 샘플 없음)"
+
+
 async def _llm_insight(
     user_id: str,
     scores: ProfileScoresOutput,
     stats: dict[str, Any],
+    analysis_samples: list[dict[str, Any]],
 ) -> ProfileInsightOutput | None:
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
@@ -588,6 +615,7 @@ async def _llm_insight(
             user_id=user_id,
             scores=scores.model_dump_json(),
             catalog_stats=json.dumps(stats, ensure_ascii=False),
+            analysis_samples=_render_samples_for_insight(analysis_samples),
         )
         return await invoke_gemini_structured(
             [
@@ -603,10 +631,12 @@ async def _llm_insight(
 
 async def build_profile_node(state: ProfilerState) -> dict[str, Any]:
     user_id = uuid.UUID(str(state["user_id"]))
+    analysis_source_ids = state.get("analysis_source_ids")
+    batch_id = state.get("batch_id")
     log = list(state.get("investigation_log") or [])
 
     try:
-        stats, samples = await _load_context(user_id)
+        stats, samples = await _load_context(user_id, analysis_source_ids)
         analyzed_in_samples = sum(1 for s in samples if s.get("summary_kr"))
         log.append(
             f"build_profile: catalog={stats['total']} "
@@ -650,7 +680,7 @@ async def build_profile_node(state: ProfilerState) -> dict[str, Any]:
 
         insight = None
         if llm_used:
-            insight = await _llm_insight(state["user_id"], scores, stats)
+            insight = await _llm_insight(state["user_id"], scores, stats, samples)
         if insight is None:
             insight = _template_insight(scores, stats)
             log.append("build_profile: insight template")
@@ -664,6 +694,12 @@ async def build_profile_node(state: ProfilerState) -> dict[str, Any]:
         "catalog_stats": stats,
         "analysis_samples": samples[:10],
         "llm_used": llm_used,
+        # 의미 중심 확장 필드(컬럼 아님) — supporting_evidence.insight로 저장·노출
+        "insight": {
+            "strengths": insight.strengths,
+            "weaknesses": insight.weaknesses,
+            "content_preferences": insight.content_preferences,
+        },
     }
 
     try:
@@ -671,17 +707,38 @@ async def build_profile_node(state: ProfilerState) -> dict[str, Any]:
         from app.repositories.profiler_repository import insert_profile_snapshot
 
         async with AsyncSessionLocal() as session:
+            # 초상(portrait) 프로파일 산출 (실패해도 스냅샷 저장엔 영향 없음)
+            portrait_payload = None
+            try:
+                from app.services.profiler.portrait import build_portrait
+
+                portrait_payload = await build_portrait(
+                    session, user_id, analysis_source_ids
+                )
+            except Exception:
+                log.append("build_profile: portrait 산출 실패(스킵)")
+
             snapshot_id = await insert_profile_snapshot(
-                session, user_id, scores, insight, supporting
+                session,
+                user_id,
+                scores,
+                insight,
+                supporting,
+                batch_id=batch_id,
+                portrait=portrait_payload,
             )
             await session.commit()
-        log.append(f"build_profile: stored snapshot={snapshot_id}")
+        log.append(
+            f"build_profile: stored snapshot={snapshot_id} "
+            f"(portrait={'O' if portrait_payload else 'X'})"
+        )
         return {
             "catalog_stats": stats,
             "analysis_samples": samples,
             "profile_scores": scores,
             "profile_insight": insight,
             "supporting_evidence": supporting,
+            "portrait": portrait_payload,
             "snapshot_id": str(snapshot_id),
             "llm_used": llm_used,
             "current_step": "build_profile",

@@ -57,8 +57,14 @@ class UserAnalysisSource(TimestampMixin, Base):
         ForeignKey("user_profile_history.id", ondelete="SET NULL"),
         nullable=True,
     )
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("analysis_batch.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     __table_args__ = (
         UniqueConstraint("user_id", "source_key", name="uq_uas_user_source"),
         Index("ix_uas_user_created", "user_id", text("created_at DESC")),
+        Index("ix_uas_batch", "batch_id"),
     )

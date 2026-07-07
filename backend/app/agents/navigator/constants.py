@@ -35,6 +35,39 @@ TEMPERAMENT_AXES: tuple[str, ...] = (
 )
 VALUES_TEMPERAMENT_AXES: tuple[str, ...] = VALUES_AXES + TEMPERAMENT_AXES
 
+# 성향 disposition 6축 — profiler portrait(DispositionLLM)와 동일 키.
+# 이상향 설계의 "주 신호"이자 화면 표시 축(현재→목표).
+# ⚠️ exploration은 행동 8축과 이름이 같지만 정의가 다르다(콘텐츠 탐험성 vs 행동 탐색).
+DISPOSITION_AXES: tuple[str, ...] = (
+    "immersion",
+    "exploration",
+    "fandom",
+    "trend",
+    "info",
+    "emotion",
+)
+DISPOSITION_LABELS_KO: dict[str, str] = {
+    "immersion": "몰입도",
+    "exploration": "탐험성",
+    "fandom": "팬심",
+    "trend": "트렌드민감",
+    "info": "정보추구",
+    "emotion": "감성지향",
+}
+
+# 관심 도메인 9개 — profiler portrait(_DOMAINS)와 동일. 이상향 목표 도메인 축.
+INTEREST_DOMAINS: tuple[str, ...] = (
+    "스포츠",
+    "게임",
+    "음악",
+    "예능",
+    "인물·일상",
+    "영화·애니",
+    "뉴스·시사",
+    "지식·교육",
+    "라이프·취미",
+)
+
 # 점수 범위 (프로파일러와 동일)
 AXIS_MIN = 0.0
 AXIS_MAX = 100.0

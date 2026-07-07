@@ -36,6 +36,13 @@ async def lifespan(app: FastAPI):
     from app.services.aggregator_scheduler import (
         scheduler_loop as aggregator_scheduler_loop,
     )
+    from app.services.analysis_source_service import (
+        batch_reconcile_loop,
+        reconcile_stuck_batches,
+    )
+    from app.services.playlist_refresh_scheduler import (
+        scheduler_loop as playlist_refresh_loop,
+    )
     from app.services.takeout_scheduler import scheduler_loop as takeout_scheduler_loop
 
     # 재시작으로 인메모리 큐가 비었으므로, 이전 프로세스의 진행 중(pending/running)
@@ -48,14 +55,20 @@ async def lifespan(app: FastAPI):
             "[startup] 고아 인덱싱 소스 %d건 failed 처리", orphaned
         )
 
+    # seal 미도착으로 멈춘 배치 자동 마감 (기동 1회 + 주기 루프)
+    await reconcile_stuck_batches()
+
     takeout_task = asyncio.create_task(takeout_scheduler_loop())
     aggregator_task = asyncio.create_task(aggregator_scheduler_loop())
+    reconcile_task = asyncio.create_task(batch_reconcile_loop())
+    playlist_task = asyncio.create_task(playlist_refresh_loop())
+    scheduler_tasks = (takeout_task, aggregator_task, reconcile_task, playlist_task)
     try:
         yield
     finally:
-        for task in (takeout_task, aggregator_task):
+        for task in scheduler_tasks:
             task.cancel()
-        for task in (takeout_task, aggregator_task):
+        for task in scheduler_tasks:
             try:
                 await task
             except asyncio.CancelledError:

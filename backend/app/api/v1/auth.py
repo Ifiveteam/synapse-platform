@@ -25,6 +25,8 @@ from app.schemas.auth import (
     RefreshResponse,
     UpdateMeRequest,
     UserResponse,
+    YoutubeConnectRequest,
+    YoutubeConnectResponse,
 )
 from app.services import (
     auth_service,
@@ -39,14 +41,21 @@ _bearer = HTTPBearer(auto_error=False)
 
 
 async def get_current_user_dep(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     session: AsyncSession = Depends(get_db),
 ) -> User:
-    if not credentials:
+    # Bearer 헤더 우선, 없으면 access token 쿠키로 폴백 (쿠키 전환 과도기 지원).
+    token = (
+        credentials.credentials
+        if credentials
+        else request.cookies.get(token_service.ACCESS_COOKIE_NAME)
+    )
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="인증이 필요합니다"
         )
-    user_id = decode_access_token(credentials.credentials)
+    user_id = decode_access_token(token)
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="유효하지 않은 토큰"
@@ -133,6 +142,24 @@ async def drive_connect(
     return DriveConnectResponse(access_token=access)
 
 
+@router.post("/youtube/connect", response_model=YoutubeConnectResponse)
+async def youtube_connect(
+    body: YoutubeConnectRequest,
+    user: User = Depends(get_current_user_dep),
+    session: AsyncSession = Depends(get_db),
+) -> YoutubeConnectResponse:
+    """GIS 코드 클라이언트 code(youtube 스코프) → 토큰 저장. 재생목록 저장 권한 확보용."""
+    tokens = await google_oauth.exchange_code_postmessage(body.code)
+    if not tokens.get("access_token"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="youtube_token_exchange_failed",
+        )
+    await google_oauth.store_google_tokens(session, user, tokens)
+    await session.commit()
+    return YoutubeConnectResponse(connected=True)
+
+
 @router.get("/google-config", response_model=GoogleConfigResponse)
 def google_config() -> GoogleConfigResponse:
     """프론트 Picker용 공개 설정 — client_id + picker API key를 백엔드 env에서 제공.
@@ -190,10 +217,12 @@ async def refresh(
     response: Response,
     session: AsyncSession = Depends(get_db),
 ) -> RefreshResponse:
-    """httpOnly 쿠키의 refresh token으로 access token 재발급."""
+    """httpOnly 쿠키의 refresh token으로 access token 재발급.
+    access token은 바디에 안 담고 HttpOnly 쿠키로만 전달한다."""
     cookie = request.cookies.get(token_service.REFRESH_COOKIE_NAME, "")
-    body, new_refresh = await auth_service.refresh_session(session, cookie)
+    body, new_refresh, access = await auth_service.refresh_session(session, cookie)
     token_service.set_refresh_cookie(response, new_refresh)
+    token_service.set_access_cookie(response, access)
     return body
 
 
@@ -206,6 +235,7 @@ async def logout(
     cookie = request.cookies.get(token_service.REFRESH_COOKIE_NAME)
     await auth_service.logout(session, cookie)
     token_service.clear_refresh_cookie(response)
+    token_service.clear_access_cookie(response)
 
 
 @router.post("/extension-code", response_model=ExtensionCodeResponse)
@@ -272,6 +302,7 @@ async def dev_login(
     session: AsyncSession = Depends(get_db),
 ) -> DevLoginResponse:
     """로컬 개발용 — Google OAuth 없이 즉시 로그인."""
-    body, refresh = await auth_service.dev_login(session)
+    body, refresh, access = await auth_service.dev_login(session)
     token_service.set_refresh_cookie(response, refresh)
+    token_service.set_access_cookie(response, access)
     return body

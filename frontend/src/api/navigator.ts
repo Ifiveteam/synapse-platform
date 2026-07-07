@@ -1,9 +1,13 @@
 import { apiFetchAuth } from "@/api/client";
 import type {
+  ActiveProposalResponse,
   AxisScores8,
   AxisScores13,
+  NavigatorChatMessage,
+  PlaylistPeriod,
   ChatStreamHandlers,
   ComparisonResponse,
+  CompleteEvent,
   GuideResponse,
   IdealEvent,
   IdealResponse,
@@ -12,9 +16,9 @@ import type {
   PlaylistResponse,
   PlaylistSummary,
   ProposalsResponse,
+  SaveStartResponse,
 } from "@/api/types/navigator";
 import { API_BASE_URL } from "@/lib/env";
-import { useAuthStore } from "@/stores/auth";
 
 // ── REST ─────────────────────────────────────────────────────────
 const P = "/api/v1/navigator";
@@ -32,8 +36,11 @@ export const createIdeal = (body: {
   ideal_type: IdealType;
   scores: AxisScores8;
   values_temperament?: AxisScores13;
+  target_disposition?: Record<string, number>;
+  target_interest?: Record<string, number>;
   persona_label?: string;
   reasoning: string;
+  taste_keywords?: string[];
   source_profile_history_id?: string;
 }) =>
   apiFetchAuth<IdealResponse>(`${P}/ideal`, {
@@ -43,11 +50,28 @@ export const createIdeal = (body: {
 
 export const listIdeals = () => apiFetchAuth<IdealResponse[]>(`${P}/ideals`);
 
+/** 진행 중(추천 생성 중)인 이상향 설계 여부 — 관리 배너용 */
+export const getActiveProposal = () =>
+  apiFetchAuth<ActiveProposalResponse>(`${P}/proposals/active`);
+
+/** 진행 중인 이상향 설계 배너 닫기 (dismiss) */
+export const dismissActiveProposal = () =>
+  apiFetchAuth<void>(`${P}/proposals/active`, { method: "DELETE" });
+
+/** 설계 대화 이력 — '이어서 설계하기'로 돌아왔을 때 복원용 */
+export const getChatHistory = (sessionId: string) =>
+  apiFetchAuth<NavigatorChatMessage[]>(
+    `${P}/chat/history?session_id=${encodeURIComponent(sessionId)}`,
+  );
+
 export const getIdeal = (id: string) =>
   apiFetchAuth<IdealResponse>(`${P}/ideal/${id}`);
 
 export const applyIdeal = (id: string) =>
   apiFetchAuth<IdealResponse>(`${P}/ideal/${id}/apply`, { method: "POST" });
+
+export const deleteIdeal = (id: string) =>
+  apiFetchAuth<void>(`${P}/ideal/${id}`, { method: "DELETE" });
 
 export const getComparison = (id: string) =>
   apiFetchAuth<ComparisonResponse>(`${P}/ideal/${id}/comparison`);
@@ -81,9 +105,22 @@ export async function getCurrentAxes(
 }
 
 // ── 재생목록 ───────────────────────────────────────────────────────
-export const createPlaylist = (idealId: string) =>
+export const createPlaylist = (
+  idealId: string,
+  refreshPeriod: PlaylistPeriod = "none",
+) =>
   apiFetchAuth<PlaylistResponse>(`${P}/ideal/${idealId}/playlists`, {
     method: "POST",
+    body: JSON.stringify({ refresh_period: refreshPeriod }),
+  });
+
+export const setPlaylistPeriod = (
+  playlistId: string,
+  refreshPeriod: PlaylistPeriod,
+) =>
+  apiFetchAuth<PlaylistResponse>(`${P}/playlists/${playlistId}/period`, {
+    method: "PATCH",
+    body: JSON.stringify({ refresh_period: refreshPeriod }),
   });
 
 export const listPlaylists = (idealId: string) =>
@@ -112,13 +149,17 @@ export const regeneratePlaylist = (playlistId: string) =>
     method: "POST",
   });
 
+export const savePlaylistToYoutube = (playlistId: string) =>
+  apiFetchAuth<SaveStartResponse>(`${P}/playlists/${playlistId}/save`, {
+    method: "POST",
+  });
+
 export async function streamPlaylistChat(
   playlistId: string,
   message: string,
   handlers: PlaylistChatHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
-  const token = useAuthStore.getState().token;
   const res = await fetch(`${API_BASE_URL}${P}/playlists/${playlistId}/chat`, {
     method: "POST",
     credentials: "include",
@@ -126,7 +167,6 @@ export async function streamPlaylistChat(
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ message }),
   });
@@ -176,12 +216,14 @@ export async function streamChat(
     message: string;
     session_id?: string | null;
     working_values?: AxisScores13 | null;
+    working_disposition?: Record<string, number> | null;
+    working_interest?: Record<string, number> | null;
     ideal_type?: IdealType | null;
+    force_finalize?: boolean;
   },
   handlers: ChatStreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
-  const token = useAuthStore.getState().token;
   const res = await fetch(`${API_BASE_URL}${P}/chat/stream`, {
     method: "POST",
     credentials: "include",
@@ -189,7 +231,6 @@ export async function streamChat(
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
   });
@@ -225,6 +266,12 @@ export async function streamChat(
         else if (event === "ideal") {
           try {
             handlers.onIdeal?.(JSON.parse(content) as IdealEvent);
+          } catch {
+            /* ignore */
+          }
+        } else if (event === "complete") {
+          try {
+            handlers.onComplete?.(JSON.parse(content) as CompleteEvent);
           } catch {
             /* ignore */
           }

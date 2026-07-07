@@ -12,9 +12,11 @@ ERD: [docs/erd.md](../erd.md)
 
 | 경로 | 설명 |
 |------|------|
-| **인덱서 자동** | `POST /indexer/analyze` 성공 · `saved_count > 0` → `profiler_service.enqueue_for_user(user_id)` |
-| **수동** | `POST /profiler/run` (인증 유저, `user.email` 전달) |
+| **인덱서 자동(배치)** | "분석 시작" 클릭 = 한 배치(`batch_id`). 업로드가 다 끝나면 프론트가 `POST /indexer/batch/{id}/seal`("다 보냄")을 보내고, 배치의 모든 소스 인덱싱이 끝나면 `enqueue_for_user(analysis_source_ids, batch_id)`로 **그 배치 영상만** 1회 분석 |
+| **수동** | `POST /profiler/run` — `batch_id` 없음 → **통합본**(창고 전체 최근 2달) |
 | **영상 분석만** | `POST /profiler/video-summary/run` (서브그래프 단독) |
+
+> **배치 스코프**: `batch_id` 없이 온 소스(Drive 자동·구경로)는 서버가 단일 배치를 자동 생성·자동 seal한다. seal이 안 오면 `reconcile_stuck_batches`(자동-seal 안전망, WARNING 로그)가 마감한다. 트리거는 `analysis_batch.status`를 `sealed→profiling`으로 **원자 전환**한 호출만 발사(중복 방지). 킬스위치 `PROFILER_BATCH_SCOPE_ENABLED=false`면 통합본으로 산출.
 
 ### End-to-end
 
@@ -170,8 +172,10 @@ stateDiagram-v2
 
 ### 입력
 
-1. `user_watch_catalog` 전체 → `catalog_stats` (카테고리 비율, 숏폼/롱폼 비율 등)
-2. `video_analysis` 샘플 (요약·톤·의도·가치 신호)
+1. catalog → `catalog_stats` (카테고리 비율, 숏폼/롱폼 비율 등)
+   - **배치 분석**: `fetch_catalog_rows_by_sources` — 그 배치 소스들 소속 영상(조인 `analysis_source_catalog`)의 **합집합을 최근 2달로 재컷**(앵커=배치 집합 내 max watched_at). 겹치는 영상도 무손실 포함.
+   - **통합본**: `fetch_recent_catalog_rows` — 창고 전체 최근 2달.
+2. `video_analysis` 샘플 (요약·톤·의도·가치 신호) — 배치 분석 시 그 catalog 행들 것만
 
 ### 점수 산출 (2단계 LLM)
 

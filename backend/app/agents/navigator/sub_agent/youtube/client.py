@@ -10,16 +10,28 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import xml.etree.ElementTree as ET
+from datetime import UTC, datetime, timedelta
+from typing import Protocol, TypeVar
 
 import httpx
 
+from app.agents.navigator.sub_agent.youtube.constants import (
+    MAX_VIDEO_AGE_DAYS,
+    SHORTS_MAX_SECONDS,
+)
 from app.agents.navigator.sub_agent.youtube.schemas import ChannelRef, YoutubeVideo
 
 logger = logging.getLogger(__name__)
 
 _SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
+_VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos"
+_PLAYLISTS_URL = "https://www.googleapis.com/youtube/v3/playlists"
+_PLAYLIST_ITEMS_URL = "https://www.googleapis.com/youtube/v3/playlistItems"
 _RSS_URL = "https://www.youtube.com/feeds/videos.xml"
+
+_DURATION_RE = re.compile(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?")
 
 _RSS_NS = {
     "a": "http://www.w3.org/2005/Atom",
@@ -78,6 +90,154 @@ async def search_channels(
                 )
             )
     return out
+
+
+# ── 쓰기: 실제 YouTube 재생목록 (유저 OAuth 토큰) ─────────────────
+
+
+async def create_youtube_playlist(
+    *, access_token: str, title: str, description: str = ""
+) -> str | None:
+    """유저 계정에 재생목록 생성 → playlist id (playlists.insert, 50유닛)."""
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.post(
+                _PLAYLISTS_URL,
+                params={"part": "snippet,status"},
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={
+                    "snippet": {
+                        "title": title[:150],
+                        "description": description[:4000],
+                    },
+                    "status": {"privacyStatus": "private"},
+                },
+            )
+        data = resp.json()
+    except Exception:
+        logger.exception("youtube create_playlist failed")
+        return None
+    if "error" in data:
+        logger.warning(
+            "youtube create_playlist error: %s", data["error"].get("message")
+        )
+        return None
+    return data.get("id")
+
+
+async def add_playlist_item(
+    *, access_token: str, playlist_id: str, video_id: str
+) -> bool:
+    """재생목록에 영상 1개 추가 (playlistItems.insert, 50유닛). 성공 여부."""
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.post(
+                _PLAYLIST_ITEMS_URL,
+                params={"part": "snippet"},
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={
+                    "snippet": {
+                        "playlistId": playlist_id,
+                        "resourceId": {
+                            "kind": "youtube#video",
+                            "videoId": video_id,
+                        },
+                    }
+                },
+            )
+        data = resp.json()
+    except Exception:
+        logger.warning("youtube add_playlist_item failed: %s", video_id)
+        return False
+    if "error" in data:
+        logger.warning(
+            "youtube add_playlist_item error(%s): %s",
+            video_id,
+            data["error"].get("message"),
+        )
+        return False
+    return True
+
+
+def _parse_duration(iso: str) -> int:
+    """ISO8601(PT#H#M#S) → 초. 파싱 실패 시 0."""
+    m = _DURATION_RE.fullmatch(iso or "")
+    if not m:
+        return 0
+    h, mm, s = (int(x) if x else 0 for x in m.groups())
+    return h * 3600 + mm * 60 + s
+
+
+async def fetch_video_durations(video_ids: list[str]) -> dict[str, int]:
+    """video_id → 길이(초). videos.list(part=contentDetails), 50개/콜(1유닛).
+
+    키 없거나 오류면 빈 dict(→ 호출측이 필터를 스킵하도록).
+    """
+    key = _api_key()
+    ids = [v for v in video_ids if v]
+    if not key or not ids:
+        return {}
+    out: dict[str, int] = {}
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            for i in range(0, len(ids), 50):
+                chunk = ids[i : i + 50]
+                resp = await client.get(
+                    _VIDEOS_URL,
+                    params={
+                        "part": "contentDetails",
+                        "id": ",".join(chunk),
+                        "key": key,
+                    },
+                )
+                data = resp.json()
+                if "error" in data:
+                    logger.warning(
+                        "youtube videos.list error: %s", data["error"].get("message")
+                    )
+                    continue
+                for item in data.get("items", []):
+                    vid = item.get("id")
+                    dur = (item.get("contentDetails") or {}).get("duration", "")
+                    if vid:
+                        out[vid] = _parse_duration(dur)
+    except Exception:
+        logger.exception("youtube fetch_video_durations failed")
+    return out
+
+
+class _HasVideoId(Protocol):
+    video_id: str
+
+
+_T = TypeVar("_T", bound=_HasVideoId)
+
+
+async def filter_out_shorts(items: list[_T]) -> list[_T]:
+    """쇼츠(길이 ≤ SHORTS_MAX_SECONDS) 제외. 길이 못 얻은 건 관대하게 남긴다.
+
+    길이 조회가 전부 실패(키 없음 등)하면 원본 그대로 반환(필터 스킵).
+    """
+    if not items:
+        return items
+    durations = await fetch_video_durations([it.video_id for it in items])
+    if not durations:
+        return items
+    big = 10**9
+    return [it for it in items if durations.get(it.video_id, big) > SHORTS_MAX_SECONDS]
+
+
+def is_too_old(published_at: str) -> bool:
+    """발행일이 MAX_VIDEO_AGE_DAYS보다 오래면 True. 날짜 모르면 관대하게 False."""
+    if not published_at:
+        return False
+    try:
+        dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt < datetime.now(UTC) - timedelta(days=MAX_VIDEO_AGE_DAYS)
 
 
 async def fetch_channel_uploads(

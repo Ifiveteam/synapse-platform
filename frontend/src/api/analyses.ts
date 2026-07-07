@@ -17,6 +17,7 @@ interface AnalysisListItemDto {
   status: AnalysisStatus;
   stage?: AnalysisStage | null;
   kind: "snapshot" | "job";
+  batch_id?: string | null;
 }
 
 interface AnalysisListResponseDto {
@@ -33,6 +34,7 @@ function mapListItem(dto: AnalysisListItemDto): AnalysisResultItem {
     status: dto.status,
     stage: dto.stage ?? null,
     kind: dto.kind,
+    batchId: dto.batch_id ?? null,
   };
 }
 
@@ -41,10 +43,47 @@ export async function fetchMyAnalyses(): Promise<AnalysisResultItem[]> {
   return res.items.map(mapListItem);
 }
 
+export async function deleteMyAnalysis(snapshotId: string): Promise<void> {
+  await apiFetchAuth<void>(`${PREFIX}/me/analyses/${snapshotId}`, {
+    method: "DELETE",
+  });
+}
+
+/** 진행중 분석(배치) 취소 — 배치와 소속 소스 삭제 */
+export async function deleteMyAnalysisBatch(batchId: string): Promise<void> {
+  await apiFetchAuth<void>(`${PREFIX}/me/analyses/batch/${batchId}`, {
+    method: "DELETE",
+  });
+}
+
+/** 진행중 분석(단일 소스) 취소 */
+export async function deleteMyAnalysisSource(sourceId: string): Promise<void> {
+  await apiFetchAuth<void>(`${PREFIX}/me/analyses/source/${sourceId}`, {
+    method: "DELETE",
+  });
+}
+
 export async function fetchMyAnalysisSnapshot(
   snapshotId: string,
 ): Promise<DbProfileResponse> {
   return apiFetchAuth<DbProfileResponse>(`${PREFIX}/me/analyses/${snapshotId}`);
+}
+
+export interface PortraitAxis {
+  axis: string;
+  value: number;
+}
+export interface PortraitStyle {
+  label: string;
+  value: number;
+}
+export interface Portrait {
+  persona_label: string;
+  keywords: string[];
+  interest: PortraitAxis[];
+  disposition: PortraitAxis[];
+  style: PortraitStyle[];
+  reasoning: string;
 }
 
 export async function fetchAnalysisCompare(

@@ -7,6 +7,8 @@ export interface RadarAxis {
 interface Props {
   axes: RadarAxis[];
   size?: number;
+  /** 라벨용 바깥 여백(px). 작게 줄이면 다각형이 커진다 (라벨은 overflow-visible로 표시). */
+  labelMargin?: number;
 }
 
 function polar(cx: number, cy: number, radius: number, angle: number, value: number) {
@@ -18,11 +20,11 @@ function polar(cx: number, cy: number, radius: number, angle: number, value: num
  * 현재 vs 이상향 8축 스파이더(레이더) 비교 차트.
  * 색은 shadcn 테마 토큰을 따른다 — 현재=muted-foreground, 이상향=primary.
  */
-export function RadarCompareChart({ axes, size = 300 }: Props) {
+export function RadarCompareChart({ axes, size = 300, labelMargin = 52 }: Props) {
   const n = axes.length;
   const cx = size / 2;
   const cy = size / 2;
-  const radius = size / 2 - 52; // 라벨 여백 (좌우 한글 라벨이 잘리지 않도록)
+  const radius = size / 2 - labelMargin; // 라벨 여백 (작을수록 다각형이 큼)
   const rings = [25, 50, 75, 100];
 
   const angleAt = (i: number) => -Math.PI / 2 + (i * 2 * Math.PI) / n;

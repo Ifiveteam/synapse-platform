@@ -4,12 +4,15 @@ import {
   ArrowLeft,
   ArrowUpDown,
   Check,
+  ChevronDown,
   ListVideo,
   Pencil,
   Plus,
   RefreshCw,
   Send,
+  Target,
   Trash2,
+  X,
   Youtube,
 } from "lucide-react";
 
@@ -24,17 +27,149 @@ import {
   refreshPlaylistItem,
   regeneratePlaylist,
   renamePlaylist,
+  savePlaylistToYoutube,
+  setPlaylistPeriod,
   streamPlaylistChat,
 } from "@/api/navigator";
+import { connectYoutube } from "@/lib/youtube-connect";
 import type {
   IdealResponse,
+  PlaylistPeriod,
   PlaylistResponse,
   PlaylistSummary,
 } from "@/api/types/navigator";
 import { IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
+import { cn } from "@/lib/utils";
 import { ROUTES } from "@/routes";
 
 type Row = PlaylistSummary & { idealId: string; idealLabel: string };
+
+/** 재생목록 갱신 주기 (UI 선택값 — 백엔드 연동은 추후) */
+const PERIOD_OPTIONS = [
+  { value: "none", label: "없음" },
+  { value: "weekly", label: "매주" },
+  { value: "monthly", label: "매월" },
+] as const;
+type PeriodValue = (typeof PERIOD_OPTIONS)[number]["value"];
+
+/** 영상 발행일(ISO) → "YYYY.MM.DD". 값 없거나 파싱 실패면 빈 문자열. */
+function formatPubDate(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
+}
+
+/** 채팅 메시지가 "이 재생목록을 유튜브에 저장/올려줘" 의도인지.
+ * 편집 요청("유튜브에서 인기영상 넣어줘", "유튜브 영상 넣어줘")과 헷갈리지 않도록,
+ * **목적지 표현 "유튜브에" + 저장 동사**가 바로 이어질 때만 인정하고 "유튜브에서"는 제외한다. */
+function isSaveToYoutubeIntent(msg: string): boolean {
+  const m = msg.replace(/\s+/g, "");
+  if (/(유튜브|유투브|youtube)에서/i.test(m)) return false; // 출처 표현 → 편집
+  return /(유튜브|유투브|youtube)에(다가?)?(저장|올려|올릴|담아|담을|넣어|넣을|등록|백업)/i.test(
+    m,
+  );
+}
+
+/** 토글(세그먼트) 버튼 공통 스타일 */
+function pillClass(active: boolean) {
+  return cn(
+    "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
+    active
+      ? "border-primary bg-primary/10 text-primary"
+      : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground",
+  );
+}
+
+/** 이상향 선택 드롭다운 (검색 가능) */
+function IdealSelect({
+  ideals,
+  value,
+  onChange,
+  labelOf,
+}: {
+  ideals: IdealResponse[];
+  value: string | null;
+  onChange: (id: string) => void;
+  labelOf: (i: IdealResponse) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selected = ideals.find((i) => i.id === value) ?? null;
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? ideals.filter((i) => labelOf(i).toLowerCase().includes(q))
+    : ideals;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="border-border bg-background hover:border-primary/40 flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+      >
+        <span className={selected ? "" : "text-muted-foreground"}>
+          {selected ? labelOf(selected) : "이상향 선택"}
+        </span>
+        <ChevronDown
+          size={16}
+          className={cn(
+            "text-muted-foreground shrink-0 transition-transform",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="border-border bg-card absolute z-20 mt-1 w-full overflow-hidden rounded-lg border shadow-xl">
+            <div className="border-border border-b p-2">
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="이상향 검색…"
+                className="border-border bg-background focus:border-primary/50 w-full rounded-md border px-2.5 py-1.5 text-sm outline-none"
+              />
+            </div>
+            <ul className="max-h-56 overflow-y-auto p-1">
+              {filtered.length === 0 ? (
+                <li className="text-muted-foreground px-2.5 py-2 text-sm">
+                  검색 결과가 없어요.
+                </li>
+              ) : (
+                filtered.map((i) => (
+                  <li key={i.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onChange(i.id);
+                        setOpen(false);
+                        setQuery("");
+                      }}
+                      className={cn(
+                        "hover:bg-accent flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
+                        i.id === value && "bg-accent",
+                      )}
+                    >
+                      <Target size={14} className="text-muted-foreground shrink-0" />
+                      <span className="flex-1 truncate">{labelOf(i)}</span>
+                      {i.id === value && (
+                        <Check size={14} className="text-primary shrink-0" />
+                      )}
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 export function PlaylistPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -46,9 +181,15 @@ export function PlaylistPage() {
   const [filterIdeal, setFilterIdeal] = useState<string>(initialIdeal);
   const [sortDesc, setSortDesc] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+  // 새 재생목록 팝업 선택값 (토글)
+  const [pickIdealId, setPickIdealId] = useState<string | null>(null);
+  const [pickPeriod, setPickPeriod] = useState<PeriodValue>("none");
 
   // 상세
   const [selected, setSelected] = useState<PlaylistResponse | null>(null);
+  // 채팅으로 방금 바뀐(추가된) 영상 id — 커서 올리기 전까지 테두리 강조
+  const [changedIds, setChangedIds] = useState<Set<string>>(() => new Set());
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -94,6 +235,61 @@ export function PlaylistPage() {
     return () => abortRef.current?.abort();
   }, [loadAll]);
 
+  // 생성중(pending)인 재생목록을 폴링해 완료되면 자동으로 채운다
+  useEffect(() => {
+    if (!selected || selected.status !== "pending") return;
+    const id = selected.id;
+    const timer = setInterval(async () => {
+      try {
+        const updated = await getPlaylist(id);
+        setSelected((cur) => (cur && cur.id === id ? updated : cur));
+        setRows((prev) =>
+          prev.map((r) =>
+            r.id === id
+              ? {
+                  ...r,
+                  status: updated.status,
+                  item_count: updated.items.length,
+                  title: updated.title,
+                }
+              : r,
+          ),
+        );
+        if (updated.status !== "pending") clearInterval(timer);
+      } catch {
+        /* 일시 오류는 무시하고 계속 폴링 */
+      }
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [selected?.id, selected?.status]);
+
+  // YouTube 저장중(saving)을 폴링해 완료되면 반영
+  useEffect(() => {
+    if (!selected || selected.save_status !== "saving") return;
+    const id = selected.id;
+    const timer = setInterval(async () => {
+      try {
+        const updated = await getPlaylist(id);
+        setSelected((cur) => (cur && cur.id === id ? updated : cur));
+        setRows((prev) =>
+          prev.map((r) =>
+            r.id === id
+              ? {
+                  ...r,
+                  save_status: updated.save_status,
+                  youtube_playlist_id: updated.youtube_playlist_id,
+                }
+              : r,
+          ),
+        );
+        if (updated.save_status !== "saving") clearInterval(timer);
+      } catch {
+        /* 무시하고 계속 폴링 */
+      }
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [selected?.id, selected?.save_status]);
+
   const visibleRows = useMemo(() => {
     const filtered =
       filterIdeal === "all"
@@ -115,32 +311,64 @@ export function PlaylistPage() {
 
   const openPlaylist = async (playlistId: string) => {
     setChatLog([]);
+    setChangedIds(new Set());
     setSelected(await getPlaylist(playlistId));
   };
 
-  const handleCreate = async () => {
-    if (filterIdeal === "all") return;
+  const createFor = async (idealId: string) => {
+    setShowPicker(false);
     setCreating(true);
     try {
-      const created = await createPlaylist(filterIdeal);
-      const i = ideals.find((x) => x.id === filterIdeal);
+      const created = await createPlaylist(idealId, pickPeriod);
+      const i = ideals.find((x) => x.id === idealId);
       setRows((prev) => [
         {
           id: created.id,
           title: created.title,
           item_count: created.items.length,
+          status: created.status,
+          save_status: created.save_status,
+          refresh_period: created.refresh_period,
           youtube_playlist_id: created.youtube_playlist_id,
           created_at: created.created_at,
-          idealId: filterIdeal,
+          idealId,
           idealLabel: i ? idealLabel(i) : "",
         },
         ...prev,
       ]);
       setChatLog([]);
-      setSelected(created);
+      setSelected(created); // pending → 폴링이 채움
     } finally {
       setCreating(false);
     }
+  };
+
+  const handleSetPeriod = async (id: string, period: PlaylistPeriod) => {
+    // 낙관적 반영 (실패해도 다음 로드에서 정정)
+    setRows((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, refresh_period: period } : r)),
+    );
+    setSelected((cur) =>
+      cur && cur.id === id ? { ...cur, refresh_period: period } : cur,
+    );
+    try {
+      await setPlaylistPeriod(id, period);
+    } catch {
+      /* 무시 */
+    }
+  };
+
+  const handleNewClick = () => {
+    // 필터에 특정 이상향이 잡혀있으면 그걸 기본 선택, "모든 이상향"이면 미선택으로 시작
+    setPickIdealId(filterIdeal !== "all" ? filterIdeal : null);
+    setPickPeriod("none");
+    setShowPicker((v) => !v);
+  };
+
+  const handleCreateFromPicker = () => {
+    if (!pickIdealId) return;
+    // 주기(pickPeriod)는 현재 UI 선택값 — 백엔드 연동은 추후.
+    void createFor(pickIdealId);
   };
 
   const handleRefreshItem = async (videoId: string) => {
@@ -157,15 +385,42 @@ export function PlaylistPage() {
     if (!selected || refreshingAll) return;
     setRefreshingAll(true);
     try {
+      setChangedIds(new Set());
       setSelected(await regeneratePlaylist(selected.id));
     } finally {
       setRefreshingAll(false);
     }
   };
 
-  const handleSaveYoutube = () => {
-    // TODO(Phase B): savePlaylistToYoutube(selected.id) 연결 (OAuth youtube 스코프)
-    window.alert("유튜브에 저장은 곧 지원됩니다. (백엔드 준비 중)");
+  const markSaving = (id: string) => {
+    setSelected((cur) =>
+      cur && cur.id === id ? { ...cur, save_status: "saving" } : cur,
+    );
+    setRows((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, save_status: "saving" } : r)),
+    );
+  };
+
+  const handleSaveYoutube = async (): Promise<boolean> => {
+    if (!selected) return false;
+    const id = selected.id;
+    try {
+      let res = await savePlaylistToYoutube(id);
+      if (res.needs_reconsent) {
+        try {
+          await connectYoutube(); // youtube 스코프 동의 팝업
+        } catch {
+          return false; // 동의 취소
+        }
+        res = await savePlaylistToYoutube(id);
+        if (res.needs_reconsent) return false;
+      }
+      markSaving(id); // 폴링이 완료를 채움
+      return true;
+    } catch {
+      window.alert("저장을 시작하지 못했어요. 잠시 후 다시 시도해 주세요.");
+      return false;
+    }
   };
 
   const handleDelete = async () => {
@@ -211,6 +466,29 @@ export function PlaylistPage() {
   const handleChat = async () => {
     if (!selected || !chatInput.trim() || chatting) return;
     const message = chatInput.trim();
+
+    // "유튜브에 넣어줘" 의도면 편집 대신 저장 로직 실행
+    if (isSaveToYoutubeIntent(message)) {
+      setChatInput("");
+      setChatting(true);
+      setChatLog((prev) => [
+        ...prev,
+        { role: "user", text: message },
+        { role: "assistant", text: "유튜브에 저장을 시작할게요…" },
+      ]);
+      try {
+        const started = await handleSaveYoutube();
+        setLastAssistant(
+          started
+            ? "✅ 유튜브에 저장을 시작했어요. 완료되면 '유튜브에 저장'이 완료로 바뀝니다."
+            : "유튜브 저장을 시작하지 못했어요. (연동 취소/오류)",
+        );
+      } finally {
+        setChatting(false);
+      }
+      return;
+    }
+
     const beforeIds = new Set(selected.items.map((i) => i.video_id));
     setChatInput("");
     setChatting(true);
@@ -228,11 +506,13 @@ export function PlaylistPage() {
           onStatus: (s) => setLastAssistant(s),
           onPlaylist: (p) => {
             const afterIds = new Set(p.items.map((i) => i.video_id));
-            const changed = [...beforeIds].filter((id) => !afterIds.has(id)).length;
+            const added = [...afterIds].filter((id) => !beforeIds.has(id));
+            const removed = [...beforeIds].filter((id) => !afterIds.has(id)).length;
             setSelected(p);
+            setChangedIds(new Set(added));
             setLastAssistant(
-              changed > 0
-                ? `✅ 영상 ${changed}개를 바꿨어요.`
+              added.length > 0 || removed > 0
+                ? `✅ 영상 ${Math.max(added.length, removed)}개를 바꿨어요. (강조된 항목)`
                 : "바꿀 만한 새 영상을 찾지 못했어요.",
             );
           },
@@ -248,8 +528,9 @@ export function PlaylistPage() {
 
   // ── 상세 뷰 ──────────────────────────────────────────────────────
   if (selected) {
+    const ready = selected.status === "ready";
     return (
-      <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-6 py-8">
+      <div className="flex min-h-full flex-col px-4 py-5 sm:px-6 sm:py-6">
         <button
           type="button"
           onClick={() => setSelected(null)}
@@ -293,35 +574,50 @@ export function PlaylistPage() {
               </div>
             )}
             <div className="flex shrink-0 items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void handleRefreshAll()}
-                disabled={refreshingAll}
-                className="gap-1.5"
-              >
-                <RefreshCw
-                  size={14}
-                  className={refreshingAll ? "animate-spin" : ""}
-                />
-                전체 새로고침
-              </Button>
-              {selected.youtube_playlist_id ? (
-                <Button size="sm" variant="outline" asChild className="gap-1.5">
-                  <a
-                    href={`https://www.youtube.com/playlist?list=${selected.youtube_playlist_id}`}
-                    target="_blank"
-                    rel="noreferrer"
+              {ready && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void handleRefreshAll()}
+                    disabled={refreshingAll}
+                    className="gap-1.5"
                   >
-                    <Youtube size={15} />
-                    유튜브에서 보기
-                  </a>
-                </Button>
-              ) : (
-                <Button size="sm" onClick={handleSaveYoutube} className="gap-1.5">
-                  <Youtube size={15} />
-                  유튜브에 저장
-                </Button>
+                    <RefreshCw
+                      size={14}
+                      className={refreshingAll ? "animate-spin" : ""}
+                    />
+                    전체 새로고침
+                  </Button>
+                  {selected.youtube_playlist_id ? (
+                    <Button size="sm" variant="outline" asChild className="gap-1.5">
+                      <a
+                        href={`https://www.youtube.com/playlist?list=${selected.youtube_playlist_id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <Youtube size={15} />
+                        유튜브에서 보기
+                      </a>
+                    </Button>
+                  ) : selected.save_status === "saving" ? (
+                    <Button size="sm" disabled className="gap-1.5">
+                      <RefreshCw size={15} className="animate-spin" />
+                      저장 중…
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={() => void handleSaveYoutube()}
+                      className="gap-1.5"
+                    >
+                      <Youtube size={15} />
+                      {selected.save_status === "failed"
+                        ? "다시 저장"
+                        : "유튜브에 저장"}
+                    </Button>
+                  )}
+                </>
               )}
               <Button
                 size="sm"
@@ -339,11 +635,42 @@ export function PlaylistPage() {
             <p className="text-muted-foreground mb-4 text-sm">{selected.summary}</p>
           )}
 
-          <ul className="flex flex-col gap-3">
-            {selected.items.map((it) => (
+          {selected.status === "pending" ? (
+            <div className="text-muted-foreground flex flex-col items-center gap-2 py-16 text-center text-sm">
+              <RefreshCw size={22} className="animate-spin" />
+              재생목록을 만드는 중이에요… (채널 검색·큐레이션)
+              <span className="text-xs">
+                이 창을 나가도 계속 생성돼요. 잠시 후 자동으로 채워집니다.
+              </span>
+            </div>
+          ) : selected.status === "failed" ? (
+            <div className="text-muted-foreground py-16 text-center text-sm">
+              생성에 실패했어요. 삭제 후 다시 만들어 주세요.
+            </div>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {selected.items.map((it) => {
+              const isChanged = changedIds.has(it.video_id);
+              return (
               <li
                 key={it.video_id}
-                className="border-border flex items-start gap-3 rounded-xl border p-2.5"
+                onMouseEnter={
+                  isChanged
+                    ? () =>
+                        setChangedIds((prev) => {
+                          if (!prev.has(it.video_id)) return prev;
+                          const next = new Set(prev);
+                          next.delete(it.video_id);
+                          return next;
+                        })
+                    : undefined
+                }
+                className={cn(
+                  "flex items-start gap-3 rounded-xl border p-2.5 transition-colors",
+                  isChanged
+                    ? "border-primary bg-primary/5 ring-primary/30 ring-1"
+                    : "border-border",
+                )}
               >
                 <a href={it.url} target="_blank" rel="noreferrer" className="shrink-0">
                   {it.thumbnail_url ? (
@@ -366,7 +693,11 @@ export function PlaylistPage() {
                   >
                     {it.title}
                   </a>
-                  <p className="text-muted-foreground mt-0.5 text-xs">{it.channel}</p>
+                  <p className="text-muted-foreground mt-0.5 text-xs">
+                    {it.channel}
+                    {formatPubDate(it.published_at) &&
+                      ` · ${formatPubDate(it.published_at)}`}
+                  </p>
                   {it.reason && (
                     <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
                       {it.reason}
@@ -386,8 +717,10 @@ export function PlaylistPage() {
                   />
                 </button>
               </li>
-            ))}
-          </ul>
+              );
+            })}
+            </ul>
+          )}
         </section>
 
         {/* 오른쪽: 채팅 패널 (대화 기록 유지) */}
@@ -430,14 +763,14 @@ export function PlaylistPage() {
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && void handleChat()}
-                placeholder="수정 요청을 입력하세요"
-                disabled={chatting}
+                placeholder={ready ? "수정 요청을 입력하세요" : "생성 완료 후 이용할 수 있어요"}
+                disabled={chatting || !ready}
                 className="border-border min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm"
               />
               <Button
                 size="icon"
                 onClick={() => void handleChat()}
-                disabled={chatting || !chatInput.trim()}
+                disabled={chatting || !chatInput.trim() || !ready}
               >
                 <Send size={15} />
               </Button>
@@ -451,7 +784,7 @@ export function PlaylistPage() {
 
   // ── 목록 뷰 ──────────────────────────────────────────────────────
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-6 py-8">
+    <div className="flex min-h-full flex-col px-4 py-5 sm:px-6 sm:py-6">
       <Link
         to={ROUTES.idealManagement}
         className="text-muted-foreground hover:text-foreground mb-4 inline-flex w-fit items-center gap-1.5 text-sm transition-colors"
@@ -467,15 +800,89 @@ export function PlaylistPage() {
         </h1>
         <Button
           size="sm"
-          onClick={() => void handleCreate()}
-          disabled={creating || filterIdeal === "all"}
-          title={filterIdeal === "all" ? "이상향을 먼저 선택하세요" : undefined}
+          onClick={handleNewClick}
+          disabled={creating}
           className="gap-1.5"
         >
           <Plus size={15} className={creating ? "animate-spin" : ""} />
           {creating ? "생성 중…" : "새 재생목록"}
         </Button>
       </div>
+
+      {/* 이상향 선택 팝업 */}
+      {showPicker && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setShowPicker(false)}
+          />
+          <div className="border-border bg-card relative z-10 w-full max-w-md rounded-2xl border p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-base font-semibold">새 재생목록</h3>
+              <button
+                type="button"
+                onClick={() => setShowPicker(false)}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="닫기"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {ideals.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                이상향이 없어요. 먼저 이상향을 만들어 주세요.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-5">
+                {/* 이상향 선택 (검색 드롭다운) */}
+                <div>
+                  <p className="mb-2 flex items-center gap-1.5 text-sm font-medium">
+                    <Target size={15} className="text-muted-foreground" />
+                    이상향
+                  </p>
+                  <IdealSelect
+                    ideals={ideals}
+                    value={pickIdealId}
+                    onChange={setPickIdealId}
+                    labelOf={idealLabel}
+                  />
+                </div>
+
+                {/* 주기 토글 */}
+                <div>
+                  <p className="mb-2 text-sm font-medium">주기</p>
+                  <div className="flex flex-wrap gap-2">
+                    {PERIOD_OPTIONS.map((o) => (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => setPickPeriod(o.value)}
+                        className={pillClass(pickPeriod === o.value)}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleCreateFromPicker}
+                  disabled={!pickIdealId || creating}
+                  className="mt-1 gap-1.5"
+                >
+                  <Plus size={15} className={creating ? "animate-spin" : ""} />
+                  {creating ? "생성 중…" : "만들기"}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 필터 + 정렬 */}
       <div className="mb-5 flex items-center gap-2">
@@ -520,13 +927,17 @@ export function PlaylistPage() {
       ) : (
         <ul className="flex flex-col gap-3">
           {visibleRows.map((r) => (
-            <li key={r.id} className="flex items-center gap-2">
+            <li
+              key={r.id}
+              className="border-border hover:border-primary/40 flex items-center gap-3 rounded-2xl border bg-card px-4 py-3 transition-colors"
+            >
               <button
                 type="button"
                 onClick={() => void openPlaylist(r.id)}
-                className="border-border hover:border-primary/40 flex flex-1 items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3 text-left transition-colors"
+                className="flex min-w-0 flex-1 items-center gap-3 text-left"
               >
-                <div className="min-w-0">
+                <ListVideo size={20} className="text-muted-foreground shrink-0" />
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">
                     {r.title || "제목 없음"}
                   </p>
@@ -534,14 +945,37 @@ export function PlaylistPage() {
                     <Badge variant="outline" className="rounded-full">
                       {r.idealLabel}
                     </Badge>
-                    <span>영상 {r.item_count}개</span>
+                    {r.status === "pending" ? (
+                      <span className="text-primary inline-flex items-center gap-1">
+                        <RefreshCw size={11} className="animate-spin" />
+                        생성중
+                      </span>
+                    ) : r.status === "failed" ? (
+                      <span className="text-destructive">생성 실패</span>
+                    ) : (
+                      <span>영상 {r.item_count}개</span>
+                    )}
                     <span>
                       {new Date(r.created_at).toLocaleDateString("ko-KR")}
                     </span>
                   </div>
                 </div>
-                <ListVideo size={18} className="text-muted-foreground shrink-0" />
               </button>
+              <select
+                value={r.refresh_period}
+                onChange={(e) =>
+                  void handleSetPeriod(r.id, e.target.value as PlaylistPeriod)
+                }
+                onClick={(e) => e.stopPropagation()}
+                title="자동 갱신 주기"
+                className="border-border bg-background text-muted-foreground focus:border-primary/50 shrink-0 rounded-lg border px-2 py-1.5 text-xs outline-none"
+              >
+                {PERIOD_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.value === "none" ? "갱신 없음" : `${o.label} 갱신`}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 onClick={() => void handleDeleteRow(r.id)}

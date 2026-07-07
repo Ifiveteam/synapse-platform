@@ -125,7 +125,9 @@ async def download_drive_file(file_id: str, user) -> str | None:
 
 
 async def run_takeout_pipeline(
-    file_path: str, user_id: uuid.UUID | None = None
+    file_path: str,
+    user_id: uuid.UUID | None = None,
+    analysis_source_id: str | None = None,
 ) -> dict:
     """ZIP 또는 JSON 파일 → Indexer pipeline 실행"""
     from collections import Counter
@@ -140,6 +142,7 @@ async def run_takeout_pipeline(
             "error": None,
             "saved_count": None,
             "user_id": user_id,
+            "analysis_source_id": analysis_source_id,
         }
     )
 

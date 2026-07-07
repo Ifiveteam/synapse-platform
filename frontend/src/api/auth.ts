@@ -92,14 +92,12 @@ export async function devLogin(): Promise<SessionResponse> {
 }
 
 export async function updateMe(
-  token: string,
   data: { nickname?: string; picture?: string },
 ): Promise<AuthUser | null> {
   const res = await fetch(`${AUTH_API}/me`, {
     method: "PATCH",
     credentials: "include",
     headers: {
-      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(data),
@@ -108,11 +106,10 @@ export async function updateMe(
   return res.json();
 }
 
-export async function deleteMe(token: string): Promise<boolean> {
+export async function deleteMe(): Promise<boolean> {
   const res = await fetch(`${AUTH_API}/me`, {
     method: "DELETE",
     credentials: "include",
-    headers: { Authorization: `Bearer ${token}` },
   });
   return res.ok;
 }

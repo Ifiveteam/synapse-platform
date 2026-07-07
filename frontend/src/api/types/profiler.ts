@@ -18,6 +18,13 @@ export interface TopChannelItem {
   count: number;
 }
 
+/** supporting_evidence.insight — 의미 중심 요약 확장 필드 */
+export interface InsightExtra {
+  strengths?: string | null;
+  weaknesses?: string | null;
+  content_preferences?: string[];
+}
+
 export interface DbProfileResponse {
   user_id: string;
   snapshot_id: string;
@@ -31,6 +38,9 @@ export interface DbProfileResponse {
   tone_of_user: string | null;
   top_categories: TopCategoryItem[];
   top_channels: TopChannelItem[];
+  top_channels_long: TopChannelItem[];
+  top_channels_short: TopChannelItem[];
+  portrait: Record<string, unknown> | null;
 }
 
 export interface Synapse8Axes {

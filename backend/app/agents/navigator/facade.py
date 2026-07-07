@@ -36,7 +36,7 @@ from app.agents.navigator.sub_agent.youtube import (
     refresh_item as _refresh_item,
 )
 
-_ALLOWED_EVENTS = {"status", "token", "ideal"}
+_ALLOWED_EVENTS = {"status", "token", "ideal", "complete"}
 
 
 class NavigatorAgent:
@@ -49,27 +49,32 @@ class NavigatorAgent:
     async def propose(
         self,
         profile_21: dict[str, float],
+        portrait: dict | None = None,
         top_interests: dict[str, list] | None = None,
     ) -> list[ProposedIdeal]:
-        """21축 → 반대·강점심화·균형 이상향 3종 (각 13축 설계 + 8축 파생)."""
-        return await propose_ideals(profile_21, top_interests)
+        """초상(성향·도메인) → 반대·강점심화·균형 3종 (목표 성향·도메인 + 8축 파생)."""
+        return await propose_ideals(profile_21, portrait, top_interests)
 
     async def generate_guide(
         self,
         *,
         store: CatalogStore | None,
         user_id: uuid.UUID,
-        profile_21: dict[str, float],
-        ideal_8: dict[str, float],
+        current_disposition: dict[str, float],
+        current_interest: dict[str, float],
+        target_disposition: dict[str, float],
+        target_interest: dict[str, float],
         ideal_type: str,
         reasoning: str,
     ) -> Guide:
-        """가이드 서브에이전트에 위임 — catalog RAG 근거로 행동 가이드 생성."""
+        """가이드 서브에이전트에 위임 — 심화(성향 RAG)+확장(도메인 다리) 가이드 생성."""
         return await run_guide(
             store=store,
             user_id=user_id,
-            profile_21=profile_21,
-            ideal_8=ideal_8,
+            current_disposition=current_disposition,
+            current_interest=current_interest,
+            target_disposition=target_disposition,
+            target_interest=target_interest,
             ideal_type=ideal_type,
             reasoning=reasoning,
         )
@@ -83,8 +88,12 @@ class NavigatorAgent:
         values13: dict[str, float],
         ideal_type: str,
         reasoning: str,
+        current_interest: dict[str, float] | None = None,
+        target_interest: dict[str, float] | None = None,
+        target_disposition: dict[str, float] | None = None,
+        taste_keywords: list[str] | None = None,
     ) -> PlaylistBuild:
-        """YouTube 재생목록 서브에이전트에 위임 — 채널 발굴→RSS→큐레이션."""
+        """YouTube 재생목록 서브에이전트에 위임 — 목표 도메인 발굴→RSS→큐레이션."""
         return await run_playlist(
             store=store,
             user_id=user_id,
@@ -92,6 +101,10 @@ class NavigatorAgent:
             values13=values13,
             ideal_type=ideal_type,
             reasoning=reasoning,
+            current_interest=current_interest,
+            target_interest=target_interest,
+            target_disposition=target_disposition,
+            taste_keywords=taste_keywords,
         )
 
     async def refresh_item(
@@ -143,22 +156,34 @@ class NavigatorAgent:
         session_id: str,
         profile_21: dict[str, float],
         current_8axis: dict[str, float],
+        portrait: dict | None = None,
         working_ideal: dict[str, float] | None = None,
         working_values: dict[str, float] | None = None,
+        working_disposition: dict[str, float] | None = None,
+        working_interest: dict[str, float] | None = None,
         ideal_type: str | None = None,
         top_interests: dict[str, list] | None = None,
+        turn: int = 1,
+        force_finalize: bool = False,
+        taste_notes: str = "",
     ) -> AsyncIterator[NavigatorStreamEvent]:
-        """챗 그래프를 돌려 custom 이벤트(status/token/ideal)만 방출한다."""
+        """인터뷰 그래프를 돌려 custom 이벤트(status/token/ideal/complete)만 방출한다."""
         initial_state = self._build_initial_state(
             messages=messages,
             user_id=user_id,
             session_id=session_id,
             profile_21=profile_21,
             current_8axis=current_8axis,
+            portrait=portrait,
             working_ideal=working_ideal,
             working_values=working_values,
+            working_disposition=working_disposition,
+            working_interest=working_interest,
             ideal_type=ideal_type,
             top_interests=top_interests,
+            turn=turn,
+            force_finalize=force_finalize,
+            taste_notes=taste_notes,
         )
         async for mode, chunk in self._graph.astream(
             initial_state, stream_mode=["custom", "values"]
@@ -179,10 +204,16 @@ class NavigatorAgent:
         session_id: str,
         profile_21: dict[str, float],
         current_8axis: dict[str, float],
+        portrait: dict | None = None,
         working_ideal: dict[str, float] | None = None,
         working_values: dict[str, float] | None = None,
+        working_disposition: dict[str, float] | None = None,
+        working_interest: dict[str, float] | None = None,
         ideal_type: str | None = None,
         top_interests: dict[str, list] | None = None,
+        turn: int = 1,
+        force_finalize: bool = False,
+        taste_notes: str = "",
     ) -> NavigatorState:
         state: NavigatorState = {
             "messages": messages,
@@ -190,15 +221,25 @@ class NavigatorAgent:
             "session_id": session_id,
             "profile_21": profile_21,
             "current_8axis": current_8axis,
+            "turn": turn,
+            "force_finalize": force_finalize,
         }
+        if portrait:
+            state["portrait"] = portrait
         if working_ideal:
             state["working_ideal"] = working_ideal
         if working_values:
             state["working_values"] = working_values
+        if working_disposition:
+            state["working_disposition"] = working_disposition
+        if working_interest:
+            state["working_interest"] = working_interest
         if ideal_type:
             state["ideal_type"] = ideal_type
         if top_interests:
             state["top_interests"] = top_interests
+        if taste_notes:
+            state["taste_notes"] = taste_notes
         return state
 
 

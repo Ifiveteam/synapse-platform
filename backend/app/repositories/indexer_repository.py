@@ -9,6 +9,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.analysis_source_catalog import AnalysisSourceCatalog
 from app.models.user_subscription import UserSubscription
 from app.models.user_watch_catalog import UserWatchCatalog
 from app.models.video_analysis import VideoAnalysis
@@ -102,6 +103,42 @@ async def upsert_catalog_records(
         await session.execute(stmt)
         count += 1
     return count
+
+
+async def link_source_catalog(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    source_id: uuid.UUID | str | None,
+    urls: list[str],
+) -> int:
+    """이 파일(source)에 속한 영상들의 소속 짝을 analysis_source_catalog에 기록.
+
+    신규+기존 영상 URL 전부를 받아 catalog_id로 해석 후 (source, catalog) 짝을 넣는다.
+    같은 영상이 여러 파일에 겹쳐도 짝이 별도 행으로 남는다(on conflict do nothing).
+    배치 스코프 분석이 이 표를 조인해 그 파일들의 영상만 골라낸다.
+    """
+    if source_id is None:
+        return 0
+    clean_urls = [u for u in urls if u]
+    if not clean_urls:
+        return 0
+    sid = uuid.UUID(str(source_id))
+    rows = await session.execute(
+        select(UserWatchCatalog.id).where(
+            UserWatchCatalog.user_id == user_id,
+            UserWatchCatalog.url.in_(clean_urls),
+        )
+    )
+    catalog_ids = [row[0] for row in rows.all()]
+    if not catalog_ids:
+        return 0
+    stmt = (
+        pg_insert(AnalysisSourceCatalog)
+        .values([{"analysis_source_id": sid, "catalog_id": cid} for cid in catalog_ids])
+        .on_conflict_do_nothing(constraint="uq_asc_source_catalog")
+    )
+    await session.execute(stmt)
+    return len(catalog_ids)
 
 
 async def fetch_indexed_urls(
@@ -280,15 +317,30 @@ def _listable_channel_conditions():
     )
 
 
+def _source_member_subquery(source_ids: list[uuid.UUID]):
+    """배치 소스들에 소속된 catalog_id 집합 (상위 집계 스코프용)."""
+    return (
+        select(AnalysisSourceCatalog.catalog_id)
+        .where(AnalysisSourceCatalog.analysis_source_id.in_(source_ids))
+        .distinct()
+    )
+
+
 async def fetch_top_categories(
     session: AsyncSession,
     user_id: uuid.UUID,
     *,
     limit: int = 5,
     since: datetime | None = None,
+    source_ids: list[uuid.UUID] | None = None,
 ) -> list[dict[str, int | str]]:
-    """user_watch_catalog GROUP BY youtube_category_id — 상위 N개."""
+    """user_watch_catalog GROUP BY youtube_category_id — 상위 N개.
+
+    source_ids가 주어지면 그 배치 소속 영상만 집계(임베딩 미로드, SQL 집계).
+    """
     conditions = [UserWatchCatalog.user_id == user_id]
+    if source_ids:
+        conditions.append(UserWatchCatalog.id.in_(_source_member_subquery(source_ids)))
     if since is not None:
         conditions.append(UserWatchCatalog.watched_at >= since)
     rows = await session.execute(
@@ -310,9 +362,21 @@ async def fetch_top_channels(
     *,
     limit: int = 5,
     since: datetime | None = None,
+    source_ids: list[uuid.UUID] | None = None,
+    is_shorts: bool | None = None,
 ) -> list[dict[str, int | str]]:
-    """user_watch_catalog GROUP BY channel — 상위 N개."""
+    """user_watch_catalog GROUP BY channel — 상위 N개.
+
+    source_ids가 주어지면 그 배치 소속 영상만 집계(임베딩 미로드, SQL 집계).
+    is_shorts=True면 숏폼만, False면 롱폼만(is_shorts가 True가 아닌 것), None이면 전체.
+    """
     conditions = [UserWatchCatalog.user_id == user_id, *_listable_channel_conditions()]
+    if source_ids:
+        conditions.append(UserWatchCatalog.id.in_(_source_member_subquery(source_ids)))
+    if is_shorts is True:
+        conditions.append(UserWatchCatalog.is_shorts.is_(True))
+    elif is_shorts is False:
+        conditions.append(UserWatchCatalog.is_shorts.isnot(True))
     if since is not None:
         conditions.append(UserWatchCatalog.watched_at >= since)
     rows = await session.execute(
@@ -388,12 +452,23 @@ async def fetch_catalog_embedding_rows(
     before: datetime | None = None,
     after: datetime | None = None,
     limit: int | None = None,
+    source_ids: list[uuid.UUID] | None = None,
 ) -> list[dict]:
-    """임베딩 그래프용 catalog 행 (embedding 있는 것만). 최신 시청순, limit 시 상한."""
+    """임베딩 그래프용 catalog 행 (embedding 있는 것만). 최신 시청순, limit 시 상한.
+
+    source_ids가 주어지면 그 배치 소속 영상(analysis_source_catalog 조인)만.
+    """
     conditions = [
         UserWatchCatalog.user_id == user_id,
         UserWatchCatalog.embedding.isnot(None),
     ]
+    if source_ids:
+        member_subq = (
+            select(AnalysisSourceCatalog.catalog_id)
+            .where(AnalysisSourceCatalog.analysis_source_id.in_(source_ids))
+            .distinct()
+        )
+        conditions.append(UserWatchCatalog.id.in_(member_subq))
     if before:
         conditions.append(UserWatchCatalog.watched_at < before)
     if after:

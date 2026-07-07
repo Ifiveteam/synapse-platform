@@ -2,14 +2,35 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { fetchArchiverSessions } from "@/api/archiver";
+import { fetchMyAnalyses } from "@/api/analyses";
 import { fetchCuratorSessions } from "@/api/curator";
+import { listIdeals } from "@/api/navigator";
 import { fetchScraps } from "@/api/scraps";
+import type { IdealResponse } from "@/api/types/navigator";
+import type { AnalysisResultItem } from "@/lib/analyses/types";
+import { IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
 import { buildSidebarScraps } from "@/lib/sidebar/build-sidebar-scraps";
-import {
-  MOCK_ACTIVE_IDEAL_LABEL,
-  type SidebarChat,
-  type SidebarScrap,
-} from "@/lib/sidebar/mock";
+import type { SidebarChat, SidebarScrap } from "@/lib/sidebar/types";
+
+/** 적용 중 이상향 → 없으면 최신 분석 페르소나로 사이드바 라벨 파생. */
+function deriveActiveLabel(
+  ideals: IdealResponse[],
+  analyses: AnalysisResultItem[],
+): string | null {
+  const active = ideals.find((i) => i.is_active);
+  if (active) return active.persona_label || IDEAL_TYPE_LABEL[active.ideal_type];
+  const latest = analyses.find((a) => a.status === "completed");
+  return latest?.title ?? null;
+}
+
+// 요청 합치기 — 진행 중 promise 공유(동시 호출) + 최근 로드 캐시(순차 호출).
+// 순차 호출(예: ShellLayout 로드 완료 후 페이지 마운트)까지 1번으로 줄이려 짧은 TTL 사용.
+// 뮤테이션(적용·삭제)은 refresh*가 강제 재조회하므로 TTL이 신선도를 해치지 않는다.
+const FRESH_MS = 3000;
+let idealsInflight: Promise<IdealResponse[]> | null = null;
+let analysesInflight: Promise<AnalysisResultItem[]> | null = null;
+let idealsLoadedAt = 0;
+let analysesLoadedAt = 0;
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -26,9 +47,21 @@ function formatRelativeTime(iso: string): string {
 interface SidebarStore {
   /** 현재 적용 중인 이상향 표시 라벨 (백엔드 active 이상향 기준) */
   activeIdealLabel: string | null;
+  /** 이상향·분석 목록 — 사이드바·허브 공용 단일 소스 (persist 안 함) */
+  ideals: IdealResponse[];
+  analyses: AnalysisResultItem[];
   scraps: SidebarScrap[];
   chats: SidebarChat[];
   setActiveIdealLabel: (label: string | null) => void;
+  /** 이상향/분석 목록 로드 (동시 호출은 dedupe). 마운트마다 호출해도 안전. */
+  loadIdeals: () => Promise<void>;
+  loadAnalyses: () => Promise<void>;
+  /** 뮤테이션(적용·삭제·확정) 후 강제 재조회. */
+  refreshIdeals: () => Promise<void>;
+  refreshAnalyses: () => Promise<void>;
+  removeAnalysis: (id: string) => void;
+  /** 적용 중 이상향의 페르소나 → 없으면 최신 분석 페르소나로 라벨 해석 */
+  loadIdealPersona: () => Promise<void>;
   loadChats: () => Promise<void>;
   loadScraps: () => Promise<void>;
   renameChat: (id: string, title: string) => void;
@@ -39,11 +72,80 @@ interface SidebarStore {
 
 export const useSidebarStore = create<SidebarStore>()(
   persist(
-    (set) => ({
-      activeIdealLabel: MOCK_ACTIVE_IDEAL_LABEL,
+    (set, get) => ({
+      activeIdealLabel: null,
+      ideals: [],
+      analyses: [],
       scraps: [],
       chats: [],
       setActiveIdealLabel: (activeIdealLabel) => set({ activeIdealLabel }),
+
+      loadAnalyses: async () => {
+        if (analysesInflight) {
+          await analysesInflight;
+          return;
+        }
+        if (Date.now() - analysesLoadedAt < FRESH_MS) return; // 최근 로드 → 스킵
+        analysesInflight = fetchMyAnalyses().finally(() => {
+          analysesInflight = null;
+        });
+        try {
+          set({ analyses: await analysesInflight });
+          analysesLoadedAt = Date.now();
+        } catch {
+          /* 로그인 안 됨 등 무시 */
+        }
+      },
+
+      loadIdeals: async () => {
+        if (idealsInflight) {
+          await idealsInflight;
+          return;
+        }
+        if (Date.now() - idealsLoadedAt < FRESH_MS) return; // 최근 로드 → 스킵
+        idealsInflight = listIdeals().finally(() => {
+          idealsInflight = null;
+        });
+        try {
+          const list = await idealsInflight;
+          idealsLoadedAt = Date.now();
+          set({ ideals: list });
+          if (!list.some((i) => i.is_active)) {
+            await get().loadAnalyses(); // 적용 이상향 없으면 분석 페르소나로 폴백
+          }
+          set({ activeIdealLabel: deriveActiveLabel(get().ideals, get().analyses) });
+        } catch {
+          /* 무시 */
+        }
+      },
+
+      refreshIdeals: async () => {
+        try {
+          const list = await listIdeals();
+          idealsLoadedAt = Date.now();
+          set({ ideals: list });
+          if (!list.some((i) => i.is_active)) await get().loadAnalyses();
+          set({ activeIdealLabel: deriveActiveLabel(get().ideals, get().analyses) });
+        } catch {
+          /* 무시 */
+        }
+      },
+
+      refreshAnalyses: async () => {
+        try {
+          set({ analyses: await fetchMyAnalyses() });
+          analysesLoadedAt = Date.now();
+        } catch {
+          /* 무시 */
+        }
+      },
+
+      removeAnalysis: (id) =>
+        set((s) => ({ analyses: s.analyses.filter((a) => a.id !== id) })),
+
+      loadIdealPersona: async () => {
+        await get().loadIdeals();
+      },
       renameChat: (id, title) =>
         set((s) => ({ chats: s.chats.map((c) => (c.id === id ? { ...c, title } : c)) })),
 
@@ -87,6 +189,9 @@ export const useSidebarStore = create<SidebarStore>()(
       partialize: (s) => ({
         activeIdealLabel: s.activeIdealLabel,
         chats: s.chats,
+        // 목록도 캐시 → /me 재진입 시 즉시 표시 후 백그라운드 갱신(stale-while-revalidate)
+        analyses: s.analyses,
+        ideals: s.ideals,
       }),
     },
   ),

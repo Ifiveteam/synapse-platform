@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Activity,
   Bookmark,
+  Menu,
   MessageSquare,
   Moon,
   Pencil,
@@ -19,7 +20,6 @@ import { ROUTES } from "@/routes";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
 import { useShellStore } from "@/stores/shell";
-import { useScrapDetailPanelStore } from "@/stores/scrap-detail-panel";
 import { useSidebarStore } from "@/stores/sidebar";
 import { useThemeStore } from "@/stores/theme";
 import logoUrl from "@/assets/logo.png";
@@ -77,6 +77,47 @@ function BrandLogo({ expanded }: { expanded: boolean }) {
         expanded ? "h-8 w-8" : "h-9 w-9",
         theme === "dark" && "invert brightness-200",
       )}
+    />
+  );
+}
+
+export function UserAvatar({
+  picture,
+  name,
+  size,
+}: {
+  picture?: string | null;
+  name: string;
+  size: number;
+}) {
+  const { theme } = useThemeStore();
+  const [failed, setFailed] = useState(false);
+
+  // 사진이 없거나 로드 실패(구글 아바타 ORB 차단 등) 시 Synapse 로고로 폴백
+  if (!picture || failed) {
+    return (
+      <img
+        src={logoUrl}
+        alt={name}
+        width={size}
+        height={size}
+        className={cn(
+          "shrink-0 object-contain",
+          theme === "dark" && "invert brightness-200",
+        )}
+      />
+    );
+  }
+
+  return (
+    <img
+      src={picture}
+      alt={name}
+      width={size}
+      height={size}
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="shrink-0 rounded-full object-cover"
     />
   );
 }
@@ -153,7 +194,6 @@ export function Sidebar() {
   const setSidebarExpanded = useShellStore((s) => s.setSidebarExpanded);
   const openLoginModal = useShellStore((s) => s.openLoginModal);
   const activeIdealLabel = useSidebarStore((s) => s.activeIdealLabel);
-  const scraps = useSidebarStore((s) => s.scraps);
   const chats = useSidebarStore((s) => s.chats);
   const setSession = useChatStore((s) => s.setSession);
   const currentSessionId = useChatStore((s) => s.sessionId);
@@ -162,9 +202,6 @@ export function Sidebar() {
   const renameChat = useSidebarStore((s) => s.renameChat);
   const deleteChat = useSidebarStore((s) => s.deleteChat);
   const clearChats = useSidebarStore((s) => s.clearChats);
-  const openScrapPanel = useScrapDetailPanelStore((s) => s.openScrapPanel);
-  const scrapPanelOpen = useScrapDetailPanelStore((s) => s.open);
-  const selectedScrapId = useScrapDetailPanelStore((s) => s.selectedScrapId);
 
   useEffect(() => {
     if (!user) {
@@ -217,20 +254,16 @@ export function Sidebar() {
     }
   }, [setSession, navigate, cachedSessions]);
 
-  const latestScraps = scraps.slice(0, 3);
   const isScrapsSection =
     pathname === ROUTES.scraps || pathname.startsWith(`${ROUTES.scraps}/`);
-  const idealLabel = activeIdealLabel ?? "이상향 미설정";
 
   const handleBrandClick = () => {
     if (!expanded) {
       setSidebarExpanded(true);
       return;
     }
-    if (pathname === ROUTES.home) {
-      setSidebarExpanded(false);
-      return;
-    }
+    // 큐레이터 대화를 리셋하고 깨끗한 첫 홈으로 이동
+    clearMessages();
     navigate(ROUTES.home);
   };
 
@@ -248,17 +281,27 @@ export function Sidebar() {
         )}
       >
         {expanded ? (
-          <button
-            type="button"
-            onClick={handleBrandClick}
-            title="홈"
-            className="hover:bg-secondary flex w-full min-w-0 items-center gap-2 rounded-xl px-1 py-1 text-left transition-colors"
-          >
-            <BrandLogo expanded />
-            <span className="text-foreground truncate text-sm font-semibold">
-              Synapse
-            </span>
-          </button>
+          <div className="flex w-full min-w-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={handleBrandClick}
+              title="홈"
+              className="hover:bg-secondary flex min-w-0 flex-1 items-center gap-2 rounded-xl px-1 py-1 text-left transition-colors"
+            >
+              <BrandLogo expanded />
+              <span className="text-foreground truncate text-sm font-semibold">
+                Synapse
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSidebarExpanded(false)}
+              title="사이드바 접기"
+              className="text-muted-foreground hover:text-foreground hover:bg-secondary flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors"
+            >
+              <Menu size={16} />
+            </button>
+          </div>
         ) : (
           <button
             type="button"
@@ -289,35 +332,23 @@ export function Sidebar() {
                 pathname === ROUTES.ME.HOME && "bg-accent text-accent-foreground",
               )}
             >
-              {user.picture ? (
-                <img
-                  src={user.picture}
-                  alt={user.name}
-                  width={32}
-                  height={32}
-                  className="shrink-0 rounded-full"
-                />
-              ) : (
-                <div className="bg-accent text-accent-foreground flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold">
-                  {user.name[0]}
-                </div>
-              )}
+              <UserAvatar picture={user.picture} name={user.name} size={32} />
               {expanded && (
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="flex items-center gap-1.5 truncate">
-                    <span className="truncate text-left text-sm font-medium">
-                      {user.name}
+                <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                  {activeIdealLabel && (
+                    <Target
+                      size={12}
+                      className="text-muted-foreground shrink-0"
+                    />
+                  )}
+                  <span className="truncate text-left text-sm font-medium">
+                    {activeIdealLabel ?? user.name}
+                  </span>
+                  {user.plan === "pro" && (
+                    <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
+                      Pro
                     </span>
-                    {user.plan === "pro" && (
-                      <span className="shrink-0 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
-                        Pro
-                      </span>
-                    )}
-                  </span>
-                  <span className="text-muted-foreground flex items-center gap-1 truncate text-xs">
-                    <Target size={11} className="shrink-0" />
-                    <span className="truncate">{idealLabel}</span>
-                  </span>
+                  )}
                 </span>
               )}
             </Link>
@@ -353,6 +384,13 @@ export function Sidebar() {
             href={ROUTES.ME.ACTIVITY}
             active={pathname === ROUTES.ME.ACTIVITY}
           />
+          <SidebarRow
+            expanded={expanded}
+            icon={Bookmark}
+            label="스크랩"
+            href={ROUTES.scraps}
+            active={isScrapsSection}
+          />
         </div>
 
         {/* 스크랩 · 채팅 (펼침 시 스크롤) */}
@@ -364,51 +402,6 @@ export function Sidebar() {
         >
           {expanded ? (
             <>
-              <Link
-                to={ROUTES.scraps}
-                className={cn(
-                  "text-muted-foreground hover:text-foreground mb-1 block px-3 pt-3 pb-1 text-[10px] font-semibold tracking-widest uppercase transition-colors",
-                  isScrapsSection && "text-primary",
-                )}
-              >
-                스크랩
-              </Link>
-              <div className="flex flex-col gap-0.5 px-2 pb-2">
-                {latestScraps.length > 0 ? (
-                  latestScraps.map((scrap) => (
-                    <button
-                      key={scrap.id}
-                      type="button"
-                      title={scrap.title}
-                      onClick={() => openScrapPanel(scrap.id)}
-                      className={cn(
-                        "hover:bg-secondary flex w-full items-start gap-2 rounded-xl px-3 py-2 text-left transition-colors",
-                        scrapPanelOpen &&
-                          selectedScrapId === scrap.id &&
-                          "bg-accent text-accent-foreground",
-                      )}
-                    >
-                      <Bookmark
-                        size={14}
-                        className="text-muted-foreground mt-0.5 shrink-0"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs">
-                          {scrap.title}
-                        </span>
-                        <span className="text-muted-foreground text-[10px]">
-                          {scrap.savedAt}
-                        </span>
-                      </span>
-                    </button>
-                  ))
-                ) : (
-                  <p className="text-muted-foreground px-3 py-2 text-xs">
-                    스크랩·채팅한 페이지가 없습니다
-                  </p>
-                )}
-              </div>
-
               <SectionLabel>채팅 기록</SectionLabel>
               <div className="flex flex-col gap-0.5 px-2 pb-2">
                 {chats.length > 0 ? (
@@ -477,20 +470,11 @@ export function Sidebar() {
               </div>
             </>
           ) : (
-            <>
-              <SidebarRow
-                expanded={false}
-                icon={Bookmark}
-                label="스크랩"
-                href={ROUTES.scraps}
-                active={isScrapsSection}
-              />
-              <SidebarRow
-                expanded={false}
-                icon={MessageSquare}
-                label="채팅 기록"
-              />
-            </>
+            <SidebarRow
+              expanded={false}
+              icon={MessageSquare}
+              label="채팅 기록"
+            />
           )}
         </div>
       </div>

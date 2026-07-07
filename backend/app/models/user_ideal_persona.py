@@ -50,6 +50,14 @@ class UserIdealPersona(TimestampMixin, Base):
     # 이상향 설계 원본 13축(가치관10+기질3). 8축은 여기서 파생됨. (없으면 레거시)
     values_temperament: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
+    # 화면·재생목록이 쓰는 목표 신호. 목표 성향 6축({immersion:.. }),
+    # 목표 관심 도메인({"게임": 20, "지식·교육": 30, ...}). (없으면 레거시)
+    target_disposition: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    target_interest: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # 대화에서 뽑은 구체 관심 키워드(재생목록 검색 씨앗). 대화 안 했으면 없음(레거시/null).
+    taste_keywords: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # 유저당 여러 이상향 보관, 그중 하나만 "적용 중"

@@ -1,6 +1,5 @@
 import { apiFetchAuth } from "@/api/client";
 import { API_BASE_URL } from "@/lib/env";
-import { useAuthStore } from "@/stores/auth";
 
 export interface CuratorSession {
   session_id: string;
@@ -40,14 +39,11 @@ export async function* streamCurator(
   imageBase64?: string,
   imageMimeType?: string,
 ): AsyncGenerator<CuratorSSEEvent> {
-  const token = useAuthStore.getState().token;
-
   const response = await fetch(`${API_BASE_URL}/api/v1/curator/stream`, {
     method: "POST",
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({
       message,

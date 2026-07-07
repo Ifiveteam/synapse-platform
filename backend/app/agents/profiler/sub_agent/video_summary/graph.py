@@ -46,11 +46,14 @@ video_summary_graph = builder.compile()
 
 
 async def run_video_summary(
-    user_id: uuid.UUID, limit: int | None = None
+    user_id: uuid.UUID,
+    limit: int | None = None,
+    analysis_source_ids: list[str] | None = None,
 ) -> VideoSummaryState:
     initial: VideoSummaryState = {
         "user_id": user_id,
         "limit": limit,
+        "analysis_source_ids": analysis_source_ids,
         "catalogs": [],
         "analyzed": [],
         "saved_count": None,

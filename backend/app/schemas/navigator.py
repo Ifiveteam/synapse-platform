@@ -41,33 +41,78 @@ class AxisScores13(BaseModel):
     self_transcendence: float = Field(ge=0, le=100)
 
 
+class DispositionPair(BaseModel):
+    """성향 6축 한 개 — 현재(초상) vs 목표(이상향)."""
+
+    key: str
+    label_ko: str
+    current: float
+    target: float
+
+
+class DomainPair(BaseModel):
+    """관심 도메인 한 개 — 현재(초상) vs 목표(이상향)."""
+
+    domain: str
+    current: float
+    target: float
+
+
 class ProposalItem(BaseModel):
     ideal_type: IdealTypeStr
-    scores: AxisScores8
-    values_temperament: AxisScores13
+    scores: AxisScores8  # 폴드용(행동 8축)
+    values_temperament: AxisScores13  # 폴드용(가치관·기질 13축)
+    disposition: list[DispositionPair] = Field(default_factory=list)  # 성향 현재→목표
+    interest: list[DomainPair] = Field(default_factory=list)  # 도메인 현재→목표
     persona_label: str = ""
     reasoning: str = ""
 
 
 class ProposalsResponse(BaseModel):
-    proposals: list[ProposalItem]  # OPPOSITE / DEEPEN / BALANCE 3종
+    # 비동기 생성 상태: ready(완료·proposals 채움) | pending(생성 중) | failed(실패)
+    status: str = "ready"
+    proposals: list[ProposalItem] = Field(
+        default_factory=list
+    )  # OPPOSITE/DEEPEN/BALANCE
+
+
+class ActiveProposalResponse(BaseModel):
+    """이상향 관리 배너용 — 진행 중인 설계 상태.
+
+    none: 없음 · pending: 추천 생성 중 · ready: 추천 준비됨(아직 설계/확정 안 함)
+    """
+
+    state: str = "none"
+    source_profile_history_id: str | None = None
 
 
 class NavigatorChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, description="사용자 메시지")
+    message: str = Field(
+        default="", description="사용자 메시지 (force_finalize면 비워도 됨)"
+    )
     session_id: str | None = None
     working_values: AxisScores13 | None = Field(
         default=None, description="클라이언트가 들고 있는 이상향 13축 상태 (설계 원본)"
     )
+    # 인터뷰 중 조율된 목표(성향·도메인). 매 턴 클라가 에코해 러닝 상태를 이어감.
+    working_disposition: dict[str, float] | None = None
+    working_interest: dict[str, float] | None = None
     ideal_type: IdealTypeStr | None = None
+    # 확정 버튼 — 턴 캡 무시하고 즉시 마무리
+    force_finalize: bool = False
 
 
 class ConfirmIdealRequest(BaseModel):
     ideal_type: IdealTypeStr
     scores: AxisScores8
     values_temperament: AxisScores13 | None = None
+    # 확정할 이상향의 목표 성향·도메인 (선택한 제안/조율 결과). 없으면 저장 안 함.
+    target_disposition: dict[str, float] | None = None
+    target_interest: dict[str, float] | None = None
     persona_label: str = ""
     reasoning: str = ""
+    # 대화에서 뽑은 구체 관심 키워드(재생목록 검색 씨앗). 대화 안 했으면 빈 목록.
+    taste_keywords: list[str] = Field(default_factory=list)
     source_profile_history_id: str | None = None
 
 
@@ -76,9 +121,13 @@ class IdealResponse(BaseModel):
     ideal_type: IdealTypeStr
     scores: AxisScores8
     values_temperament: AxisScores13 | None = None
+    # 목표 신호(저장값). 현재값과의 대비는 comparison 엔드포인트에서.
+    target_disposition: dict[str, float] | None = None
+    target_interest: dict[str, float] | None = None
     persona_label: str = ""
     reasoning: str = ""
     is_active: bool = False
+    created_at: datetime
     updated_at: datetime
 
 
@@ -98,11 +147,15 @@ class ComparisonResponse(BaseModel):
     # 가치관·기질 13축 (현재=스냅샷, 이상향=저장값). 둘 중 하나라도 없으면 null.
     current_vt: AxisScores13 | None = None
     ideal_vt: AxisScores13 | None = None
+    # 주 표시 축: 성향 6축·관심 도메인 현재(스냅샷 초상)→목표(이상향)
+    disposition: list[DispositionPair] = Field(default_factory=list)
+    interest: list[DomainPair] = Field(default_factory=list)
 
 
 class GuideStepItem(BaseModel):
     axis: str
     label_ko: str
+    kind: Literal["deepen", "expand"] = "deepen"
     title: str
     detail: str
     priority: int
@@ -133,6 +186,12 @@ class PlaylistItemResponse(BaseModel):
     thumbnail_url: str = ""
     url: str
     reason: str = ""
+    published_at: str = ""  # 영상 발행일(ISO) — 없으면 빈 문자열
+
+
+PlaylistStatus = Literal["pending", "ready", "failed"]
+PlaylistSaveStatus = Literal["none", "saving", "saved", "failed"]
+PlaylistPeriod = Literal["none", "weekly", "monthly"]
 
 
 class PlaylistResponse(BaseModel):
@@ -141,6 +200,9 @@ class PlaylistResponse(BaseModel):
     title: str = ""
     summary: str = ""
     items: list[PlaylistItemResponse]
+    status: PlaylistStatus = "ready"
+    save_status: PlaylistSaveStatus = "none"
+    refresh_period: PlaylistPeriod = "none"
     youtube_playlist_id: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -152,12 +214,30 @@ class PlaylistSummary(BaseModel):
     id: str
     title: str = ""
     item_count: int = 0
+    status: PlaylistStatus = "ready"
+    save_status: PlaylistSaveStatus = "none"
+    refresh_period: PlaylistPeriod = "none"
     youtube_playlist_id: str | None = None
     created_at: datetime
 
 
+class SaveStartResponse(BaseModel):
+    """YouTube 저장 시작 응답. needs_reconsent면 프론트가 동의 유도 후 재시도."""
+
+    needs_reconsent: bool = False
+    save_status: PlaylistSaveStatus = "saving"
+
+
 class RenamePlaylistRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
+
+
+class CreatePlaylistRequest(BaseModel):
+    refresh_period: PlaylistPeriod = "none"
+
+
+class PlaylistPeriodRequest(BaseModel):
+    refresh_period: PlaylistPeriod
 
 
 class RefreshItemRequest(BaseModel):
