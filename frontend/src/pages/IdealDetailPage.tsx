@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Target } from "lucide-react";
+import { ArrowLeft, ListVideo, Target } from "lucide-react";
 
 import {
   InterestPie,
@@ -76,7 +76,7 @@ export function IdealDetailPage() {
           이상향을 찾을 수 없습니다.
         </p>
         <Button asChild variant="outline" size="sm">
-          <Link to={ROUTES.idealManagement}>이상향 관리로</Link>
+          <Link to={ROUTES.ME.HOME}>이상향 관리로</Link>
         </Button>
       </div>
     );
@@ -113,13 +113,21 @@ export function IdealDetailPage() {
 
   return (
     <div className="flex min-h-full flex-col px-4 py-5 sm:px-6 sm:py-6">
-      <Link
-        to={ROUTES.idealManagement}
-        className="text-muted-foreground hover:text-foreground mb-4 inline-flex w-fit items-center gap-1.5 text-sm transition-colors"
-      >
-        <ArrowLeft size={16} />
-        이상향 관리
-      </Link>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <Link
+          to={ROUTES.ME.HOME}
+          className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1.5 text-sm transition-colors"
+        >
+          <ArrowLeft size={16} />
+          이상향 관리
+        </Link>
+        <Button size="sm" className="gap-1.5" asChild>
+          <Link to={`${ROUTES.playlists}?ideal=${ideal.id}&new=1`}>
+            <ListVideo size={15} />
+            재생목록 생성
+          </Link>
+        </Button>
+      </div>
 
       {/* 헤더 */}
       <div className="border-border mb-6 flex items-start gap-4 rounded-2xl border bg-card px-5 py-5">

@@ -248,7 +248,7 @@ export function AnalysisComparePage() {
   return (
     <div className="mx-auto flex min-h-full max-w-3xl flex-col px-6 py-8 pb-12">
       <nav className="text-muted-foreground mb-4 flex flex-wrap items-center gap-1.5 text-xs">
-        <Link to={ROUTES.myAnalyses} className="hover:text-foreground transition-colors">
+        <Link to={ROUTES.ME.HOME} className="hover:text-foreground transition-colors">
           분석 목록
         </Link>
         <span>/</span>
@@ -446,7 +446,7 @@ export function AnalysisComparePage() {
 
       <div className="mt-8 flex flex-wrap gap-2">
         <Button variant="outline" size="sm" asChild>
-          <Link to={ROUTES.myAnalyses}>목록으로</Link>
+          <Link to={ROUTES.ME.HOME}>목록으로</Link>
         </Button>
         <Button variant="ghost" size="sm" asChild>
           <Link to={ROUTES.analysisDetail(fromSnap.snapshot_id)}>이전 분석 보기</Link>
