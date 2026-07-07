@@ -10,7 +10,5 @@
 | `schemas/profiler/job.py` | 프로파일러 job 상태 enum |
 | `schemas/auth.py` | 인증 API |
 | `schemas/archiver.py` | Archiver HTTP 요청·응답 |
-| `schemas/trend.py` | 트렌드 API |
-| `schemas/report.py` | 리포트 (aggregator·PDF 공유) |
 
 LangGraph `TypedDict` state는 `agents/.../state/`에 둡니다. SQLAlchemy는 `app/models/`.

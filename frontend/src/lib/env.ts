@@ -5,5 +5,3 @@ export const API_BASE_URL = (() => {
   const fromEnv = import.meta.env.VITE_API_BASE_URL?.trim();
   return fromEnv || DEFAULT_API_BASE_URL;
 })();
-
-export const TREND_API_BASE = `${API_BASE_URL}/api/v1/trend`;
