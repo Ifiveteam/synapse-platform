@@ -32,7 +32,9 @@ def run_tests() -> list[str]:
 
     web = redirect_oauth_failure("access_denied", None)
     web_loc = web.headers.get("location", "")
-    _assert("error=access_denied" in web_loc, "web flow: access_denied redirect", errors)
+    _assert(
+        "error=access_denied" in web_loc, "web flow: access_denied redirect", errors
+    )
 
     _assert(
         append_query_param("https://x.test/cb", "error", "access_denied")

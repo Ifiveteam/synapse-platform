@@ -1,5 +1,4 @@
 export type AgentId =
-  | "aggregator"
   | "archiver"
   | "indexer"
   | "navigator"
@@ -16,12 +15,6 @@ export interface Agent {
 }
 
 export const AGENTS: Agent[] = [
-  {
-    id: "aggregator",
-    name: "Aggregator",
-    description: "수많은 디지털 자아들을 모아 트렌드를 읽어내는 시장 분석가",
-    status: "dev",
-  },
   {
     id: "archiver",
     name: "Archiver",

@@ -4,7 +4,6 @@ import { ChatMessages } from "@/components/home/chat-messages";
 import { GraphViewPlaceholder } from "@/components/home/graph-view-placeholder";
 import { HomeHeader } from "@/components/home/home-header";
 import { CuratorInput } from "@/components/home/curator-input";
-import { TrendHoverOverlay } from "@/components/home/trend-hover-overlay";
 import { useChatStore } from "@/stores/chat";
 
 export function HomePage() {
@@ -31,7 +30,6 @@ export function HomePage() {
         ) : (
           <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-6 pt-6">
             <GraphViewPlaceholder />
-            <TrendHoverOverlay />
           </div>
         )}
       </div>
