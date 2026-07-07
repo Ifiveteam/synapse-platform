@@ -235,6 +235,22 @@ export function PlaylistPage() {
     return () => abortRef.current?.abort();
   }, [loadAll]);
 
+  // 이상향 상세의 '재생목록 생성'으로 진입(?new=1) → 목록 로드 후 팝업 자동 오픈
+  // (해당 이상향이 선택된 채로). 한 번만 처리하고 URL에서 new 파라미터 제거.
+  const newHandledRef = useRef(false);
+  useEffect(() => {
+    if (newHandledRef.current) return;
+    if (!searchParams.get("new") || loading) return;
+    newHandledRef.current = true;
+    const idealParam = searchParams.get("ideal");
+    setPickIdealId(idealParam && idealParam !== "all" ? idealParam : null);
+    setPickPeriod("none");
+    setShowPicker(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, loading, setSearchParams]);
+
   // 생성중(pending)인 재생목록을 폴링해 완료되면 자동으로 채운다
   useEffect(() => {
     if (!selected || selected.status !== "pending") return;
@@ -786,7 +802,7 @@ export function PlaylistPage() {
   return (
     <div className="flex min-h-full flex-col px-4 py-5 sm:px-6 sm:py-6">
       <Link
-        to={ROUTES.idealManagement}
+        to={ROUTES.ME.HOME}
         className="text-muted-foreground hover:text-foreground mb-4 inline-flex w-fit items-center gap-1.5 text-sm transition-colors"
       >
         <ArrowLeft size={16} />

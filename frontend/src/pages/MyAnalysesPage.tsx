@@ -19,7 +19,6 @@ import {
 } from "@/api/analyses";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ANALYSIS_PAGE_SIZE,
   isAnalysisPending,
@@ -29,15 +28,11 @@ import { cn } from "@/lib/utils";
 import { ROUTES } from "@/routes";
 import { useSidebarStore } from "@/stores/sidebar";
 
-type FilterTab = "all" | "completed" | "pending";
-
 function AnalysisListItem({
   item,
-  embedded = false,
   onDelete,
 }: {
   item: AnalysisResultItem;
-  embedded?: boolean;
   onDelete?: (item: AnalysisResultItem) => void;
 }) {
   const pending = isAnalysisPending(item.status);
@@ -77,25 +72,12 @@ function AnalysisListItem({
           <Trash2 size={16} />
         </button>
       )}
-
-      {!pending && (
-        <ChevronRight size={18} className="text-muted-foreground shrink-0" />
-      )}
     </>
   );
 
   if (pending) {
     return (
       <div className="border-border flex items-center gap-4 rounded-2xl border bg-card px-4 py-4 opacity-90">
-        {content}
-      </div>
-    );
-  }
-
-  // 허브(embedded)에선 개별 링크 대신 박스 전체 클릭(→ 전체 목록)에 맡긴다.
-  if (embedded) {
-    return (
-      <div className="border-border flex items-center gap-4 rounded-2xl border bg-card px-4 py-4">
         {content}
       </div>
     );
@@ -262,16 +244,12 @@ function CompareModal({
   );
 }
 
-export function MyAnalysesPage({
-  embedded = false,
-  latestOnly = false,
-}: { embedded?: boolean; latestOnly?: boolean } = {}) {
+export function MyAnalysesPage() {
   const navigate = useNavigate();
   const items = useSidebarStore((s) => s.analyses);
   const loadAnalyses = useSidebarStore((s) => s.loadAnalyses);
   const removeAnalysis = useSidebarStore((s) => s.removeAnalysis);
   const refreshAnalyses = useSidebarStore((s) => s.refreshAnalyses);
-  const [filter, setFilter] = useState<FilterTab>("all");
   const [page, setPage] = useState(1);
   // 캐시된 목록이 있으면 스피너 없이 바로 표시(백그라운드 갱신)
   const [loading, setLoading] = useState(items.length === 0);
@@ -352,30 +330,18 @@ export function MyAnalysesPage({
     () => items.filter((i) => i.kind === "snapshot"),
     [items],
   );
-  const showJobGroup =
-    !latestOnly && jobItems.length > 0 && filter !== "completed";
+  const showJobGroup = jobItems.length > 0;
 
-  const filteredSnapshots = useMemo(
-    () => (filter === "pending" ? [] : snapshotItems),
-    [filter, snapshotItems],
-  );
+  // 완료 스냅샷은 최신순 전체를 페이지네이션으로 노출
   const totalPages = Math.max(
     1,
-    Math.ceil(filteredSnapshots.length / ANALYSIS_PAGE_SIZE),
+    Math.ceil(snapshotItems.length / ANALYSIS_PAGE_SIZE),
   );
   const currentPage = Math.min(page, totalPages);
-  const pageSnapshots = filteredSnapshots.slice(
+  const visibleSnapshots = snapshotItems.slice(
     (currentPage - 1) * ANALYSIS_PAGE_SIZE,
     currentPage * ANALYSIS_PAGE_SIZE,
   );
-  const visibleSnapshots = latestOnly
-    ? filteredSnapshots.slice(0, 3) // 허브에서는 최신 3개까지
-    : pageSnapshots;
-
-  const handleFilterChange = (value: string) => {
-    setFilter(value as FilterTab);
-    setPage(1);
-  };
 
   const openCompare = () => {
     if (!canCompare) return;
@@ -415,75 +381,39 @@ export function MyAnalysesPage({
   };
 
   return (
-    <div
-      className={cn(
-        "flex flex-col",
-        embedded ? "" : "min-h-full px-4 py-5 sm:px-6 sm:py-6",
-      )}
-    >
+    <div className="flex flex-col">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-3">
-            {embedded ? (
-              <h2 className="text-lg font-semibold tracking-tight">
-                개인성향 분석 목록
-              </h2>
-            ) : (
-              <h1 className="text-2xl font-semibold tracking-tight">
-                개인성향 분석 목록
-              </h1>
-            )}
-            {!embedded && (
-              <span className="text-muted-foreground text-sm">최신순 정렬</span>
-            )}
+            <h2 className="text-lg font-semibold tracking-tight">
+              개인성향 분석 목록
+            </h2>
           </div>
-
-          {!latestOnly && (
-            <Tabs
-              value={filter}
-              onValueChange={handleFilterChange}
-              className="mt-4 gap-0"
-            >
-              <TabsList className="h-9 bg-transparent p-0">
-                <TabsTrigger value="all" className="px-4 shadow-none">
-                  전체
-                </TabsTrigger>
-                <TabsTrigger value="completed" className="px-4 shadow-none">
-                  완료
-                </TabsTrigger>
-                <TabsTrigger value="pending" className="px-4 shadow-none">
-                  미완료
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          )}
         </div>
 
-        <div className="flex shrink-0 flex-col items-stretch gap-2">
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            disabled={!canCompare}
+            onClick={openCompare}
+            title={
+              canCompare
+                ? undefined
+                : "완료된 분석이 2개 이상이면 비교할 수 있습니다."
+            }
+          >
+            <ArrowLeftRight size={16} />
+            비교분석
+          </Button>
           <Button size="sm" className="gap-1.5" asChild>
             <Link to={ROUTES.upload} onClick={(e) => e.stopPropagation()}>
               <Plus size={16} />
               새로 추가
             </Link>
           </Button>
-          {!latestOnly && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="gap-1.5"
-              disabled={!canCompare}
-              onClick={openCompare}
-              title={
-                canCompare
-                  ? undefined
-                  : "완료된 분석이 2개 이상이면 비교할 수 있습니다."
-              }
-            >
-              <ArrowLeftRight size={16} />
-              비교분석
-            </Button>
-          )}
         </div>
       </div>
 
@@ -514,8 +444,7 @@ export function MyAnalysesPage({
             <AnalysisListItem
               key={item.id}
               item={item}
-              embedded={embedded}
-              onDelete={embedded ? undefined : setDeleteTarget}
+              onDelete={setDeleteTarget}
             />
           ))}
           {!showJobGroup && visibleSnapshots.length === 0 && (
@@ -528,7 +457,7 @@ export function MyAnalysesPage({
         </div>
       )}
 
-      {!loading && !error && !latestOnly && totalPages > 1 && (
+      {!loading && !error && totalPages > 1 && (
         <div className="mt-8 flex items-center justify-center gap-2">
           <Button
             type="button"
@@ -582,6 +511,7 @@ export function MyAnalysesPage({
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           role="dialog"
           aria-modal="true"
+          onClick={(e) => e.stopPropagation()}
         >
           <div
             className="absolute inset-0 bg-black/40"

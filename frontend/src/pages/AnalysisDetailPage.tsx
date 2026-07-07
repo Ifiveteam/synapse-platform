@@ -1,5 +1,12 @@
-import { ArrowUp, ArrowLeftRight, Bookmark, Loader2, Share2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  ArrowUp,
+  ArrowLeftRight,
+  Loader2,
+  Share2,
+  Target,
+  X,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   fetchMyAnalyses,
@@ -16,9 +23,12 @@ import { AxisRadar } from "@/components/analyses/axis-radar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatAnalysisDate } from "@/lib/analyses/types";
+import { cn } from "@/lib/utils";
 import { ROUTES } from "@/routes";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { Link, useParams } from "react-router-dom";
+
+type ChatMessage = { id: number; role: "user" | "assistant"; text: string };
 
 /** 성향 스파이더 6축 설명 — 라벨 hover 시 노출. */
 const DISPOSITION_DESC: Record<string, string> = {
@@ -73,6 +83,53 @@ export function AnalysisDetailPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [portrait, setPortrait] = useState<Portrait | null>(null);
+
+  // 분석 채팅 (프론트 스텁 — 백엔드 미연결)
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  // 채팅 패널 높이(px) — 상단 핸들을 드래그해 위아래로 조절
+  const [chatHeight, setChatHeight] = useState(300);
+  const dragRef = useRef<{ startY: number; startH: number } | null>(null);
+  const msgIdRef = useRef(0);
+
+  const sendChat = () => {
+    const text = chatInput.trim();
+    if (!text) return;
+    const userMsg: ChatMessage = {
+      id: ++msgIdRef.current,
+      role: "user",
+      text,
+    };
+    const botMsg: ChatMessage = {
+      id: ++msgIdRef.current,
+      role: "assistant",
+      text: "아직 백엔드가 연결되지 않았어요. 곧 이 분석 내용을 바탕으로 답변해 드릴게요.",
+    };
+    setMessages((prev) => [...prev, userMsg, botMsg]);
+    setChatInput("");
+  };
+
+  // 상단 핸들 드래그 → 채팅 패널 높이 조절 (위로 끌면 커지고 아래로 끌면 작아짐)
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { startY: e.clientY, startH: chatHeight };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const delta = dragRef.current.startY - ev.clientY;
+      const next = Math.min(
+        Math.max(dragRef.current.startH + delta, 140),
+        window.innerHeight * 0.7,
+      );
+      setChatHeight(next);
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
 
   useEffect(() => {
     if (!id) {
@@ -167,7 +224,7 @@ export function AnalysisDetailPage() {
           </Link>
           <span>/</span>
           <Link
-            to={ROUTES.myAnalyses}
+            to={ROUTES.ME.HOME}
             className="hover:text-foreground transition-colors"
           >
             분석결과
@@ -196,10 +253,14 @@ export function AnalysisDetailPage() {
               <Share2 size={14} />
               공유
             </Button>
-            <Button variant="outline" size="sm" className="gap-1.5">
-              <Bookmark size={14} />
-              스크랩하기
-            </Button>
+            {id && (
+              <Button size="sm" className="gap-1.5" asChild>
+                <Link to={`${ROUTES.idealSetup}?select=${id}`}>
+                  <Target size={14} />
+                  이상향 분석
+                </Link>
+              </Button>
+            )}
           </div>
         </div>
 
@@ -408,14 +469,83 @@ export function AnalysisDetailPage() {
         </div>
       </div>
 
+      {messages.length > 0 && (
+        <div
+          className="border-border bg-background flex shrink-0 flex-col border-t"
+          style={{ height: chatHeight }}
+        >
+          {/* 상단 드래그 핸들 — 위아래로 끌어 높이 조절 */}
+          <div
+            onMouseDown={startResize}
+            role="separator"
+            aria-orientation="horizontal"
+            title="드래그해서 채팅 크기 조절"
+            className="group flex h-3 shrink-0 cursor-ns-resize items-center justify-center"
+          >
+            <div className="bg-border group-hover:bg-muted-foreground/60 h-1 w-10 rounded-full transition-colors" />
+          </div>
+
+          <div className="flex shrink-0 items-center justify-between px-6 pb-1">
+            <span className="text-muted-foreground text-xs font-semibold">
+              이 분석에 대한 대화
+            </span>
+            <button
+              type="button"
+              onClick={() => setMessages([])}
+              aria-label="대화 닫기"
+              className="text-muted-foreground hover:text-foreground rounded-full p-1 transition-colors"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-3">
+            {messages.map((m) => (
+              <div
+                key={m.id}
+                className={cn(
+                  "flex",
+                  m.role === "user" ? "justify-end" : "justify-start",
+                )}
+              >
+                <div
+                  className={cn(
+                    "max-w-[80%] rounded-2xl px-4 py-2 text-sm leading-relaxed whitespace-pre-wrap",
+                    m.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-foreground",
+                  )}
+                >
+                  {m.text}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="border-border bg-background shrink-0 border-t px-6 py-4">
         <div className="border-border flex items-center gap-3 rounded-2xl border bg-card px-4 py-3 shadow-sm">
           <input
             type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                sendChat();
+              }
+            }}
             placeholder="이 분석에 대해 물어보세요..."
             className="placeholder:text-muted-foreground flex-1 bg-transparent text-sm outline-none"
           />
-          <Button type="button" size="icon" className="size-8 rounded-full">
+          <Button
+            type="button"
+            size="icon"
+            className="size-8 rounded-full"
+            onClick={sendChat}
+            disabled={!chatInput.trim()}
+          >
             <ArrowUp size={16} />
           </Button>
         </div>
