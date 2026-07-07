@@ -218,8 +218,9 @@ class CuratorService:
         session_id: str,
         image_base64: str | None = None,
         image_mime_type: str | None = None,
+        persist: bool = True,
     ) -> AsyncGenerator[str, None]:
-        history = await self._load_history(session_id, user_id)
+        history = await self._load_history(session_id, user_id) if persist else []
 
         if image_base64 and image_mime_type:
             content: list[dict] = [
@@ -258,7 +259,7 @@ class CuratorService:
             return
 
         assistant_response = "".join(response_tokens)
-        if assistant_response:
+        if persist and assistant_response:
             saved_message = message if message else "[이미지]"
             if image_base64 and message:
                 saved_message = f"[이미지] {message}"

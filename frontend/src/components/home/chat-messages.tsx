@@ -3,7 +3,7 @@ import Markdown from "react-markdown";
 import { useNavigate } from "react-router-dom";
 
 import { ChartBlock } from "@/components/home/chart-block";
-import { type ChatMessage, useChatStore } from "@/stores/chat";
+import { type ChatMessage, type ChatStoreHook, useChatStore } from "@/stores/chat";
 import { CHAT_THEMES, useChatThemeStore } from "@/stores/chat-theme";
 
 function formatTime(ts?: number) {
@@ -110,7 +110,19 @@ function MessageRow({ msg }: { msg: ChatMessage }) {
       ) : (
         <div className="flex max-w-[85%] flex-col gap-1">
           {msg.status && (
-            <p className="text-muted-foreground px-1 text-xs italic">{msg.status}</p>
+            <div className="flex items-center gap-2 px-1">
+              <span
+                className="border-muted-foreground/25 border-t-primary inline-block size-3 shrink-0 rounded-full border-2"
+                style={{ animation: "status-ring-spin 0.8s linear infinite" }}
+              />
+              <p
+                key={msg.status}
+                className="text-muted-foreground text-xs"
+                style={{ animation: "status-fade-in 0.25s ease-out" }}
+              >
+                {msg.status}
+              </p>
+            </div>
           )}
           {(msg.content || !msg.status || msg.chartData?.length) && (
             <div className="rounded-3xl rounded-bl-md bg-card px-4 py-2.5 text-sm leading-relaxed shadow-sm ring-1 ring-black/5 dark:ring-white/5">
@@ -135,8 +147,15 @@ function MessageRow({ msg }: { msg: ChatMessage }) {
   );
 }
 
-export function ChatMessages() {
-  const messages = useChatStore((s) => s.messages);
+export function ChatMessages({
+  useStore = useChatStore,
+  maxWidthClassName = "max-w-2xl",
+}: {
+  useStore?: ChatStoreHook;
+  /** 메시지 컬럼 최대 폭 (Tailwind max-w-* 클래스). 페이지마다 다르게 좁힐 때 사용. */
+  maxWidthClassName?: string;
+}) {
+  const messages = useStore((s) => s.messages);
   const bottomRef = useRef<HTMLDivElement>(null);
   const { hasSeenTip, markTipSeen } = useChatThemeStore();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -167,7 +186,7 @@ export function ChatMessages() {
       className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-4"
       onContextMenu={handleContextMenu}
     >
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+      <div className={`mx-auto flex w-full flex-col gap-4 ${maxWidthClassName}`}>
         {messages.map((msg) => (
           <MessageRow key={msg.id} msg={msg} />
         ))}

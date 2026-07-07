@@ -26,7 +26,7 @@ export function HomePage() {
             >
               <X size={15} />
             </button>
-            <ChatMessages />
+            <ChatMessages maxWidthClassName="max-w-xl" />
           </div>
         ) : (
           <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-6 pt-6">
@@ -36,7 +36,7 @@ export function HomePage() {
         )}
       </div>
 
-      <CuratorInput />
+      <CuratorInput maxWidthClassName="max-w-xl" />
     </div>
   );
 }

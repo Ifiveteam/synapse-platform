@@ -106,3 +106,12 @@
   70%  { box-shadow: 0 0 0 7px rgba(148,163,184,0); }
   100% { box-shadow: 0 0 0 0px rgba(148,163,184,0); }
 }
+
+@keyframes status-ring-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes status-fade-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

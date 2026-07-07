@@ -18,6 +18,10 @@ class CuratorChatRequest(BaseModel):
     image_mime_type: str | None = Field(
         default=None, description="이미지 MIME 타입 (image/jpeg 등)"
     )
+    persist: bool = Field(
+        default=True,
+        description="대화를 DB에 저장할지 여부. false면 히스토리·세션 목록에 남지 않는다 (예: /me 허브 채팅)",
+    )
 
 
 class CuratorSessionItem(BaseModel):

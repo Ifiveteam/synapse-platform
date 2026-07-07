@@ -63,6 +63,19 @@ _SYSTEM_PROMPT_BASE = """
 - 재생목록 요청("재생목록 만들어줘", "플레이리스트 만들어줘", "영상 목록 만들어줘") → create_playlist 즉시 호출.
 - URL 저장 요청("저장해줘", "북마크해줘", "스크랩해줘" + URL) → save_scrap 즉시 호출.
 - 유저 데이터 질문("내 성향", "많이 본 영상", "구독 채널" 등) → query_db 등 조회 툴 호출.
+- "구독 채널 중 많이 본 거", "구독한 채널 순위" 처럼 구독 채널과 시청 기록을 **같이** 묻는 질문
+  → 반드시 get_top_subscribed_channels 호출. query_db로 직접 JOIN 시도하지 마세요(컬럼명 오조인 위험).
+- "OO 채널 뭐야?", "OO는 어떤 채널이야?" 처럼 **유저가 보거나 구독한 채널**에 대해 묻는 질문은
+  일반 지식 질문이 아닙니다. query_db로 그 채널의 시청 영상 제목·카테고리를 조회해서, 실제
+  시청 데이터에 근거해 어떤 성격의 채널로 보이는지 설명하세요. (채널의 공식 소개·구독자 수처럼
+  DB에 없는 정보는 모른다고 솔직히 답하세요. 완전히 낯선 채널명이라 데이터가 없으면 그때만
+  "정보가 없다"고 답하세요.)
+- "이 영상 뭐야?", "무슨 내용이야?", "OO 영상 줄거리/내용 알려줘"처럼 **영상 하나의 실제 내용**을
+  묻는 질문 → search_analysis를 그 영상 제목으로 호출하세요. query_db로는 답할 수 없습니다
+  (영상 내용 요약은 video_analysis 테이블에 있는데, query_db는 이 테이블에 접근할 수 없습니다.
+  user_watch_catalog에는 제목·채널·카테고리ID만 있고 내용 요약이 없습니다).
+  search_analysis도 결과가 없으면, 그 영상은 아직 분석되지 않았다고 솔직히 답하세요(전체 시청
+  영상 중 일부만 분석 대상으로 선별됩니다).
 - Synapse와 무관한 일반 지식 질문(오늘 점심, 날씨, 시사, 상식 등)에는 툴을 호출하지 말고, 아래 "답변 원칙"의 거절 규칙을 따르세요.
 - "지원하지 않습니다", "제공되지 않습니다", "직접 만들어 드릴 수 없습니다"라고 말하지 마세요.
 - 툴이 있는데 거절하지 마세요. 이미 조회된 데이터가 있으면 "업로드하세요"로 회피하지 말고 그 데이터로 답하세요.
@@ -79,6 +92,9 @@ _SYSTEM_PROMPT_BASE = """
 - 핵심만 간결하게 전달하고, 불필요한 서론·결론은 생략하세요.
 - 유저를 판단하거나 평가하지 마세요.
 - <유저_데이터>가 있으면 그 데이터만 근거로 답하세요. 데이터에 없는 내용은 절대 지어내지 마세요.
+- 유저가 "5개", "TOP 5" 처럼 개수를 요청했는데 조회 결과가 그보다 적으면, 있는 만큼만 답하세요.
+  나머지를 "채널명 2", "채널 A" 같은 placeholder나 그럴듯한 가짜 값으로 채워서 개수를 맞추지 마세요.
+  조회 자체가 실패했다면 (재시도해도 실패) 지어내지 말고 실패했다고 사실대로 답하세요.
 - Synapse(유저의 유튜브 시청 데이터, 성향·이상향, 재생목록, 스크랩, 플랫폼 기능·페이지 안내)와 무관한 일반 지식 질문(오늘 점심, 날씨, 시사, 상식, 추천 등)에는 답변하지 말고, Synapse 관련 질문만 답변할 수 있다는 취지로 정중히 안내하세요. 문구는 매번 자연스럽게 표현하되 의미는 유지하세요.
 - 단, 인사나 짧은 스몰토크("안녕", "고마워" 등)는 위 거절 대상이 아니며 기존처럼 자연스럽고 짧게 응대하세요.
 """.strip()
@@ -248,11 +264,17 @@ def build_graph(db: AsyncSession, user_id: uuid.UUID):
         from langgraph.config import get_stream_writer
 
         writer = get_stream_writer()
-        writer({"event": "status", "content": "🤔 분석 중..."})
+        writer({"event": "status", "content": "분석 중..."})
 
         system_prompt = _build_system_prompt(state)
         turn_messages = _build_turn_messages(state.get("messages", []))
         messages = [SystemMessage(content=system_prompt), *turn_messages]
+
+        # 이번 턴에 이미 ToolMessage가 있다면(=툴 재시도/후속 호출) 지금 나오는 텍스트는
+        # "컬럼명이 없어 재시도합니다" 같은 내부 자기설명일 수 있다. 이런 턴은 텍스트를
+        # 바로 스트리밍하지 않고 버퍼링했다가, 이번 턴이 결국 툴을 또 부르지 않을 때만
+        # (=진짜 최종 답변일 때만) 한꺼번에 흘려보낸다. 첫 호출은 기존대로 실시간 스트리밍.
+        is_continuation = any(isinstance(m, ToolMessage) for m in turn_messages)
 
         forced = _detect_forced_tool(state)
         if forced and forced in tools_by_name:
@@ -261,13 +283,17 @@ def build_graph(db: AsyncSession, user_id: uuid.UUID):
             invoke_llm = llm_with_tools
 
         full = None
+        buffered_text: list[str] = []
         try:
             async for chunk in invoke_llm.astream(messages):
                 full = chunk if full is None else full + chunk
                 if not getattr(chunk, "tool_call_chunks", None):
                     text = _message_text(chunk.content)
                     if text:
-                        writer({"event": "token", "content": text})
+                        if is_continuation:
+                            buffered_text.append(text)
+                        else:
+                            writer({"event": "token", "content": text})
         except Exception:
             logger.exception("Curator agent_node streaming failed")
             writer({"event": "token", "content": STREAM_ERROR_MESSAGE})
@@ -275,6 +301,9 @@ def build_graph(db: AsyncSession, user_id: uuid.UUID):
 
         tool_calls = getattr(full, "tool_calls", None) or []
         text = _message_text(full.content if full is not None else "").strip()
+
+        if is_continuation and not tool_calls and buffered_text:
+            writer({"event": "token", "content": "".join(buffered_text)})
 
         if not tool_calls and not text:
             fallback = "죄송해요, 답변을 생성하지 못했습니다. 다시 질문해 주세요."

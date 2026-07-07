@@ -6,12 +6,12 @@ import { CuratorInput } from "@/components/home/curator-input";
 import { IdealManagementPage } from "@/pages/IdealManagementPage";
 import { MyAnalysesPage } from "@/pages/MyAnalysesPage";
 import { ROUTES } from "@/routes";
-import { useChatStore } from "@/stores/chat";
+import { useHubChatStore } from "@/stores/chat";
 
-/** 우측 채팅 패널 — 홈과 같은 큐레이터 세션을 공유한다. */
+/** 우측 채팅 패널 — 홈과 분리된 /me 전용 큐레이터 세션. */
 function HubChatPanel() {
-  const hasMessages = useChatStore((s) => s.messages.length > 0);
-  const clearMessages = useChatStore((s) => s.clearMessages);
+  const hasMessages = useHubChatStore((s) => s.messages.length > 0);
+  const clearMessages = useHubChatStore((s) => s.clearMessages);
 
   return (
     <div className="border-border bg-card flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border">
@@ -30,14 +30,14 @@ function HubChatPanel() {
       </div>
 
       {hasMessages ? (
-        <ChatMessages />
+        <ChatMessages useStore={useHubChatStore} />
       ) : (
         <div className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center px-6 text-center text-sm">
           큐레이터에게 무엇이든 물어보세요.
         </div>
       )}
 
-      <CuratorInput />
+      <CuratorInput useStore={useHubChatStore} persist={false} />
     </div>
   );
 }
