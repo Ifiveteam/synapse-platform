@@ -1,42 +1,25 @@
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowLeftRight, Loader2, Minus, Plus, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { fetchAnalysisCompare } from "@/api/analyses";
+import {
+  fetchAnalysisCompare,
+  fetchMyAnalysisSnapshot,
+  mapTopCategories,
+  type Portrait,
+} from "@/api/analyses";
 import { ApiError } from "@/api/client";
-import type { AnalysisCompareResponse } from "@/api/types/profiler";
+import type {
+  AnalysisCompareResponse,
+  DbProfileResponse,
+} from "@/api/types/profiler";
+import { InterestPie, buildInterestLegend } from "@/components/analyses/interest-pie";
+import { RadarCompareChart } from "@/components/ideals/RadarCompareChart";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  formatHabitDelta,
-  formatHabitPercent,
-  HABIT_METRICS,
-  type HabitMetricKey,
-} from "@/lib/analyses/habit-metrics";
-import {
-  ALL_SCORE_AXES,
-  SCORE_GROUP_LABELS,
-  scoreAxisLabel,
-} from "@/lib/analyses/score-labels";
 import { formatAnalysisDate } from "@/lib/analyses/types";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/routes";
 import { NotFoundPage } from "@/pages/NotFoundPage";
-
-function formatScoreDelta(delta: number): string {
-  const rounded = Math.round(delta * 10) / 10;
-  if (rounded === 0) return "0";
-  return `${rounded > 0 ? "+" : ""}${rounded}`;
-}
-
-function deltaTone(
-  delta: number,
-  higherIsBetter: boolean,
-): "positive" | "negative" | "neutral" {
-  if (Math.abs(delta) < 0.005) return "neutral";
-  const improved = higherIsBetter ? delta > 0 : delta < 0;
-  return improved ? "positive" : "negative";
-}
 
 const DELTA_CLASS = {
   positive: "text-emerald-600 dark:text-emerald-400",
@@ -44,117 +27,182 @@ const DELTA_CLASS = {
   neutral: "text-muted-foreground",
 } as const;
 
-function HabitRow({
-  label,
-  hint,
-  from,
-  to,
-  delta,
-  higherIsBetter,
+/** 비교 한 축(이전/이후)의 표시 데이터 묶음 */
+interface CompareSide {
+  key: "from" | "to";
+  badge: string;
+  title: string;
+  date: string;
+  videos: number;
+  color: string;
+  portrait: Portrait | null;
+  profile: DbProfileResponse | null;
+}
+
+function portraitOf(profile: DbProfileResponse | null): Portrait | null {
+  if (!profile?.portrait) return null;
+  return profile.portrait as unknown as Portrait;
+}
+
+function ChannelList({
+  title,
+  items,
 }: {
+  title: string;
+  items: { channel: string; count: number }[];
+}) {
+  return (
+    <div>
+      <p className="text-muted-foreground mb-2 text-xs font-semibold">{title}</p>
+      {items.length > 0 ? (
+        <ol className="space-y-2">
+          {items.slice(0, 5).map((item, i) => (
+            <li key={`${item.channel}-${i}`} className="flex items-start gap-2 text-sm">
+              <span className="bg-accent text-accent-foreground flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[10px] font-semibold">
+                {i + 1}
+              </span>
+              <span className="min-w-0 flex-1 leading-snug break-words">
+                {item.channel}
+                <span className="text-muted-foreground ml-1 text-xs">
+                  ({item.count})
+                </span>
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="text-muted-foreground text-xs">데이터가 없습니다.</p>
+      )}
+    </div>
+  );
+}
+
+/** 비교 축 헤더 — 색 점 + 배지 + 페르소나명 + 날짜 */
+function SideHeader({ side }: { side: CompareSide }) {
+  return (
+    <div className="mb-3 flex items-center gap-2">
+      <span
+        className="h-2.5 w-2.5 shrink-0 rounded-full"
+        style={{ background: side.color }}
+      />
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold">{side.title}</p>
+      </div>
+      <span className="text-muted-foreground ml-auto shrink-0 text-xs">
+        {side.date}
+        {side.videos > 0 && ` · ${side.videos}개`}
+      </span>
+    </div>
+  );
+}
+
+/** 쇼츠 비율처럼 한 개 숫자(%)로 보는 시청 스타일 지표 */
+interface StyleMetric {
   label: string;
-  hint: string;
+  from: number;
+  to: number;
+}
+
+/** portrait.style에 있는 순서대로 — 없으면 스킵 */
+const STYLE_LABELS = ["숏폼 비율", "채널 집중도", "관심 다양성", "반복 시청"];
+
+function styleValue(portrait: Portrait | null, label: string): number | null {
+  const s = portrait?.style?.find((x) => x.label === label);
+  return s ? s.value : null;
+}
+
+/** 두 스냅샷의 시청 스타일 지표를 이전/이후로 묶는다. */
+function buildStyleMetrics(
+  from: Portrait | null,
+  to: Portrait | null,
+  data: AnalysisCompareResponse,
+): StyleMetric[] {
+  const out: StyleMetric[] = [];
+  for (const label of STYLE_LABELS) {
+    const f = styleValue(from, label);
+    const t = styleValue(to, label);
+    if (f != null && t != null) out.push({ label, from: f, to: t });
+  }
+  // 탐색 깊이 — habits(0~1)을 %로 환산해 함께 표시
+  out.push({
+    label: "탐색 깊이",
+    from: data.habits_from.exploration_depth * 100,
+    to: data.habits_to.exploration_depth * 100,
+  });
+  return out;
+}
+
+/** 성향·관심 축 중 변화가 가장 큰 항목 */
+interface Mover {
+  kind: "성향" | "관심";
+  label: string;
   from: number;
   to: number;
   delta: number;
-  higherIsBetter: boolean;
-}) {
-  const tone = deltaTone(delta, higherIsBetter);
-
-  return (
-    <div className="border-border border-b py-3 last:border-b-0">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-medium">{label}</p>
-          <p className="text-muted-foreground text-xs">{hint}</p>
-        </div>
-        <span className={cn("shrink-0 text-sm font-semibold tabular-nums", DELTA_CLASS[tone])}>
-          {formatHabitDelta(delta)}
-        </span>
-      </div>
-      <div className="text-muted-foreground mt-2 flex items-center gap-2 text-xs tabular-nums">
-        <span>{formatHabitPercent(from)}</span>
-        <ArrowLeftRight className="size-3 shrink-0" />
-        <span className="text-foreground font-medium">{formatHabitPercent(to)}</span>
-      </div>
-    </div>
-  );
+  valueSuffix: string;
+  deltaSuffix: string;
 }
 
-function ScoreDeltaRow({ label, from, to, delta }: { label: string; from: number; to: number; delta: number }) {
-  const tone = deltaTone(delta, true);
-
-  return (
-    <div className="flex items-center gap-3 py-2">
-      <span className="min-w-0 flex-1 truncate text-sm">{label}</span>
-      <span className="text-muted-foreground w-10 shrink-0 text-right text-xs tabular-nums">
-        {Math.round(from)}
-      </span>
-      <span className={cn("w-12 shrink-0 text-right text-sm font-semibold tabular-nums", DELTA_CLASS[tone])}>
-        {formatScoreDelta(delta)}
-      </span>
-      <span className="text-foreground w-10 shrink-0 text-right text-xs font-medium tabular-nums">
-        {Math.round(to)}
-      </span>
-    </div>
-  );
+/** 성향 6축 + 관심 도메인 델타를 합쳐 변화 큰 순 상위 3개. */
+function buildTopMovers(from: Portrait | null, to: Portrait | null): Mover[] {
+  if (!from || !to) return [];
+  const mk = (
+    src: { axis: string; value: number }[],
+    other: { axis: string; value: number }[],
+    kind: Mover["kind"],
+    valueSuffix: string,
+    deltaSuffix: string,
+  ): Mover[] =>
+    src.map((d) => {
+      const t = other.find((x) => x.axis === d.axis)?.value ?? 0;
+      return {
+        kind,
+        label: d.axis,
+        from: d.value,
+        to: t,
+        delta: t - d.value,
+        valueSuffix,
+        deltaSuffix,
+      };
+    });
+  const all = [
+    ...mk(from.disposition, to.disposition, "성향", "", "점"),
+    ...mk(from.interest, to.interest, "관심", "%", "%p"),
+  ];
+  return all
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, 3);
 }
 
-function ChangeList({
-  title,
-  added,
-  removed,
-  emptyMessage,
-}: {
-  title: string;
-  added: string[];
-  removed: string[];
-  emptyMessage: string;
-}) {
-  if (added.length === 0 && removed.length === 0) {
-    return (
-      <div className="border-border rounded-2xl border bg-card p-4">
-        <p className="mb-2 text-sm font-semibold">{title}</p>
-        <p className="text-muted-foreground text-xs">{emptyMessage}</p>
-      </div>
-    );
-  }
-
+/** 시청 스타일 칩 묶음 — 각 지표를 '이전 → 이후 (+델타%p)'로. */
+function MetricsStrip({ metrics }: { metrics: StyleMetric[] }) {
+  if (metrics.length === 0) return null;
   return (
-    <div className="border-border rounded-2xl border bg-card p-4">
-      <p className="mb-3 text-sm font-semibold">{title}</p>
-      <div className="space-y-3">
-        {added.length > 0 && (
-          <div>
-            <p className="text-muted-foreground mb-1.5 flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide">
-              <Plus className="size-3" />
-              새로 등장
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {added.map((item) => (
-                <Badge key={`add-${item}`} variant="secondary" className="rounded-full">
-                  {item}
-                </Badge>
-              ))}
+    <div className="flex flex-wrap gap-2">
+      {metrics.map((m) => {
+        const delta = Math.round(m.to - m.from);
+        const tone =
+          Math.abs(delta) < 1 ? "neutral" : delta > 0 ? "positive" : "negative";
+        return (
+          <div
+            key={m.label}
+            className="border-border bg-background/40 rounded-xl border px-3 py-2"
+          >
+            <p className="text-muted-foreground text-[11px]">{m.label}</p>
+            <div className="mt-0.5 flex items-baseline gap-1.5 text-sm tabular-nums">
+              <span className="text-muted-foreground">{Math.round(m.from)}%</span>
+              <span className="text-muted-foreground text-xs">→</span>
+              <span className="text-foreground font-semibold">
+                {Math.round(m.to)}%
+              </span>
+              <span className={cn("text-xs font-medium", DELTA_CLASS[tone])}>
+                {delta > 0 ? "+" : ""}
+                {delta}%p
+              </span>
             </div>
           </div>
-        )}
-        {removed.length > 0 && (
-          <div>
-            <p className="text-muted-foreground mb-1.5 flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide">
-              <Minus className="size-3" />
-              사라짐
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {removed.map((item) => (
-                <Badge key={`rm-${item}`} variant="outline" className="rounded-full">
-                  {item}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+        );
+      })}
     </div>
   );
 }
@@ -165,6 +213,8 @@ export function AnalysisComparePage() {
   const toId = params.get("to");
 
   const [data, setData] = useState<AnalysisCompareResponse | null>(null);
+  const [fromProfile, setFromProfile] = useState<DbProfileResponse | null>(null);
+  const [toProfile, setToProfile] = useState<DbProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -179,8 +229,15 @@ export function AnalysisComparePage() {
     void (async () => {
       setLoading(true);
       try {
-        const result = await fetchAnalysisCompare(fromId, toId);
-        if (!cancelled) setData(result);
+        const [compare, fromP, toP] = await Promise.all([
+          fetchAnalysisCompare(fromId, toId),
+          fetchMyAnalysisSnapshot(fromId).catch(() => null),
+          fetchMyAnalysisSnapshot(toId).catch(() => null),
+        ]);
+        if (cancelled) return;
+        setData(compare);
+        setFromProfile(fromP);
+        setToProfile(toP);
       } catch (err) {
         if (!cancelled) {
           if (err instanceof ApiError && (err.status === 404 || err.status === 400)) {
@@ -199,32 +256,32 @@ export function AnalysisComparePage() {
     };
   }, [fromId, toId]);
 
-  const topScoreChanges = useMemo(() => {
+  const sides = useMemo<CompareSide[]>(() => {
     if (!data) return [];
-    return ALL_SCORE_AXES.map(({ key, group }) => ({
-      key,
-      group,
-      label: scoreAxisLabel(key),
-      from: data.from_snapshot.scores[key] ?? 0,
-      to: data.to_snapshot.scores[key] ?? 0,
-      delta: data.scores_delta[key] ?? 0,
-    }))
-      .filter((item) => Math.abs(item.delta) >= 0.5)
-      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-      .slice(0, 10);
-  }, [data]);
-
-  const groupedScoreChanges = useMemo(() => {
-    const groups: Record<string, typeof topScoreChanges> = {
-      values: [],
-      temperament: [],
-      behavior: [],
-    };
-    for (const item of topScoreChanges) {
-      groups[item.group].push(item);
-    }
-    return groups;
-  }, [topScoreChanges]);
+    const { from_snapshot: f, to_snapshot: t } = data;
+    return [
+      {
+        key: "from",
+        badge: "기준 (이전)",
+        title: f.persona_label || "이전 분석",
+        date: formatAnalysisDate(f.snapshot_date),
+        videos: f.total_videos,
+        color: "#94a3b8",
+        portrait: portraitOf(fromProfile),
+        profile: fromProfile,
+      },
+      {
+        key: "to",
+        badge: "비교 (이후)",
+        title: t.persona_label || "최근 분석",
+        date: formatAnalysisDate(t.snapshot_date),
+        videos: t.total_videos,
+        color: "#0ea5e9",
+        portrait: portraitOf(toProfile),
+        profile: toProfile,
+      },
+    ];
+  }, [data, fromProfile, toProfile]);
 
   if (notFound) {
     return <NotFoundPage />;
@@ -240,13 +297,41 @@ export function AnalysisComparePage() {
   }
 
   const { from_snapshot: fromSnap, to_snapshot: toSnap } = data;
-  const fromTitle = fromSnap.persona_label || "이전 분석";
-  const toTitle = toSnap.persona_label || "최근 분석";
-  const personaChanged = fromTitle !== toTitle;
-  const shortsDeltaPct = Math.round(data.shorts_ratio_delta * 100);
+  const fromPortrait = sides[0]?.portrait ?? null;
+  const toPortrait = sides[1]?.portrait ?? null;
+  const styleMetrics = buildStyleMetrics(fromPortrait, toPortrait, data);
+  // 성향 6축을 이전(current)·이후(ideal)로 겹쳐 그리기용
+  const dispCompare =
+    fromPortrait && toPortrait
+      ? fromPortrait.disposition.map((d) => ({
+          label: d.axis,
+          current: d.value,
+          ideal:
+            toPortrait.disposition.find((x) => x.axis === d.axis)?.value ?? 0,
+        }))
+      : [];
+  const topMovers = buildTopMovers(fromPortrait, toPortrait);
+  const fromInterest = fromPortrait
+    ? [...fromPortrait.interest].sort((a, b) => b.value - a.value)
+    : [];
+  const toInterest = toPortrait
+    ? [...toPortrait.interest].sort((a, b) => b.value - a.value)
+    : [];
+  // 두 시점 도메인 합집합(값 max)으로 공유 범례 — 색은 도메인명 고정이라 양쪽 도넛과 일치
+  const interestLegend = (() => {
+    const map = new Map<string, number>();
+    for (const d of [...fromInterest, ...toInterest]) {
+      map.set(d.axis, Math.max(map.get(d.axis) ?? 0, d.value));
+    }
+    return buildInterestLegend(
+      [...map.entries()]
+        .map(([axis, value]) => ({ axis, value }))
+        .sort((a, b) => b.value - a.value),
+    );
+  })();
 
   return (
-    <div className="mx-auto flex min-h-full max-w-3xl flex-col px-6 py-8 pb-12">
+    <div className="w-full px-4 py-6 sm:px-6 sm:py-8">
       <nav className="text-muted-foreground mb-4 flex flex-wrap items-center gap-1.5 text-xs">
         <Link to={ROUTES.ME.HOME} className="hover:text-foreground transition-colors">
           분석 목록
@@ -256,29 +341,33 @@ export function AnalysisComparePage() {
       </nav>
 
       <h1 className="text-2xl font-semibold tracking-tight">비교 분석</h1>
-      <p className="text-muted-foreground mt-1 text-sm">
-        두 시점의 성향·시청 패턴 변화를 비교합니다.
-      </p>
 
+      {/* 기준/비교 헤더 */}
       <div className="border-border mt-6 flex flex-wrap items-center gap-3 rounded-2xl border bg-card p-4">
         <div className="min-w-0 flex-1">
-          <p className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
-            기준 (이전)
+          <p className="flex items-center gap-1.5 text-sm font-semibold">
+            <span
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ background: sides[0]?.color }}
+            />
+            <span className="truncate">{sides[0]?.title}</span>
           </p>
-          <p className="truncate text-sm font-semibold">{fromTitle}</p>
           <p className="text-muted-foreground text-xs">
             {formatAnalysisDate(fromSnap.snapshot_date)}
             {fromSnap.total_videos > 0 && ` · ${fromSnap.total_videos}개 영상`}
           </p>
         </div>
 
-        <ArrowLeftRight className="text-muted-foreground size-5 shrink-0" />
+        <ArrowRight className="text-muted-foreground size-5 shrink-0" />
 
         <div className="min-w-0 flex-1 text-right">
-          <p className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
-            비교 (이후)
+          <p className="flex items-center justify-end gap-1.5 text-sm font-semibold">
+            <span
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ background: sides[1]?.color }}
+            />
+            <span className="truncate">{sides[1]?.title}</span>
           </p>
-          <p className="truncate text-sm font-semibold">{toTitle}</p>
           <p className="text-muted-foreground text-xs">
             {formatAnalysisDate(toSnap.snapshot_date)}
             {toSnap.total_videos > 0 && ` · ${toSnap.total_videos}개 영상`}
@@ -286,26 +375,37 @@ export function AnalysisComparePage() {
         </div>
       </div>
 
-      {personaChanged && !data.narrative && (
-        <div className="border-primary/20 bg-primary/5 mt-4 rounded-2xl border p-4">
-          <p className="text-sm font-semibold">페르소나 변화</p>
-          <p className="text-muted-foreground mt-1 text-sm">
-            <span className="text-foreground">{fromTitle}</span>
-            {" → "}
-            <span className="text-foreground font-medium">{toTitle}</span>
-          </p>
-        </div>
-      )}
-
+      {/* AI 비교 요약 */}
       {data.narrative ? (
         <section className="border-border mt-6 rounded-2xl border bg-card p-5">
           <p className="text-muted-foreground mb-2 text-[10px] font-medium uppercase tracking-wide">
             AI 비교 요약
           </p>
           <p className="text-lg font-semibold leading-snug">{data.narrative.headline}</p>
-          <p className="text-muted-foreground mt-3 text-sm leading-relaxed">
-            {data.narrative.summary_text}
-          </p>
+          {topMovers.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {topMovers.map((m) => (
+                <Badge
+                  key={`${m.kind}-${m.label}`}
+                  variant="secondary"
+                  className="rounded-full"
+                >
+                  {m.label} {m.delta > 0 ? "▲" : "▼"}
+                  {Math.abs(Math.round(m.delta))}
+                  {m.deltaSuffix}
+                </Badge>
+              ))}
+            </div>
+          )}
+          <div className="text-muted-foreground mt-3 space-y-1.5 text-sm leading-relaxed">
+            {data.narrative.summary_text
+              .split(/(?<=\.)\s+/)
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .map((sentence, i) => (
+                <p key={i}>{sentence}</p>
+              ))}
+          </div>
           {data.narrative.key_shifts.length > 0 && (
             <ul className="mt-4 space-y-2">
               {data.narrative.key_shifts.map((item) => (
@@ -316,145 +416,204 @@ export function AnalysisComparePage() {
               ))}
             </ul>
           )}
-          {data.narrative.stable_traits.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-1.5">
-              {data.narrative.stable_traits.map((trait) => (
-                <Badge key={trait} variant="secondary" className="rounded-full">
-                  {trait}
-                </Badge>
-              ))}
+          {styleMetrics.length > 0 && (
+            <div className="border-border mt-4 border-t pt-4">
+              <p className="text-muted-foreground mb-2 text-[10px] font-medium uppercase tracking-wide">
+                시청 스타일
+              </p>
+              <MetricsStrip metrics={styleMetrics} />
             </div>
-          )}
-          {data.narrative.viewing_pattern_note && (
-            <p className="text-muted-foreground border-border mt-4 border-t pt-4 text-sm leading-relaxed">
-              {data.narrative.viewing_pattern_note}
-            </p>
           )}
         </section>
       ) : data.narrative_error ? (
         <div className="border-border text-muted-foreground mt-6 rounded-2xl border border-dashed px-4 py-6 text-center text-sm">
-          AI 요약을 생성하지 못했습니다. 아래 수치 비교를 참고해 주세요.
+          AI 요약을 생성하지 못했습니다. 아래 비교를 참고해 주세요.
         </div>
       ) : null}
 
-      <section className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold">시청 습관 지표</h2>
-        <div className="border-border rounded-2xl border bg-card px-4">
-          {HABIT_METRICS.map(({ key, label, hint, higherIsBetter }) => (
-            <HabitRow
-              key={key}
-              label={label}
-              hint={hint}
-              from={data.habits_from[key as HabitMetricKey]}
-              to={data.habits_to[key as HabitMetricKey]}
-              delta={data.habits_delta[key as HabitMetricKey]}
-              higherIsBetter={higherIsBetter}
-            />
-          ))}
-        </div>
-        {Math.abs(data.shorts_ratio_delta) >= 0.01 && (
-          <p className="text-muted-foreground mt-2 text-xs">
-            쇼츠 비율{" "}
-            <span className={cn("font-medium", DELTA_CLASS[deltaTone(data.shorts_ratio_delta, false)])}>
-              {shortsDeltaPct > 0 ? "+" : ""}
-              {shortsDeltaPct}%p
-            </span>
-            {" "}
-            ({formatHabitPercent(fromSnap.shorts_ratio)} → {formatHabitPercent(toSnap.shorts_ratio)})
-          </p>
-        )}
-      </section>
-
-      <section className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold">성향 점수 변화</h2>
-        {topScoreChanges.length === 0 ? (
-          <div className="border-border text-muted-foreground rounded-2xl border border-dashed px-4 py-8 text-center text-sm">
-            두 스냅샷 간 유의미한 점수 변화가 없습니다.
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {(["values", "temperament", "behavior"] as const).map((group) => {
-              const items = groupedScoreChanges[group];
-              if (items.length === 0) return null;
-              return (
-                <div key={group} className="border-border rounded-2xl border bg-card p-4">
-                  <p className="text-muted-foreground mb-2 text-[10px] font-medium uppercase tracking-wide">
-                    {SCORE_GROUP_LABELS[group]}
-                  </p>
-                  <div className="text-muted-foreground mb-1 flex items-center gap-3 text-[10px]">
-                    <span className="flex-1" />
-                    <span className="w-10 shrink-0 text-right">이전</span>
-                    <span className="w-12 shrink-0 text-right">변화</span>
-                    <span className="w-10 shrink-0 text-right">이후</span>
-                  </div>
-                  {items.map((item) => (
-                    <ScoreDeltaRow
-                      key={item.key}
-                      label={item.label}
-                      from={item.from}
-                      to={item.to}
-                      delta={item.delta}
-                    />
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <ChangeList
-          title="특성 태그"
-          added={data.traits_added}
-          removed={data.traits_removed}
-          emptyMessage="두 분석의 특성 태그가 동일합니다."
-        />
-        <ChangeList
-          title="상위 채널"
-          added={data.channels_added}
-          removed={data.channels_removed}
-          emptyMessage="상위 채널 구성이 같습니다."
-        />
-      </div>
-
-      {!data.narrative && (toSnap.summary_text || fromSnap.summary_text) && (
+      {/* AI 요약이 없을 때만 시청 스타일 칩을 단독 카드로 (요약 안에 못 넣으므로) */}
+      {!data.narrative && styleMetrics.length > 0 && (
         <section className="border-border mt-6 rounded-2xl border bg-card p-5">
-          <p className="mb-3 text-sm font-semibold">요약 비교</p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <p className="text-muted-foreground mb-1 flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide">
-                <TrendingDown className="size-3" />
-                이전
-              </p>
-              <p className="text-muted-foreground text-sm leading-relaxed">
-                {fromSnap.summary_text || "—"}
-              </p>
-            </div>
-            <div>
-              <p className="text-muted-foreground mb-1 flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide">
-                <TrendingUp className="size-3" />
-                이후
-              </p>
-              <p className="text-muted-foreground text-sm leading-relaxed">
-                {toSnap.summary_text || "—"}
-              </p>
-            </div>
-          </div>
+          <p className="text-muted-foreground mb-2 text-[10px] font-medium uppercase tracking-wide">
+            시청 스타일
+          </p>
+          <MetricsStrip metrics={styleMetrics} />
         </section>
       )}
 
-      <div className="mt-8 flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" asChild>
-          <Link to={ROUTES.ME.HOME}>목록으로</Link>
-        </Button>
-        <Button variant="ghost" size="sm" asChild>
-          <Link to={ROUTES.analysisDetail(fromSnap.snapshot_id)}>이전 분석 보기</Link>
-        </Button>
-        <Button variant="ghost" size="sm" asChild>
-          <Link to={ROUTES.analysisDetail(toSnap.snapshot_id)}>최근 분석 보기</Link>
-        </Button>
-      </div>
+      {/* 성향 스파이더(왼) + 관심 도메인(오른, 이전 → 이후 화살표) — 한 줄 */}
+      <section className="mt-6 grid gap-4 lg:grid-cols-2">
+        {/* 성향 스파이더 — 이전·이후 겹쳐 보기 */}
+        <div className="flex flex-col">
+          <div className="border-border flex flex-1 flex-col rounded-2xl border bg-card p-5">
+            <h2 className="mb-3 text-sm font-semibold">성향 스파이더</h2>
+            {dispCompare.length > 0 ? (
+              <>
+                <div className="mb-4 flex items-center justify-center gap-6 text-xs">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span
+                      className="inline-block h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: sides[0]?.color }}
+                    />
+                    <span className="text-muted-foreground truncate">
+                      {sides[0]?.title}
+                    </span>
+                  </span>
+                  <ArrowRight className="text-muted-foreground size-4 shrink-0" />
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span
+                      className="inline-block h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: sides[1]?.color }}
+                    />
+                    <span className="text-foreground truncate">
+                      {sides[1]?.title}
+                    </span>
+                  </span>
+                </div>
+                <div className="flex flex-1 items-center justify-center">
+                  <RadarCompareChart
+                    axes={dispCompare}
+                    size={300}
+                    labelMargin={44}
+                    currentColor={sides[0]?.color}
+                    idealColor={sides[1]?.color}
+                    dashed="current"
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="text-muted-foreground py-10 text-center text-sm">
+                성향 데이터가 없는 분석입니다.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* 관심 도메인 — 한 박스, 이전 → 이후 */}
+        <div className="flex flex-col">
+          <div className="border-border flex flex-1 flex-col rounded-2xl border bg-card p-5">
+            <h2 className="mb-3 text-sm font-semibold">관심 도메인</h2>
+            <div className="flex flex-1 flex-col justify-center">
+              {fromInterest.length > 0 || toInterest.length > 0 ? (
+              <div className="flex items-center gap-3">
+                {/* 범례 — 왼쪽 한 박스 (도메인 · 이전→이후 %) */}
+                <ul className="border-border flex w-28 shrink-0 flex-col gap-1.5 rounded-xl border p-2.5">
+                  {interestLegend.map((l) => (
+                    <li
+                      key={l.axis}
+                      className="flex items-center gap-1.5 text-[11px] leading-tight"
+                    >
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ background: l.color }}
+                      />
+                      <span className="whitespace-nowrap">{l.axis}</span>
+                    </li>
+                  ))}
+                </ul>
+                {/* 이전 → 이후 도넛 */}
+                <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-muted-foreground mb-1 flex items-center justify-center gap-1 text-[11px]">
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ background: sides[0]?.color }}
+                      />
+                      <span className="truncate">{sides[0]?.title}</span>
+                    </p>
+                    <InterestPie
+                      data={fromInterest}
+                      size={190}
+                      showLegend={false}
+                      innerRadius="55%"
+                      outerRadius="92%"
+                    />
+                  </div>
+                  <ArrowRight className="text-muted-foreground size-5 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-muted-foreground mb-1 flex items-center justify-center gap-1 text-[11px]">
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ background: sides[1]?.color }}
+                      />
+                      <span className="truncate">{sides[1]?.title}</span>
+                    </p>
+                    <InterestPie
+                      data={toInterest}
+                      size={190}
+                      showLegend={false}
+                      innerRadius="55%"
+                      outerRadius="92%"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-muted-foreground py-10 text-center text-sm">
+                관심 도메인 데이터가 없습니다.
+              </p>
+            )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 상위 채널 / 카테고리 — 좌우 비교 */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-sm font-semibold">상위 채널 · 카테고리</h2>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {sides.map((s) => {
+            const categories = mapTopCategories(s.profile?.top_categories ?? []);
+            const longCh = s.profile?.top_channels_long ?? [];
+            const shortCh = s.profile?.top_channels_short ?? [];
+            const hasAny =
+              categories.length > 0 || longCh.length > 0 || shortCh.length > 0;
+            return (
+              <div key={s.key} className="border-border rounded-2xl border bg-card p-5">
+                <SideHeader side={s} />
+                {hasAny ? (
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div>
+                      <p className="text-muted-foreground mb-2 text-xs font-semibold">
+                        상위 카테고리
+                      </p>
+                      {categories.length > 0 ? (
+                        <ol className="space-y-2">
+                          {categories.slice(0, 5).map((item, i) => (
+                            <li
+                              key={`${item.label}-${i}`}
+                              className="flex items-start gap-2 text-sm"
+                            >
+                              <span className="bg-accent text-accent-foreground flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[10px] font-semibold">
+                                {i + 1}
+                              </span>
+                              <span className="min-w-0 flex-1 leading-snug">
+                                {item.label}
+                                <span className="text-muted-foreground ml-1 text-xs">
+                                  ({item.count})
+                                </span>
+                              </span>
+                            </li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <p className="text-muted-foreground text-xs">데이터 없음</p>
+                      )}
+                    </div>
+                    <ChannelList title="롱폼 상위 채널" items={longCh} />
+                    <ChannelList title="숏폼 상위 채널" items={shortCh} />
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground py-10 text-center text-sm">
+                    채널·카테고리 데이터가 없습니다.
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
     </div>
   );
 }

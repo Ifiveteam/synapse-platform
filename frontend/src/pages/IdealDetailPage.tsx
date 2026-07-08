@@ -165,21 +165,18 @@ export function IdealDetailPage() {
         </div>
       </div>
 
-      {/* 현재 vs 이상향 비교 */}
-      <section className="border-border mb-6 rounded-2xl border bg-card px-5 py-5">
-        <div className="mb-4 flex items-center justify-between">
+      {/* 현재 vs 이상향 비교 — 제목은 박스 밖, 성향/관심 도메인 별도 박스 */}
+      <div className="mb-6">
+        <div className="mb-3">
           <h2 className="text-base font-semibold">현재 vs 이상향 비교</h2>
-          <span className="text-muted-foreground text-xs">
-            총 차이 {Math.round(comparison.total_gap)}
-          </span>
         </div>
-        {/* 주 표시: 성향 6각 레이더 + 관심 도메인 파이(현재/이상향) */}
         {hasTargets ? (
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
+            {/* 성향 — 별도 박스 */}
             {dispRadar.length > 0 && (
-              <div>
+              <div className="border-border flex flex-col rounded-2xl border bg-card px-5 py-5">
                 <div className="mb-2 flex items-center justify-between">
-                  <p className="text-sm font-semibold">성향</p>
+                  <p className="text-sm font-semibold">성향 스파이더</p>
                   <div className="text-muted-foreground flex items-center gap-3 text-xs">
                     <span className="flex items-center gap-1.5">
                       <span className="bg-muted-foreground inline-block h-2 w-4 rounded-full" />
@@ -191,15 +188,34 @@ export function IdealDetailPage() {
                     </span>
                   </div>
                 </div>
-                <div className="flex justify-center">
+                <div className="flex flex-1 items-center justify-center">
                   <RadarCompareChart axes={dispRadar} size={280} labelMargin={40} />
                 </div>
               </div>
             )}
+            {/* 관심 도메인 — 별도 박스, 범례 왼쪽 */}
             {curPie.length > 0 && (
-              <div>
+              <div className="border-border flex flex-col rounded-2xl border bg-card px-5 py-5">
                 <p className="mb-2 text-sm font-semibold">관심 도메인</p>
-                <div className="flex items-start gap-3">
+                <div className="flex flex-1 items-center gap-3">
+                  <ul className="border-border flex w-28 shrink-0 flex-col gap-1.5 rounded-xl border p-2.5">
+                    {[...buildInterestLegend(curPie)]
+                      .sort((a, b) => b.value - a.value)
+                      .map((l) => (
+                        <li
+                          key={l.axis}
+                          className="flex items-center gap-1.5 text-[11px] leading-tight"
+                        >
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ background: l.color }}
+                          />
+                          <span className="flex-1 whitespace-nowrap">
+                            {l.axis}
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
                   <div className="flex min-w-0 flex-1 items-start justify-center gap-3">
                     <div className="min-w-0 flex-1">
                       <p className="text-muted-foreground mb-1 text-center text-xs">
@@ -226,31 +242,13 @@ export function IdealDetailPage() {
                       />
                     </div>
                   </div>
-                  <ul className="border-border flex w-28 shrink-0 flex-col gap-1 rounded-xl border p-2.5">
-                    {[...buildInterestLegend(curPie)]
-                      .sort((a, b) => b.value - a.value)
-                      .map((l) => (
-                        <li
-                          key={l.axis}
-                          className="flex items-center gap-1.5 text-[10px] leading-tight"
-                        >
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-full"
-                            style={{ background: l.color }}
-                          />
-                          <span className="flex-1 whitespace-nowrap">
-                            {l.axis}
-                          </span>
-                        </li>
-                      ))}
-                  </ul>
                 </div>
               </div>
             )}
           </div>
         ) : (
           // 레거시(목표 없는 옛 이상향): 8축 레이더를 그대로 노출
-          <div className="flex flex-col items-center">
+          <div className="border-border flex flex-col items-center rounded-2xl border bg-card px-5 py-5">
             <RadarCompareChart axes={axes} />
             <div className="mt-2 flex items-center gap-4 text-xs">
               <span className="flex items-center gap-1.5">
@@ -264,8 +262,7 @@ export function IdealDetailPage() {
             </div>
           </div>
         )}
-
-      </section>
+      </div>
 
       {/* 행동 가이드 */}
       <section className="border-border rounded-2xl border bg-card px-5 py-5">

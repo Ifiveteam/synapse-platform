@@ -137,11 +137,10 @@ function IdealList({
     return <p className="text-destructive text-sm">{error}</p>;
   }
 
-  // 적용 중을 맨 위로, 그 다음 최신순(created_at desc)
-  const sortedIdeals = [...ideals].sort((a, b) => {
-    if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  });
+  // 최신순(created_at desc)
+  const sortedIdeals = [...ideals].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
 
   const totalPages = Math.max(1, Math.ceil(sortedIdeals.length / IDEAL_PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -356,11 +355,11 @@ export function IdealManagementPage() {
                 <p className="text-muted-foreground mt-0.5 truncate text-xs">
                   {designTitle ? `${designTitle} 분석 기반` : "분석 기반 설계"}
                 </p>
-                <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
-                  {designState === "pending"
-                    ? "완성되면 3안 중 골라 저장할 수 있어요."
-                    : "추천 3안이 준비됐어요. 이어서 골라 저장해 보세요."}
-                </p>
+                {designState === "pending" && (
+                  <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
+                    완성되면 3안 중 골라 저장할 수 있어요.
+                  </p>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <span className="border-primary text-primary hover:bg-primary/5 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors">

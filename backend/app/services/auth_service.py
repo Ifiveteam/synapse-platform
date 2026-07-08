@@ -137,7 +137,7 @@ async def handle_oauth_callback(
     refresh = await token_service.issue_refresh_token(session, user.id)
     await session.commit()
 
-    response = RedirectResponse(f"{frontend_url()}/upload")
+    response = RedirectResponse(f"{frontend_url()}/")
     token_service.set_refresh_cookie(response, refresh)
     return response
 
