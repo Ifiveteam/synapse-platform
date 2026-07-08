@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ListVideo, Loader2, Plus, Target, Trash2 } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ListVideo,
+  Loader2,
+  Plus,
+  Target,
+  Trash2,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,20 +20,19 @@ import {
 } from "@/api/navigator";
 import type { IdealResponse } from "@/api/types/navigator";
 import { IDEAL_TYPE_LABEL } from "@/lib/navigator/labels";
-import { cn } from "@/lib/utils";
 import { ROUTES } from "@/routes";
 import { useSidebarStore } from "@/stores/sidebar";
+
+const IDEAL_PAGE_SIZE = 4;
 
 function IdealCard({
   item,
   onApply,
   onDelete,
-  embedded = false,
 }: {
   item: IdealResponse;
   onApply: (id: string) => void;
   onDelete?: (item: IdealResponse) => void;
-  embedded?: boolean;
 }) {
   const navigate = useNavigate();
   const inner = (
@@ -45,9 +52,6 @@ function IdealCard({
               <span className="ml-2">
                 {new Date(item.created_at).toLocaleDateString("ko-KR")}
               </span>
-            </p>
-            <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
-              {item.reasoning || "설명 없음"}
             </p>
           </div>
 
@@ -104,11 +108,6 @@ function IdealCard({
   const className =
     "bg-card text-card-foreground border-border hover:border-primary/40 flex items-start gap-4 rounded-2xl border px-4 py-4 shadow-sm transition-colors";
 
-  // 허브(embedded)에선 개별 링크 대신 박스 전체 클릭(→ 이상향 관리)에 맡긴다.
-  if (embedded) {
-    return <div className={className}>{inner}</div>;
-  }
-
   return (
     <Link to={ROUTES.idealDetail(item.id)} className={className}>
       {inner}
@@ -122,53 +121,20 @@ function IdealList({
   error,
   onApply,
   onDelete,
-  activeOnly = false,
-  embedded = false,
 }: {
   ideals: IdealResponse[];
   loading: boolean;
   error: string | null;
   onApply: (id: string) => void;
   onDelete?: (item: IdealResponse) => void;
-  activeOnly?: boolean;
-  embedded?: boolean;
 }) {
+  const [page, setPage] = useState(1);
+
   if (loading) {
     return <p className="text-muted-foreground text-sm">불러오는 중…</p>;
   }
   if (error) {
     return <p className="text-destructive text-sm">{error}</p>;
-  }
-
-  if (activeOnly) {
-    // 적용 중 + 그 아래 '적용 중을 제외한' 가장 최근 1개. 목록은 최신순.
-    const active = ideals.find((item) => item.is_active) ?? null;
-    const recent = ideals.find((item) => item.id !== active?.id) ?? null;
-    const cards: IdealResponse[] = [];
-    if (active) cards.push(active);
-    if (recent) cards.push(recent);
-    if (cards.length === 0) {
-      // 허브(embedded)에선 박스 전체 클릭(→ 이상향 관리)에 맡긴다.
-      return (
-        <div className="border-border text-muted-foreground flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed">
-          <Plus size={20} />
-          <span className="text-sm font-medium">적용 중인 이상향이 없습니다</span>
-        </div>
-      );
-    }
-    return (
-      <div className="flex flex-col gap-4">
-        {cards.map((item) => (
-          <IdealCard
-            key={item.id}
-            item={item}
-            onApply={onApply}
-            onDelete={onDelete}
-            embedded={embedded}
-          />
-        ))}
-      </div>
-    );
   }
 
   // 적용 중을 맨 위로, 그 다음 최신순(created_at desc)
@@ -177,9 +143,16 @@ function IdealList({
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
+  const totalPages = Math.max(1, Math.ceil(sortedIdeals.length / IDEAL_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageIdeals = sortedIdeals.slice(
+    (currentPage - 1) * IDEAL_PAGE_SIZE,
+    currentPage * IDEAL_PAGE_SIZE,
+  );
+
   return (
     <div className="flex flex-col gap-4">
-      {sortedIdeals.map((item) => (
+      {pageIdeals.map((item) => (
         <IdealCard
           key={item.id}
           item={item}
@@ -188,21 +161,49 @@ function IdealList({
         />
       ))}
 
-      <Link
-        to={ROUTES.idealSetup}
-        className="border-border text-muted-foreground hover:border-primary/40 hover:text-foreground flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed transition-colors"
-      >
-        <Plus size={20} />
-        <span className="text-sm font-medium">새 이상향 설계하기</span>
-      </Link>
+      {totalPages > 1 && (
+        <div className="mt-4 flex items-center justify-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-8"
+            disabled={currentPage <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            <ChevronLeft size={16} />
+          </Button>
+
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
+            <Button
+              key={n}
+              type="button"
+              variant={n === currentPage ? "default" : "outline"}
+              size="icon"
+              className="size-8 text-xs"
+              onClick={() => setPage(n)}
+            >
+              {n}
+            </Button>
+          ))}
+
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-8"
+            disabled={currentPage >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            <ChevronRight size={16} />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
 
-export function IdealManagementPage({
-  embedded = false,
-  activeOnly = false,
-}: { embedded?: boolean; activeOnly?: boolean } = {}) {
+export function IdealManagementPage() {
   const ideals = useSidebarStore((s) => s.ideals);
   const analyses = useSidebarStore((s) => s.analyses);
   const loadIdeals = useSidebarStore((s) => s.loadIdeals);
@@ -306,19 +307,10 @@ export function IdealManagementPage({
   };
 
   return (
-    <div
-      className={cn(
-        "flex flex-col",
-        embedded ? "" : "min-h-full px-4 py-5 sm:px-6 sm:py-6",
-      )}
-    >
+    <div className="flex flex-col">
       <div className="mb-6 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          {embedded ? (
-            <h2 className="text-lg font-semibold tracking-tight">이상향 관리</h2>
-          ) : (
-            <h1 className="text-2xl font-semibold tracking-tight">이상향 관리</h1>
-          )}
+          <h2 className="text-lg font-semibold tracking-tight">이상향 관리</h2>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button size="sm" variant="outline" className="gap-1.5" asChild>
@@ -398,8 +390,6 @@ export function IdealManagementPage({
         error={error}
         onApply={handleApply}
         onDelete={setDeleteTarget}
-        activeOnly={activeOnly}
-        embedded={embedded}
       />
 
       {deleteTarget && (

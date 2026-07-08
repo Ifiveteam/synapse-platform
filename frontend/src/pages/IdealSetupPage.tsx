@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Check, ChevronRight, Send } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  MessageSquare,
+  Send,
+} from "lucide-react";
 
 import { fetchMyAnalyses, fetchMyAnalysisSnapshot } from "@/api/analyses";
 import type { DbProfileResponse } from "@/api/types/profiler";
@@ -39,42 +45,6 @@ async function pollProposals(
     res = await getProposals(analysisId);
   }
   return res;
-}
-
-function StepHeader({ step }: { step: 1 | 2 }) {
-  const steps = [
-    { n: 1, label: "분석 선택" },
-    { n: 2, label: "이상향 추천" },
-  ];
-  return (
-    <div className="mb-6 flex items-center gap-2">
-      {steps.map((s, i) => (
-        <div key={s.n} className="flex items-center gap-2">
-          <span
-            className={cn(
-              "flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold",
-              step >= s.n
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-muted-foreground",
-            )}
-          >
-            {s.n}
-          </span>
-          <span
-            className={cn(
-              "text-sm",
-              step >= s.n ? "font-medium" : "text-muted-foreground",
-            )}
-          >
-            {s.label}
-          </span>
-          {i === 0 && (
-            <ChevronRight size={16} className="text-muted-foreground" />
-          )}
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function SelectAnalysis({
@@ -233,23 +203,33 @@ function snapshotPersonaOf(snapshot: DbProfileResponse | null): string {
   );
 }
 
-/** 접힌 카드(3안 중 하나) — 클릭하면 펼침 + 선택. */
+/** 추천 카드(3안 중 하나) — 클릭하면 선택/해제. 선택 시 강조 + 예상 차트 반영. */
 function ProposalCard({
   proposal,
+  selected,
   onSelect,
 }: {
   proposal: ProposalItem;
+  selected: boolean;
   onSelect: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onSelect}
-      className="border-border hover:border-primary/40 flex flex-1 flex-col rounded-2xl border bg-card px-4 py-4 text-left transition-colors"
+      className={cn(
+        "flex h-full flex-col rounded-2xl border px-4 py-4 text-left transition-colors",
+        selected
+          ? "border-primary bg-primary/5 ring-primary/20 ring-1"
+          : "border-border bg-card hover:border-primary/40",
+      )}
     >
-      <Badge variant="outline" className="w-fit rounded-full">
-        {IDEAL_TYPE_LABEL[proposal.ideal_type]}
-      </Badge>
+      <div className="flex items-center justify-between gap-2">
+        <Badge variant="outline" className="w-fit rounded-full">
+          {IDEAL_TYPE_LABEL[proposal.ideal_type]}
+        </Badge>
+        {selected && <Check size={16} className="text-primary shrink-0" />}
+      </div>
       {proposal.persona_label && (
         <p className="mt-2 text-sm font-semibold">{proposal.persona_label}</p>
       )}
@@ -260,7 +240,7 @@ function ProposalCard({
   );
 }
 
-/** 펼친 카드 — 행 전체를 덮고 상세 표시, 뒤로 누르면 3개로 복귀. */
+/** 펼친 카드 — 선택 시 3개 자리를 가로로 덮으며 상세(이상향 설명) 표시. 뒤로 누르면 3개로 복귀. */
 function ExpandedProposal({
   proposal,
   onBack,
@@ -269,8 +249,8 @@ function ExpandedProposal({
   onBack: () => void;
 }) {
   return (
-    <div className="border-primary bg-primary/5 ring-primary/20 flex-1 rounded-2xl border px-5 py-5 ring-1">
-      <div className="mb-3 flex items-start justify-between gap-2">
+    <div className="border-primary bg-primary/5 ring-primary/20 flex flex-col rounded-2xl border px-5 py-5 ring-1 sm:h-[184px]">
+      <div className="mb-3 flex shrink-0 items-start justify-between gap-2">
         <div className="flex flex-col items-start gap-1.5">
           <Badge variant="outline" className="rounded-full">
             {IDEAL_TYPE_LABEL[proposal.ideal_type]}
@@ -286,33 +266,36 @@ function ExpandedProposal({
           뒤로
         </Button>
       </div>
-      <div>
-        <div className="mb-1 flex items-center gap-2">
-          <span className="bg-primary inline-block h-2 w-2 rounded-full" />
-          <p className="text-sm font-semibold">이상향</p>
-        </div>
-        <p className="text-muted-foreground text-sm leading-relaxed">
-          {proposal.reasoning}
-        </p>
-      </div>
+      <p className="text-muted-foreground min-h-0 flex-1 overflow-y-auto text-sm leading-relaxed">
+        {proposal.reasoning}
+      </p>
     </div>
   );
 }
 
-/** 좌측 패널 — 현재 생성 예상 이상향: 성향 6각 + 관심 도메인(현재/이상향). */
+/** 생성 예상 이상향: 성향 6각 + 관심 도메인(현재/이상향).
+ *  orientation="row"이면 두 섹션을 좌우로, "col"이면 위아래로 배치. */
 function IdealCharts({
   dispRadar,
   curPie,
   idealPie,
+  orientation = "col",
 }: {
   dispRadar: { label: string; current: number; ideal: number }[];
   curPie: { axis: string; value: number }[];
   idealPie: { axis: string; value: number }[] | null;
+  orientation?: "col" | "row";
 }) {
+  const row = orientation === "row";
   return (
-    <div className="border-border h-full space-y-4 rounded-2xl border bg-card px-4 py-4">
+    <div
+      className={cn(
+        "border-border rounded-2xl border bg-card px-4 py-4",
+        row ? "flex flex-col gap-4 lg:flex-row lg:gap-6" : "h-full space-y-4",
+      )}
+    >
       {/* 성향 6각 */}
-      <div>
+      <div className={row ? "min-w-0 lg:flex-1" : ""}>
         <div className="mb-1 flex items-center justify-between">
           <p className="text-sm font-semibold">성향</p>
           <div className="text-muted-foreground flex items-center gap-3 text-xs">
@@ -340,25 +323,16 @@ function IdealCharts({
       </div>
 
       {/* 관심 도메인 — 좌측 공유 범례 + 도넛(현재/이상향) */}
-      <div className="border-border border-t pt-4">
-        <p className="mb-2 text-sm font-semibold">관심 도메인</p>
+      <div
+        className={cn(
+          "border-border",
+          row
+            ? "min-w-0 border-t pt-4 lg:flex-1 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6"
+            : "border-t pt-4",
+        )}
+      >
+        <p className="mb-3 text-sm font-semibold">관심 도메인</p>
         <div className="flex items-start gap-3">
-          <ul className="border-border flex w-24 shrink-0 flex-col gap-1 rounded-xl border p-2.5">
-            {[...buildInterestLegend(curPie)]
-              .sort((a, b) => b.value - a.value)
-              .map((l) => (
-                <li
-                  key={l.axis}
-                  className="flex items-center gap-1.5 text-[10px] leading-tight"
-                >
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ background: l.color }}
-                  />
-                  <span className="flex-1 whitespace-nowrap">{l.axis}</span>
-                </li>
-              ))}
-          </ul>
           <div className="flex min-w-0 flex-1 items-start justify-center gap-3">
             <div className="min-w-0 flex-1">
               {idealPie && (
@@ -387,20 +361,39 @@ function IdealCharts({
               </div>
             )}
           </div>
+          <ul className="border-border flex w-24 shrink-0 flex-col gap-1 rounded-xl border p-2.5">
+            {[...buildInterestLegend(curPie)]
+              .sort((a, b) => b.value - a.value)
+              .map((l) => (
+                <li
+                  key={l.axis}
+                  className="flex items-center gap-1.5 text-[10px] leading-tight"
+                >
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ background: l.color }}
+                  />
+                  <span className="flex-1 whitespace-nowrap">{l.axis}</span>
+                </li>
+              ))}
+          </ul>
+        </div>
         </div>
       </div>
-
-    </div>
   );
 }
 
 function ShowProposals({
   analysisId,
   resume,
+  phase,
+  onPhase,
   onBack,
 }: {
   analysisId: string;
   resume: boolean;
+  phase: 2 | 3;
+  onPhase: (p: 2 | 3) => void;
   onBack: () => void;
 }) {
   const navigate = useNavigate();
@@ -670,120 +663,156 @@ function ShowProposals({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <h2 className="text-base font-semibold">추천 이상향 3안</h2>
-            {currentPersona && (
-              <span className="text-muted-foreground text-xs">
-                현재 분석 · <span className="font-medium">{currentPersona}</span>
-              </span>
-            )}
+      {phase === 2 ? (
+        <>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              {currentPersona && (
+                <span className="text-muted-foreground text-sm">
+                  현재 분석 ·{" "}
+                  <span className="text-foreground font-medium">
+                    {currentPersona}
+                  </span>
+                </span>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onPhase(3)}
+                className="gap-1.5"
+              >
+                <MessageSquare size={16} />
+                채팅으로 조정하기
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void confirmCreate()}
+                disabled={busy || (!selectedProposal && !hasChatIdeal)}
+                className="gap-1.5"
+              >
+                <Check size={16} />
+                이 이상향으로 확정하기
+              </Button>
+            </div>
           </div>
-          <p className="text-muted-foreground mt-1 text-xs">
-            카드를 고르면 상세와 예상 이상향 차트가 보여요. 선택 없이 대화만 해도
-            됩니다.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onBack}
-            className="gap-1.5"
-          >
-            <ArrowLeft size={16} />
-            분석 다시 선택
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => void confirmCreate()}
-            disabled={busy || (!selectedProposal && !hasChatIdeal)}
-            className="gap-1.5"
-          >
-            <Check size={16} />
-            이 이상향으로 확정하기
-          </Button>
-        </div>
-      </div>
 
-      {/* 좌: 추천 3안 + 성향/관심 차트  ·  우: 채팅. 3열 높이 고정(동일) — 채팅으로 안 늘어남 */}
-      <div className="flex flex-col gap-4 lg:h-[calc(100vh-16rem)] lg:flex-row">
-        {/* 1열: 이상향 3안 (세로) — 카드 or 펼침 */}
-        <div className="flex flex-col gap-3 lg:w-[300px] lg:shrink-0">
+          {/* 추천 3안 — 가로 3개. 선택하면 그 자리에서 펼쳐지며 상세를 덮어 보여줌 */}
           {selectedProposal ? (
             <ExpandedProposal
               proposal={selectedProposal}
               onBack={() => setSelected(null)}
             />
           ) : (
-            proposals.map((p) => (
-              <ProposalCard
-                key={p.ideal_type}
-                proposal={p}
-                onSelect={() => setSelected(p.ideal_type)}
-              />
-            ))
+            <div className="grid gap-3 sm:h-[184px] sm:grid-cols-3">
+              {proposals.map((p) => (
+                <ProposalCard
+                  key={p.ideal_type}
+                  proposal={p}
+                  selected={selected === p.ideal_type}
+                  onSelect={() => setSelected(p.ideal_type)}
+                />
+              ))}
+            </div>
           )}
-        </div>
 
-        {/* 2열: 성향 + 관심 도메인 */}
-        <div className="min-w-0 flex-1">
+          {/* 그 아래: 성향 + 관심 도메인 */}
           <IdealCharts
             dispRadar={dispRadar}
             curPie={curPie}
             idealPie={idealPie}
+            orientation="row"
           />
-        </div>
-
-        {/* 우 컬럼 — 채팅 (좌 컬럼 높이에 맞춰 세로로 채움) */}
-        <div className="border-border flex min-h-[440px] flex-col overflow-hidden rounded-2xl border bg-card lg:max-h-[calc(100vh-13rem)] lg:w-[380px] lg:shrink-0">
-          <div
-            ref={chatScrollRef}
-            className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4"
-          >
-            {messages.map((m, i) => (
-              <div
-                key={i}
-                className={cn(
-                  "flex",
-                  m.role === "user" ? "justify-end" : "justify-start",
-                )}
+        </>
+      ) : (
+        <>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold">대화로 이상향 조정</h2>
+              <p className="text-muted-foreground mt-1 text-xs">
+                위 성향·관심 도메인을 보며 대화로 다듬어 보세요.
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPhase(2)}
+                className="gap-1.5"
               >
+                <ArrowLeft size={16} />
+                추천으로
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void confirmCreate()}
+                disabled={busy || (!selectedProposal && !hasChatIdeal)}
+                className="gap-1.5"
+              >
+                <Check size={16} />
+                이 이상향으로 확정하기
+              </Button>
+            </div>
+          </div>
+
+          {/* 위: 성향 + 관심 도메인 */}
+          <IdealCharts
+            dispRadar={dispRadar}
+            curPie={curPie}
+            idealPie={idealPie}
+            orientation="row"
+          />
+
+          {/* 아래: 채팅으로 조정 */}
+          <div className="border-border flex h-[440px] flex-col overflow-hidden rounded-2xl border bg-card">
+            <div
+              ref={chatScrollRef}
+              className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4"
+            >
+              {messages.map((m, i) => (
                 <div
+                  key={i}
                   className={cn(
-                    "max-w-[80%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap",
-                    m.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-secondary text-foreground",
+                    "flex",
+                    m.role === "user" ? "justify-end" : "justify-start",
                   )}
                 >
-                  {m.content || (streaming ? "…" : "")}
+                  <div
+                    className={cn(
+                      "max-w-[80%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap",
+                      m.role === "user"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary text-foreground",
+                    )}
+                  >
+                    {m.content || (streaming ? "…" : "")}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+            <div className="border-border flex items-center gap-2 border-t px-3 pt-3 pb-4">
+              <Input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void send();
+                }}
+                placeholder="어떤 콘텐츠가 끌리는지 편하게 말해보세요"
+                className="flex-1"
+              />
+              <Button
+                size="icon"
+                onClick={() => void send()}
+                disabled={streaming}
+                aria-label="전송"
+              >
+                <Send size={16} />
+              </Button>
+            </div>
           </div>
-          <div className="border-border flex items-center gap-2 border-t px-3 pt-3 pb-4">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void send();
-              }}
-              placeholder="어떤 콘텐츠가 끌리는지 편하게 말해보세요"
-              className="flex-1"
-            />
-            <Button
-              size="icon"
-              onClick={() => void send()}
-              disabled={streaming}
-              aria-label="전송"
-            >
-              <Send size={16} />
-            </Button>
-          </div>
-        </div>
-      </div>
+        </>
+      )}
 
       {pendingFinalize && (
         <div
@@ -835,11 +864,15 @@ export function IdealSetupPage() {
   const [searchParams] = useSearchParams();
   // 이어서 분석하기: ?analysis=<스냅샷> 이면 바로 이상향 추천(step 2)으로
   const resumeAnalysis = searchParams.get("analysis");
-  const [step, setStep] = useState<1 | 2>(resumeAnalysis ? 2 : 1);
+  // 분석 상세 '이상향 분석' 버튼: ?select=<스냅샷> 이면 그 분석을 선택한 채 step 1로
+  const preselectAnalysis = searchParams.get("select");
+  const [step, setStep] = useState<1 | 2 | 3>(resumeAnalysis ? 2 : 1);
   const [analyses, setAnalyses] = useState<AnalysisResultItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [analysisId, setAnalysisId] = useState(resumeAnalysis ?? "");
+  const [analysisId, setAnalysisId] = useState(
+    resumeAnalysis ?? preselectAnalysis ?? "",
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -851,7 +884,9 @@ export function IdealSetupPage() {
         if (cancelled) return;
         const completed = list.filter((a) => a.status === "completed");
         setAnalyses(completed);
-        if (!resumeAnalysis) setAnalysisId(completed[0]?.id ?? "");
+        // resume/select로 지정된 분석이 없을 때만 최신 분석을 기본 선택
+        if (!resumeAnalysis && !preselectAnalysis)
+          setAnalysisId(completed[0]?.id ?? "");
       } catch {
         if (!cancelled) setError("분석 목록을 불러오지 못했습니다.");
       } finally {
@@ -865,15 +900,17 @@ export function IdealSetupPage() {
 
   return (
     <div className={cn("flex min-h-full flex-col px-4 py-5 sm:px-6 sm:py-6")}>
-      <Link
-        to={ROUTES.idealManagement}
-        className="text-muted-foreground hover:text-foreground mb-4 inline-flex w-fit items-center gap-1.5 text-sm transition-colors"
-      >
-        <ArrowLeft size={16} />
-        이상향 관리
-      </Link>
+      {step !== 1 && (
+        <button
+          type="button"
+          onClick={() => setStep(1)}
+          className="text-muted-foreground hover:text-foreground mb-4 inline-flex w-fit items-center gap-1.5 text-sm transition-colors"
+        >
+          <ArrowLeft size={16} />
+          분석 다시 선택
+        </button>
+      )}
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">이상향 설정</h1>
-      <StepHeader step={step} />
       {step === 1 ? (
         <SelectAnalysis
           analyses={analyses}
@@ -887,6 +924,8 @@ export function IdealSetupPage() {
         <ShowProposals
           analysisId={analysisId}
           resume={Boolean(resumeAnalysis)}
+          phase={step === 3 ? 3 : 2}
+          onPhase={setStep}
           onBack={() => setStep(1)}
         />
       )}
