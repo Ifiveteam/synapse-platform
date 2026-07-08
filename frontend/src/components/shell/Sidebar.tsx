@@ -14,13 +14,13 @@ import {
   User,
 } from "lucide-react";
 
-import { deleteSession, fetchSessionMessages } from "@/api/curator";
+import { deleteSession } from "@/api/curator";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/routes";
 import { useAuthStore } from "@/stores/auth";
-import { useChatStore } from "@/stores/chat";
+import { getAnalysisChatStore, useChatStore } from "@/stores/chat";
 import { useShellStore } from "@/stores/shell";
-import { useSidebarStore } from "@/stores/sidebar";
+import { formatRelativeTime, useSidebarStore } from "@/stores/sidebar";
 import { useThemeStore } from "@/stores/theme";
 import logoUrl from "@/assets/logo.png";
 
@@ -194,14 +194,11 @@ export function Sidebar() {
   const setSidebarExpanded = useShellStore((s) => s.setSidebarExpanded);
   const openLoginModal = useShellStore((s) => s.openLoginModal);
   const activeIdealLabel = useSidebarStore((s) => s.activeIdealLabel);
-  const chats = useSidebarStore((s) => s.chats);
-  const setSession = useChatStore((s) => s.setSession);
-  const currentSessionId = useChatStore((s) => s.sessionId);
-  const cachedSessions = useChatStore((s) => s.sessions);
-  const clearMessages = useChatStore((s) => s.clearMessages);
-  const renameChat = useSidebarStore((s) => s.renameChat);
-  const deleteChat = useSidebarStore((s) => s.deleteChat);
   const clearChats = useSidebarStore((s) => s.clearChats);
+  const analysisChats = useSidebarStore((s) => s.analysisChats);
+  const renameAnalysisChat = useSidebarStore((s) => s.renameAnalysisChat);
+  const removeAnalysisChat = useSidebarStore((s) => s.removeAnalysisChat);
+  const clearMessages = useChatStore((s) => s.clearMessages);
 
   useEffect(() => {
     if (!user) {
@@ -214,45 +211,32 @@ export function Sidebar() {
   const [editValue, setEditValue] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
 
-  const startEdit = useCallback((id: string, currentTitle: string) => {
-    setEditingId(id);
+  const startEdit = useCallback((analysisId: string, currentTitle: string) => {
+    setEditingId(analysisId);
     setEditValue(currentTitle);
     setTimeout(() => editInputRef.current?.focus(), 0);
   }, []);
 
   const commitEdit = useCallback(() => {
-    if (editingId && editValue.trim()) renameChat(editingId, editValue.trim());
+    if (editingId && editValue.trim()) renameAnalysisChat(editingId, editValue.trim());
     setEditingId(null);
-  }, [editingId, editValue, renameChat]);
+  }, [editingId, editValue, renameAnalysisChat]);
 
-  const handleDeleteChat = useCallback(async (id: string) => {
-    deleteChat(id);
-    if (id === currentSessionId) clearMessages();
-    try { await deleteSession(id); } catch { /* ignore */ }
-  }, [deleteChat, clearMessages, currentSessionId]);
+  const handleDeleteChat = useCallback(async (analysisId: string) => {
+    const analysisChatStore = getAnalysisChatStore(analysisId);
+    const oldSessionId = analysisChatStore.getState().sessionId;
+    analysisChatStore.getState().clearMessages();
+    removeAnalysisChat(analysisId);
+    try { await deleteSession(oldSessionId); } catch { /* ignore */ }
+  }, [removeAnalysisChat]);
 
-  const handleChatClick = useCallback(async (sessionId: string) => {
-    // 이미 캐시된 세션이면 DB 요청 없이 바로 전환
-    if (cachedSessions[sessionId]?.length) {
-      setSession(sessionId, cachedSessions[sessionId]);
-      navigate(ROUTES.home);
-      return;
-    }
-    try {
-      const items = await fetchSessionMessages(sessionId);
-      setSession(
-        sessionId,
-        items.map((m) => ({
-          id: Math.random().toString(36).slice(2, 10),
-          role: m.role,
-          content: m.content,
-        })),
-      );
-      navigate(ROUTES.home);
-    } catch {
-      // 네트워크 오류 등 무시
-    }
-  }, [setSession, navigate, cachedSessions]);
+  const chatHistoryItems = Object.entries(analysisChats)
+    .map(([analysisId, meta]) => ({
+      analysisId,
+      title: meta.title,
+      updatedAt: meta.updatedAt,
+    }))
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
   const isScrapsSection =
     pathname === ROUTES.scraps || pathname.startsWith(`${ROUTES.scraps}/`);
@@ -393,7 +377,7 @@ export function Sidebar() {
           />
         </div>
 
-        {/* 스크랩 · 채팅 (펼침 시 스크롤) */}
+        {/* 채팅 기록 (펼침 시 스크롤) */}
         <div
           className={cn(
             "min-h-0 flex-1 overflow-y-auto",
@@ -404,13 +388,13 @@ export function Sidebar() {
             <>
               <SectionLabel>채팅 기록</SectionLabel>
               <div className="flex flex-col gap-0.5 px-2 pb-2">
-                {chats.length > 0 ? (
-                  chats.map((chat) => (
+                {chatHistoryItems.length > 0 ? (
+                  chatHistoryItems.map((item) => (
                     <div
-                      key={chat.id}
+                      key={item.analysisId}
                       className="group relative flex items-center rounded-xl transition-colors hover:bg-secondary"
                     >
-                      {editingId === chat.id ? (
+                      {editingId === item.analysisId ? (
                         <div className="flex flex-1 items-center gap-2 px-3 py-2">
                           <MessageSquare size={14} className="text-muted-foreground shrink-0" />
                           <input
@@ -426,26 +410,25 @@ export function Sidebar() {
                           />
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          title={chat.title}
-                          onClick={() => void handleChatClick(chat.id)}
-                          className="flex min-w-0 flex-1 items-start gap-2 px-3 py-2 text-left"
+                        <Link
+                          to={ROUTES.analysisDetail(item.analysisId)}
+                          title={item.title}
+                          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
                         >
-                          <MessageSquare size={14} className="text-muted-foreground mt-0.5 shrink-0" />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-xs">{chat.title}</span>
-                            <span className="text-muted-foreground text-[10px]">{chat.updatedAt}</span>
+                          <MessageSquare size={14} className="text-muted-foreground shrink-0" />
+                          <span className="min-w-0 flex-1 truncate text-xs">{item.title}</span>
+                          <span className="text-muted-foreground shrink-0 text-[10px] group-hover:opacity-0">
+                            {formatRelativeTime(item.updatedAt)}
                           </span>
-                        </button>
+                        </Link>
                       )}
 
-                      {editingId !== chat.id && (
+                      {editingId !== item.analysisId && (
                         <div className="absolute right-1.5 hidden shrink-0 items-center gap-0.5 group-hover:flex">
                           <button
                             type="button"
                             title="제목 수정"
-                            onClick={(e) => { e.stopPropagation(); startEdit(chat.id, chat.title); }}
+                            onClick={(e) => { e.stopPropagation(); startEdit(item.analysisId, item.title); }}
                             className="text-muted-foreground hover:text-foreground flex h-6 w-6 items-center justify-center rounded-lg transition-colors hover:bg-background"
                           >
                             <Pencil size={11} />
@@ -453,7 +436,7 @@ export function Sidebar() {
                           <button
                             type="button"
                             title="삭제"
-                            onClick={(e) => { e.stopPropagation(); void handleDeleteChat(chat.id); }}
+                            onClick={(e) => { e.stopPropagation(); void handleDeleteChat(item.analysisId); }}
                             className="text-muted-foreground hover:text-destructive flex h-6 w-6 items-center justify-center rounded-lg transition-colors hover:bg-background"
                           >
                             <Trash2 size={11} />
