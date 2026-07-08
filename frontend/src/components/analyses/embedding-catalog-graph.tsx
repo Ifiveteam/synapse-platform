@@ -356,45 +356,49 @@ export function EmbeddingCatalogGraph({ data, className, hideControls = false }:
           ].join(", "),
         }}
       >
-        <div
-          className="absolute left-2 top-2 z-20 flex rounded-md border border-white/10 bg-[#0a0f1a]/80 p-0.5 shadow-sm backdrop-blur-sm"
-          role="tablist"
-          aria-label="그래프 보기 전환"
-        >
-          {(["2d", "3d"] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              role="tab"
-              aria-selected={viewMode === mode}
-              onClick={() => handleViewModeChange(mode)}
-              className={cn(
-                "rounded px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide transition-colors",
-                viewMode === mode
-                  ? "bg-white/15 text-white"
-                  : "text-slate-400 hover:text-slate-200",
-              )}
-            >
-              {mode}
-            </button>
-          ))}
-        </div>
+        {!hideControls && (
+          <div
+            className="absolute left-2 top-2 z-20 flex rounded-md border border-white/10 bg-[#0a0f1a]/80 p-0.5 shadow-sm backdrop-blur-sm"
+            role="tablist"
+            aria-label="그래프 보기 전환"
+          >
+            {(["2d", "3d"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                role="tab"
+                aria-selected={viewMode === mode}
+                onClick={() => handleViewModeChange(mode)}
+                className={cn(
+                  "rounded px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide transition-colors",
+                  viewMode === mode
+                    ? "bg-white/15 text-white"
+                    : "text-slate-400 hover:text-slate-200",
+                )}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+        )}
 
-        <button
-          type="button"
-          title="레이아웃 원상복구"
-          aria-label="레이아웃 원상복구"
-          disabled={!layoutReady || viewMode !== "2d"}
-          onClick={handleResetLayout}
-          className={cn(
-            "absolute right-2 top-2 z-20 flex size-7 items-center justify-center rounded-md border border-white/10 bg-[#0a0f1a]/80 text-slate-300 shadow-sm backdrop-blur-sm transition-colors",
-            layoutReady && viewMode === "2d"
-              ? "hover:border-white/20 hover:bg-[#121a2a] hover:text-white"
-              : "pointer-events-none opacity-0",
-          )}
-        >
-          <RotateCcw className="size-3.5" strokeWidth={2} />
-        </button>
+        {!hideControls && (
+          <button
+            type="button"
+            title="레이아웃 원상복구"
+            aria-label="레이아웃 원상복구"
+            disabled={!layoutReady || viewMode !== "2d"}
+            onClick={handleResetLayout}
+            className={cn(
+              "absolute right-2 top-2 z-20 flex size-7 items-center justify-center rounded-md border border-white/10 bg-[#0a0f1a]/80 text-slate-300 shadow-sm backdrop-blur-sm transition-colors",
+              layoutReady && viewMode === "2d"
+                ? "hover:border-white/20 hover:bg-[#121a2a] hover:text-white"
+                : "pointer-events-none opacity-0",
+            )}
+          >
+            <RotateCcw className="size-3.5" strokeWidth={2} />
+          </button>
+        )}
 
         <div
           className={cn("absolute inset-0 z-0", viewMode !== "2d" && "hidden")}

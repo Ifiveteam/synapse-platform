@@ -7,10 +7,12 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 ```text
 001_initial_schema → 002_create_scraps → 003_user_subscription
                                              ├─ 004_drive_folder → 005_analysis_stage ─┐
-                                             └─ 004_scrap_embeddings ─────────────────┴─ 006_merge_heads → 007_user_behavior_logs → 008_drop_transcript → 009_interval_months → 010_batch_source_catalog  (현재 head)
+                                             └─ 004_scrap_embeddings ─────────────────┴─ 006_merge_heads → 007_user_behavior_logs → 008_drop_transcript → 009_interval_months → 010_batch_source_catalog
+  → 011_profile_v2 → 012_rename_v2_portrait → 013_ideal_targets → 014_playlist_status → 015_playlist_save_status
+  → 016_navigator_proposal_status → 017_ideal_taste_keywords → 018_playlist_refresh_period → 019_playlist_last_refreshed_at  (현재 head)
 ```
 
-> 초기 스키마는 `001_initial_schema` **한 파일에 통합**돼 있다(과거 007~013 등 개별 마이그레이션은 통합됨, 실파일 없음). 이후 `scraps`(002) → `user_subscription`(003)까지 선형. 003에서 **두 갈래로 분기**(`004_drive_folder`+`005_analysis_stage` / `004_scrap_embeddings`)했다가 `006_merge_heads`로 병합, 이후 `007_user_behavior_logs` → `008_drop_transcript` → `009_interval_months` → `010_batch_source_catalog`가 현재 head. 새 마이그레이션은 `down_revision`을 **`010_batch_source_catalog`**로 지정.
+> 초기 스키마는 `001_initial_schema` **한 파일에 통합**돼 있다(과거 007~013 등 개별 마이그레이션은 통합됨, 실파일 없음). 이후 `scraps`(002) → `user_subscription`(003)까지 선형. 003에서 **두 갈래로 분기**(`004_drive_folder`+`005_analysis_stage` / `004_scrap_embeddings`)했다가 `006_merge_heads`로 병합, 이후 007~010까지 선형, 다시 011~019(대부분 프로파일러·네비게이터)가 선형으로 이어져 `019_playlist_last_refreshed_at`가 현재 head. 새 마이그레이션은 `down_revision`을 **`019_playlist_last_refreshed_at`**로 지정.
 
 | 리비전 | 추가/변경 |
 |--------|-----------|
@@ -22,6 +24,14 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `008_drop_transcript` | `video_analysis.transcript` 컬럼 제거 (자막 IP 차단으로 미사용) |
 | `009_interval_months` | `users.analysis_interval_months` 추가 (Drive 자동분석 주기) |
 | `010_batch_source_catalog` | `analysis_batch`·`analysis_source_catalog` 신설 + `user_analysis_source`·`user_profile_history`에 `batch_id` (요청 단위 배치 스코프 분석) |
+| `011_profile_v2` → `012_rename_v2_portrait` | `user_profile_history`에 초상 프로필 JSONB 추가(`v2`) 후 `portrait`로 개명 |
+| `013_ideal_targets` | `user_ideal_persona`에 `target_disposition`·`target_interest` JSONB (목표 성향·관심 도메인) |
+| `014_playlist_status` | `navigator_playlist.status` (pending/ready/failed, 기본 ready) |
+| `015_playlist_save_status` | `navigator_playlist.save_status` (none/saving/saved/failed, 기본 none) |
+| `016_navigator_proposal_status` | `navigator_proposal_cache.status`(기본 ready) + `proposals_json`·`generated_at` nullable화 |
+| `017_ideal_taste_keywords` | `user_ideal_persona.taste_keywords` JSONB (대화 관심 키워드) |
+| `018_playlist_refresh_period` | `navigator_playlist.refresh_period` (none/weekly/monthly, 기본 none) |
+| `019_playlist_last_refreshed_at` | `navigator_playlist.last_refreshed_at` timestamptz (자동 갱신 주기 판정) |
 
 ---
 
@@ -241,6 +251,8 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `dominant_traits` | JSONB | Y | 두드러진 특성 목록 |
 | `supporting_evidence` | JSONB | Y | 근거 데이터 (영상·지표 등) |
 | `tone_of_user` | TEXT | Y | 사용자 말투·톤 요약 |
+| `portrait` | JSONB | Y | 초상 프로필: persona_label·keywords·interest(9도메인)·disposition(6축)·style·reasoning. 프로파일러 산출·네비게이터 주 신호 (011→012) |
+| `batch_id` | UUID | Y | FK → `analysis_batch.id` ON DELETE SET NULL. 이 스냅샷을 유발한 배치 박제 (010) |
 | `created_at` | TIMESTAMPTZ | N | |
 | `updated_at` | TIMESTAMPTZ | N | |
 
@@ -267,6 +279,9 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `sensitivity` | FLOAT | Y | 목표 8축 — 감수성 |
 | `persona_label` | TEXT | Y | 이상향 페르소나 명칭 (010) |
 | `values_temperament` | JSONB | Y | 설계 원본 13축(가치10+기질3). 8축 파생원본 (011) |
+| `target_disposition` | JSONB | Y | 목표 성향 6축 신호 — 화면·재생목록용 (013) |
+| `target_interest` | JSONB | Y | 목표 관심 도메인 분포(예 `{"게임":20,"지식·교육":30}`) (013) |
+| `taste_keywords` | JSONB | Y | 대화에서 추출한 구체 관심 키워드(재생목록 검색 씨앗). 대화 없으면 null (017) |
 | `description` | TEXT | Y | 이상 자아 설명 |
 | `is_active` | BOOLEAN | N | 적용 중 여부. 기본 `false` (008) |
 | `guide_json` | JSONB | Y | 행동 가이드 캐시 (009) |
@@ -288,8 +303,9 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `id` | UUID | N | PK. `gen_random_uuid()` |
 | `user_id` | UUID | N | FK → `users.id` ON DELETE CASCADE |
 | `source_profile_history_id` | UUID | N | FK → `user_profile_history.id` ON DELETE CASCADE. 근거 스냅샷 |
-| `proposals_json` | JSONB | N | 3안 전체(13축+8축+persona+reasoning) 직렬화본 |
-| `generated_at` | TIMESTAMPTZ | N | 생성 시각 |
+| `status` | VARCHAR(20) | N | 생성 상태 — `pending`(백그라운드 생성중) / `ready` / `failed`. 기본 `ready` (016) |
+| `proposals_json` | JSONB | Y | 3안 전체 직렬화본. pending 행은 결과 없음 (016에서 nullable) |
+| `generated_at` | TIMESTAMPTZ | Y | 생성 시각. pending 행은 없음 (016에서 nullable) |
 | `catalog_count` | INT | Y | 생성 당시 시청기록 수 (stale 힌트) |
 | `created_at` | TIMESTAMPTZ | N | |
 | `updated_at` | TIMESTAMPTZ | N | |
@@ -307,6 +323,10 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 | `id` | UUID | N | PK. `gen_random_uuid()` |
 | `user_id` | UUID | N | FK → `users.id` ON DELETE CASCADE |
 | `ideal_id` | UUID | N | FK → `user_ideal_persona.id` ON DELETE CASCADE |
+| `status` | TEXT | N | 생성 상태 — `pending` / `ready` / `failed`. 기본 `ready` (014) |
+| `save_status` | TEXT | N | YouTube 저장 상태 — `none` / `saving` / `saved` / `failed`. 기본 `none` (015) |
+| `refresh_period` | TEXT | N | 자동 갱신 주기 — `none` / `weekly` / `monthly`. 기본 `none` (018) |
+| `last_refreshed_at` | TIMESTAMPTZ | Y | 마지막 (재)생성 시각. 주기 도래 판정용, null이면 미갱신 (019) |
 | `title` | TEXT | Y | 자동 `{persona_label} #N`, 사용자 수정 가능 |
 | `summary` | TEXT | Y | 재생목록 총평 (LLM 큐레이션) |
 | `items_json` | JSONB | Y | 보여줄 영상 10개 |
@@ -317,7 +337,7 @@ PostgreSQL 17 · `pgvector` · `pgcrypto`
 
 **인덱스:** `ix_np_user_ideal (user_id, ideal_id)`
 
-계획: [navigator/PLAN_youtube_playlist.md](./navigator/PLAN_youtube_playlist.md)
+상세: [navigator/README.md](./navigator/README.md)
 
 ---
 

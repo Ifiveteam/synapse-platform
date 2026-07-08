@@ -1,8 +1,8 @@
-import { ArrowUp, ImagePlus, Search, X } from "lucide-react";
+import { ArrowUp, ImagePlus, Search, Square, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { streamCurator } from "@/api/curator";
-import type { ChartEntry } from "@/stores/chat";
+import type { ChartEntry, ChatStoreHook } from "@/stores/chat";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/chat";
@@ -22,19 +22,39 @@ function toBase64(file: File): Promise<{ base64: string; mimeType: string }> {
   });
 }
 
-export function CuratorInput() {
+export function CuratorInput({
+  useStore = useChatStore,
+  persist = true,
+  maxWidthClassName = "max-w-2xl",
+  offline = false,
+  placeholder = "큐레이터에게 무엇이든 물어보세요...",
+  analysisId,
+}: {
+  useStore?: ChatStoreHook;
+  /** false면 대화가 DB에 저장되지 않고, 세션 목록/사이드바 히스토리에도 남지 않는다. */
+  persist?: boolean;
+  /** 입력창 최대 폭 (Tailwind max-w-* 클래스). ChatMessages와 맞춰서 써야 함. */
+  maxWidthClassName?: string;
+  /** true면 백엔드로 전송하지 않고 입력만 막는다 (UI는 그대로 두고 기능만 비활성화). */
+  offline?: boolean;
+  /** 평상시(로그인 O, 스트리밍 X, offline X) 입력창 placeholder. 페이지 맥락에 맞게 바꿀 때 사용. */
+  placeholder?: string;
+  /** 분석 상세 페이지에서 쓸 때 그 분석 id — 있으면 답변이 그 분석 시점 데이터로 한정된다. */
+  analysisId?: string;
+}) {
   const user = useAuthStore((s) => s.user);
-  const isStreaming = useChatStore((s) => s.isStreaming);
-  const sessionId = useChatStore((s) => s.sessionId);
+  const isStreaming = useStore((s) => s.isStreaming);
+  const sessionId = useStore((s) => s.sessionId);
   const { addUserMessage, startAssistantMessage, appendToken, setStatus, addChartEntry, finishAssistantMessage } =
-    useChatStore();
+    useStore();
 
   const loadChats = useSidebarStore((s) => s.loadChats);
-  const disabled = !user || isStreaming;
+  const disabled = !user || isStreaming || offline;
   const [focused, setFocused] = useState(false);
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const [pendingImage, setPendingImage] = useState<{ previewUrl: string; file: File } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -96,33 +116,66 @@ export function CuratorInput() {
     addUserMessage(trimmed, previewUrl);
     const assistantId = startAssistantMessage();
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    let receivedAny = false;
+
     try {
-      for await (const chunk of streamCurator(trimmed, sessionId, imageBase64, imageMimeType)) {
+      for await (const chunk of streamCurator(
+        trimmed,
+        sessionId,
+        imageBase64,
+        imageMimeType,
+        persist,
+        controller.signal,
+        analysisId,
+      )) {
         if (chunk.event === "status") {
           setStatus(assistantId, chunk.content);
         } else if (chunk.event === "chart") {
           try {
             const entry = JSON.parse(chunk.content) as ChartEntry;
             addChartEntry(assistantId, entry);
+            receivedAny = true;
           } catch {
             // ignore malformed chart data
           }
         } else {
           appendToken(assistantId, chunk.content);
+          receivedAny = true;
         }
       }
-    } catch {
-      appendToken(assistantId, "❌ 오류가 발생했습니다.");
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === "AbortError")) {
+        appendToken(assistantId, "❌ 오류가 발생했습니다.");
+      } else if (!receivedAny) {
+        appendToken(assistantId, "*(응답 생성을 중지했습니다)*");
+      }
     } finally {
+      abortControllerRef.current = null;
       finishAssistantMessage(assistantId);
-      void loadChats();
+      if (persist) void loadChats();
     }
+  };
+
+  const handleStop = () => {
+    abortControllerRef.current?.abort();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const file = [...e.clipboardData.items]
+      .find((item) => item.type.startsWith("image/"))
+      ?.getAsFile();
+    if (file) {
+      e.preventDefault();
+      handleFileSelect(file);
     }
   };
 
@@ -139,83 +192,103 @@ export function CuratorInput() {
       )}
 
       <div className="shrink-0 px-6 pb-6 pt-3">
-        {/* 이미지 미리보기 */}
-        {pendingImage && (
-          <div className="mb-2 inline-block">
-            <div className="relative">
-              <img
-                src={pendingImage.previewUrl}
-                alt=""
-                className="h-20 rounded-xl object-cover shadow-md"
-              />
-              <button
-                type="button"
-                onClick={removePendingImage}
-                className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-foreground text-background shadow"
-              >
-                <X size={10} />
-              </button>
+        <div className={`mx-auto w-full ${maxWidthClassName}`}>
+          {/* 이미지 미리보기 */}
+          {pendingImage && (
+            <div className="mb-2 inline-block">
+              <div className="relative">
+                <img
+                  src={pendingImage.previewUrl}
+                  alt=""
+                  className="h-20 rounded-xl object-cover shadow-md"
+                />
+                <button
+                  type="button"
+                  onClick={removePendingImage}
+                  className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-foreground text-background shadow"
+                >
+                  <X size={10} />
+                </button>
+              </div>
             </div>
+          )}
+
+          <div
+            className={`border-border flex items-center gap-3 rounded-2xl border bg-card px-4 py-3 shadow-[0_8px_32px_-4px_rgba(0,0,0,0.18)] ring-1 ring-black/5 outline-none dark:shadow-[0_8px_32px_-4px_rgba(0,0,0,0.5)] dark:ring-white/5 ${
+              disabled && !isStreaming ? "opacity-70" : ""
+            }`}
+            style={focused ? { animation: "input-wave 1.2s ease-out infinite" } : undefined}
+          >
+            <Search size={18} className="text-muted-foreground shrink-0" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              disabled={disabled}
+              placeholder={
+                !user
+                  ? "로그인 후 큐레이터와 대화할 수 있습니다."
+                  : isStreaming
+                    ? "답변 생성 중..."
+                    : offline
+                      ? "지금은 여기서 대화할 수 없어요"
+                      : placeholder
+              }
+              className="placeholder:text-muted-foreground flex-1 bg-transparent text-sm outline-none focus:outline-none disabled:cursor-not-allowed"
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+            />
+
+            {/* 이미지 첨부 버튼 */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={disabled}
+              className="text-muted-foreground hover:text-foreground flex size-8 shrink-0 items-center justify-center rounded-full transition-colors disabled:pointer-events-none disabled:opacity-50"
+              title="이미지 첨부"
+            >
+              <ImagePlus size={16} />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFileSelect(file);
+                e.target.value = "";
+              }}
+            />
+
+            {isStreaming ? (
+              <Button
+                type="button"
+                size="icon"
+                className="size-8 shrink-0 rounded-full"
+                title="생성 중지"
+                onClick={handleStop}
+              >
+                <Square size={14} fill="currentColor" />
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                size="icon"
+                className="size-8 shrink-0 rounded-full"
+                disabled={disabled || (!value.trim() && !pendingImage)}
+                onClick={() => void handleSend()}
+              >
+                <ArrowUp size={16} />
+              </Button>
+            )}
           </div>
-        )}
-
-        <div
-          className={`border-border flex items-center gap-3 rounded-2xl border bg-card px-4 py-3 shadow-[0_8px_32px_-4px_rgba(0,0,0,0.18)] ring-1 ring-black/5 outline-none dark:shadow-[0_8px_32px_-4px_rgba(0,0,0,0.5)] dark:ring-white/5 ${
-            disabled && !isStreaming ? "opacity-70" : ""
-          }`}
-          style={focused ? { animation: "input-wave 1.2s ease-out infinite" } : undefined}
-        >
-          <Search size={18} className="text-muted-foreground shrink-0" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={disabled}
-            placeholder={
-              !user
-                ? "로그인 후 큐레이터와 대화할 수 있습니다."
-                : isStreaming
-                  ? "답변 생성 중..."
-                  : "큐레이터에게 무엇이든 물어보세요..."
-            }
-            className="placeholder:text-muted-foreground flex-1 bg-transparent text-sm outline-none focus:outline-none disabled:cursor-not-allowed"
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-          />
-
-          {/* 이미지 첨부 버튼 */}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={disabled}
-            className="text-muted-foreground hover:text-foreground flex size-8 shrink-0 items-center justify-center rounded-full transition-colors disabled:pointer-events-none disabled:opacity-50"
-            title="이미지 첨부"
-          >
-            <ImagePlus size={16} />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleFileSelect(file);
-              e.target.value = "";
-            }}
-          />
-
-          <Button
-            type="button"
-            size="icon"
-            className="size-8 shrink-0 rounded-full"
-            disabled={disabled || (!value.trim() && !pendingImage)}
-            onClick={() => void handleSend()}
-          >
-            <ArrowUp size={16} />
-          </Button>
+          <p className="text-muted-foreground mt-2 text-center text-[11px]">
+            큐레이터는 실수할 수 있습니다. 중요한 정보는 다시 한번 확인해 주세요.
+          </p>
         </div>
       </div>
     </>

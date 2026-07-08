@@ -76,7 +76,7 @@ export function AccountSidePanel() {
           className="mt-4 w-full"
           asChild
         >
-          <Link to={ROUTES.idealManagement}>이상향 관리</Link>
+          <Link to={ROUTES.ME.HOME}>이상향 관리</Link>
         </Button>
       </div>
 

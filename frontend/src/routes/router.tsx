@@ -8,11 +8,9 @@ import { AnalysisComparePage } from "@/pages/AnalysisComparePage";
 import { AnalysisDetailPage } from "@/pages/AnalysisDetailPage";
 import { DownloadPage } from "@/pages/DownloadPage";
 import { IdealDetailPage } from "@/pages/IdealDetailPage";
-import { IdealManagementPage } from "@/pages/IdealManagementPage";
 import { IdealSetupPage } from "@/pages/IdealSetupPage";
 import { PlaylistPage } from "@/pages/PlaylistPage";
 import { MyActivityPage } from "@/pages/MyActivityPage";
-import { MyAnalysesPage } from "@/pages/MyAnalysesPage";
 import { MyHubPage } from "@/pages/MyHubPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ScrapDetailPage } from "@/pages/ScrapDetailPage";
@@ -29,11 +27,19 @@ export const router = createBrowserRouter([
     children: [
       { path: ROUTES.home, element: <HomePage /> },
       { path: ROUTES.ME.HOME, element: <MyHubPage /> },
-      { path: ROUTES.myAnalyses, element: <MyAnalysesPage /> },
+      // 폐기된 목록 페이지 — 옛 링크·북마크는 허브로 리다이렉트
+      {
+        path: ROUTES.myAnalyses,
+        element: <Navigate to={ROUTES.ME.HOME} replace />,
+      },
       { path: ROUTES.ME.ACTIVITY, element: <MyActivityPage /> },
       { path: "/me/analyses/compare", element: <AnalysisComparePage /> },
       { path: "/me/analyses/:id", element: <AnalysisDetailPage /> },
-      { path: ROUTES.idealManagement, element: <IdealManagementPage /> },
+      // 폐기된 이상향 관리 목록 페이지 — 옛 링크·북마크는 허브로 리다이렉트
+      {
+        path: ROUTES.idealManagement,
+        element: <Navigate to={ROUTES.ME.HOME} replace />,
+      },
       { path: ROUTES.idealSetup, element: <IdealSetupPage /> },
       { path: "/me/ideals/:id", element: <IdealDetailPage /> },
       { path: "/me/playlists", element: <PlaylistPage /> },
