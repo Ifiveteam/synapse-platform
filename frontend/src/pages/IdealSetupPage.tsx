@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
+  ArrowUp,
   Check,
   ChevronRight,
   MessageSquare,
-  Send,
+  X,
 } from "lucide-react";
 
 import { fetchMyAnalyses, fetchMyAnalysisSnapshot } from "@/api/analyses";
@@ -14,7 +15,6 @@ import { InterestPie, buildInterestLegend } from "@/components/analyses/interest
 import { RadarCompareChart } from "@/components/ideals/RadarCompareChart";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import type { AnalysisResultItem } from "@/lib/analyses/types";
 import {
   createIdeal,
@@ -146,11 +146,8 @@ interface ChatMessage {
   content: string;
 }
 
-const GREETING: ChatMessage = {
-  role: "assistant",
-  content:
-    "이상향을 함께 만들어볼게요. 요즘 어떤 콘텐츠가 끌리는지, 뭘 더 보고 싶은지 편하게 말씀해 주세요. 마음에 드는 카드를 골라 시작해도 좋아요.",
-};
+const GREETING_TEXT =
+  "이상향을 함께 만들어볼게요. 요즘 어떤 콘텐츠가 끌리는지, 뭘 더 보고 싶은지 편하게 말씀해 주세요.";
 
 /** 설계 대화 세션 id.
  * - resume=true(배너 '이어서 분석하기')  → 그 스냅샷의 기존 세션을 재사용(대화 복원).
@@ -279,25 +276,18 @@ function IdealCharts({
   dispRadar,
   curPie,
   idealPie,
-  orientation = "col",
 }: {
   dispRadar: { label: string; current: number; ideal: number }[];
   curPie: { axis: string; value: number }[];
   idealPie: { axis: string; value: number }[] | null;
   orientation?: "col" | "row";
 }) {
-  const row = orientation === "row";
   return (
-    <div
-      className={cn(
-        "border-border rounded-2xl border bg-card px-4 py-4",
-        row ? "flex flex-col gap-4 lg:flex-row lg:gap-6" : "h-full space-y-4",
-      )}
-    >
-      {/* 성향 6각 */}
-      <div className={row ? "min-w-0 lg:flex-1" : ""}>
+    <div className="grid gap-4 lg:grid-cols-2">
+      {/* 성향 스파이더 — 별도 박스 */}
+      <div className="border-border flex flex-col rounded-2xl border bg-card px-4 py-4">
         <div className="mb-1 flex items-center justify-between">
-          <p className="text-sm font-semibold">성향</p>
+          <p className="text-sm font-semibold">성향 스파이더</p>
           <div className="text-muted-foreground flex items-center gap-3 text-xs">
             <span className="flex items-center gap-1.5">
               <span className="bg-muted-foreground inline-block h-2 w-4 rounded-full" />
@@ -312,7 +302,7 @@ function IdealCharts({
           </div>
         </div>
         {dispRadar.length > 0 ? (
-          <div className="flex justify-center">
+          <div className="flex flex-1 items-center justify-center">
             <RadarCompareChart axes={dispRadar} size={250} labelMargin={38} />
           </div>
         ) : (
@@ -322,17 +312,26 @@ function IdealCharts({
         )}
       </div>
 
-      {/* 관심 도메인 — 좌측 공유 범례 + 도넛(현재/이상향) */}
-      <div
-        className={cn(
-          "border-border",
-          row
-            ? "min-w-0 border-t pt-4 lg:flex-1 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6"
-            : "border-t pt-4",
-        )}
-      >
+      {/* 관심 도메인 — 별도 박스, 범례 왼쪽 */}
+      <div className="border-border flex flex-col rounded-2xl border bg-card px-4 py-4">
         <p className="mb-3 text-sm font-semibold">관심 도메인</p>
-        <div className="flex items-start gap-3">
+        <div className="flex flex-1 items-center gap-3">
+          <ul className="border-border flex w-28 shrink-0 flex-col gap-1.5 rounded-xl border p-2.5">
+            {[...buildInterestLegend(curPie)]
+              .sort((a, b) => b.value - a.value)
+              .map((l) => (
+                <li
+                  key={l.axis}
+                  className="flex items-center gap-1.5 text-[11px] leading-tight"
+                >
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ background: l.color }}
+                  />
+                  <span className="flex-1 whitespace-nowrap">{l.axis}</span>
+                </li>
+              ))}
+          </ul>
           <div className="flex min-w-0 flex-1 items-start justify-center gap-3">
             <div className="min-w-0 flex-1">
               {idealPie && (
@@ -361,25 +360,9 @@ function IdealCharts({
               </div>
             )}
           </div>
-          <ul className="border-border flex w-24 shrink-0 flex-col gap-1 rounded-xl border p-2.5">
-            {[...buildInterestLegend(curPie)]
-              .sort((a, b) => b.value - a.value)
-              .map((l) => (
-                <li
-                  key={l.axis}
-                  className="flex items-center gap-1.5 text-[10px] leading-tight"
-                >
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ background: l.color }}
-                  />
-                  <span className="flex-1 whitespace-nowrap">{l.axis}</span>
-                </li>
-              ))}
-          </ul>
-        </div>
         </div>
       </div>
+    </div>
   );
 }
 
@@ -406,7 +389,7 @@ function ShowProposals({
 
   // 챗 상태 (선택 없이도 대화 가능) — 세션은 스냅샷 단위로 고정해 대화가 유지됨
   const [sessionId] = useState(() => resolveSessionId(analysisId, resume));
-  const [messages, setMessages] = useState<ChatMessage[]>([GREETING]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   // 대화로 실시간 갱신되는 이상향(성향·도메인·8·13) + 완성 결과
@@ -419,6 +402,25 @@ function ShowProposals({
   // 대화 마무리 후 '넘어갈지/더 대화할지' 확인 팝업
   const [pendingFinalize, setPendingFinalize] = useState(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  // 대화기록 오버레이 높이 (상단 핸들 드래그로 조절) + 닫기 상태
+  const [chatHeight, setChatHeight] = useState(300);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
+  const startResizeChat = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = chatHeight;
+    const onMove = (ev: MouseEvent) => {
+      const dy = startY - ev.clientY; // 위로 끌면 커지고, 아래로 끌면 작아짐
+      setChatHeight(Math.min(Math.max(startH + dy, 140), 640));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
 
   // 새 메시지/토큰마다 대화창을 맨 아래로 자동 스크롤
   useEffect(() => {
@@ -440,15 +442,14 @@ function ShowProposals({
     void getChatHistory(sessionId)
       .then((hist) => {
         if (cancelled || hist.length === 0) return;
-        setMessages([
-          GREETING,
-          ...hist
+        setMessages(
+          hist
             .filter((h) => h.role === "user" || h.role === "assistant")
             .map((h) => ({
               role: h.role as ChatMessage["role"],
               content: h.content,
             })),
-        ]);
+        );
       })
       .catch(() => {
         /* 이력 없음/오류 무시 — 인사말만 */
@@ -516,8 +517,10 @@ function ShowProposals({
     const force = opts?.force ?? false;
     const text = input.trim();
     if (streaming || (!force && !text)) return;
+    setChatCollapsed(false); // 보내면 대화기록 오버레이 다시 열기
     if (text) {
       setInput("");
+      if (inputRef.current) inputRef.current.style.height = "auto";
       setMessages((m) => [
         ...m,
         { role: "user", content: text },
@@ -595,6 +598,8 @@ function ShowProposals({
   };
 
   const hasChatIdeal = liveDisp !== null || finalIdeal !== null;
+  const hasMessages = messages.length > 0;
+  const overlayOpen = hasMessages && !chatCollapsed;
 
   const confirmCreate = () => {
     if (!selectedProposal && !hasChatIdeal) return;
@@ -662,7 +667,7 @@ function ShowProposals({
   const currentPersona = snapshot ? snapshotPersonaOf(snapshot) : null;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex min-h-0 flex-1 flex-col gap-5">
       {phase === 2 ? (
         <>
           <div className="flex items-start justify-between gap-4">
@@ -764,50 +769,111 @@ function ShowProposals({
             orientation="row"
           />
 
-          {/* 아래: 채팅으로 조정 */}
-          <div className="border-border flex h-[440px] flex-col overflow-hidden rounded-2xl border bg-card">
-            <div
-              ref={chatScrollRef}
-              className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4"
-            >
-              {messages.map((m, i) => (
+          {/* 아래: 입력창은 하단 고정, 대화기록은 그 위에 오버레이(높이 조절 가능) */}
+          <div className="relative mt-auto">
+            {/* 대화 기록 오버레이 — 차트 위로 떠서 표시, 상단 핸들 드래그로 높이 조절 */}
+            {overlayOpen && (
+              <div
+                className="border-border bg-card absolute inset-x-0 bottom-full z-20 mb-2 flex flex-col overflow-hidden rounded-2xl border shadow-[0_8px_32px_-4px_rgba(0,0,0,0.18)] dark:shadow-[0_8px_32px_-4px_rgba(0,0,0,0.5)]"
+                style={{ height: chatHeight }}
+              >
                 <div
-                  key={i}
-                  className={cn(
-                    "flex",
-                    m.role === "user" ? "justify-end" : "justify-start",
-                  )}
+                  onMouseDown={startResizeChat}
+                  title="드래그해서 대화창 크기 조절"
+                  className="hover:bg-secondary/60 relative flex h-6 shrink-0 cursor-ns-resize items-center justify-center border-b transition-colors"
                 >
-                  <div
-                    className={cn(
-                      "max-w-[80%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap",
-                      m.role === "user"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-secondary text-foreground",
-                    )}
+                  <span className="bg-muted-foreground/30 h-1 w-10 rounded-full" />
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={() => setChatCollapsed(true)}
+                    title="대화 기록 닫기"
+                    aria-label="대화 기록 닫기"
+                    className="text-muted-foreground hover:text-foreground hover:bg-secondary absolute right-1.5 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full transition-colors"
                   >
-                    {m.content || (streaming ? "…" : "")}
+                    <X size={14} />
+                  </button>
+                </div>
+                <div
+                  ref={chatScrollRef}
+                  className="min-h-0 flex-1 overflow-y-auto px-4 py-3"
+                >
+                  <div className="flex flex-col gap-4">
+                    {messages.map((m, i) => (
+                      <div
+                        key={i}
+                        className={cn(
+                          "flex",
+                          m.role === "user" ? "justify-end" : "justify-start",
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "px-4 py-2.5 text-sm whitespace-pre-wrap",
+                            m.role === "user"
+                              ? "bg-primary max-w-[75%] rounded-3xl rounded-br-md text-white"
+                              : "bg-muted max-w-[85%] rounded-3xl rounded-bl-md leading-relaxed shadow-sm ring-1 ring-black/5 dark:ring-white/5",
+                          )}
+                        >
+                          {m.content || (streaming ? "…" : "")}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
-            <div className="border-border flex items-center gap-2 border-t px-3 pt-3 pb-4">
-              <Input
+              </div>
+            )}
+
+            {/* 안내 가이드 — 오버레이가 닫혀 있을 땐 항상 입력창 바로 위 가운데 표시 */}
+            {!overlayOpen && (
+              <p className="text-muted-foreground mb-3 text-center text-sm leading-relaxed">
+                {GREETING_TEXT}
+              </p>
+            )}
+
+            {/* 대화기록을 닫아둔 상태 — 다시 열기 */}
+            {hasMessages && chatCollapsed && (
+              <div className="mb-2 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setChatCollapsed(false)}
+                  className="text-muted-foreground hover:text-foreground hover:bg-secondary inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs transition-colors"
+                >
+                  <MessageSquare size={14} />
+                  대화 기록 보기
+                </button>
+              </div>
+            )}
+
+            {/* 입력창 — 기본 한 줄, 내용 늘면 자동 확장 (오버레이와 동일한 재질) */}
+            <div className="border-border flex items-end gap-3 rounded-2xl border bg-card px-4 py-3 shadow-[0_8px_32px_-4px_rgba(0,0,0,0.18)] dark:shadow-[0_8px_32px_-4px_rgba(0,0,0,0.5)]">
+              <textarea
+                ref={inputRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  const el = e.target;
+                  el.style.height = "auto";
+                  el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+                }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") void send();
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void send();
+                  }
                 }}
                 placeholder="어떤 콘텐츠가 끌리는지 편하게 말해보세요"
-                className="flex-1"
+                rows={1}
+                className="placeholder:text-muted-foreground max-h-40 flex-1 resize-none bg-transparent text-sm leading-relaxed outline-none disabled:cursor-not-allowed"
               />
               <Button
                 size="icon"
                 onClick={() => void send()}
                 disabled={streaming}
                 aria-label="전송"
+                className="size-8 shrink-0 rounded-full"
               >
-                <Send size={16} />
+                <ArrowUp size={16} />
               </Button>
             </div>
           </div>

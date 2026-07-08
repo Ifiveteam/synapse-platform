@@ -36,7 +36,7 @@ export function LoginPanel() {
   const loginDev = useAuthStore((s) => s.loginDev);
   const closeLoginModal = useShellStore((s) => s.closeLoginModal);
 
-  // 실제 Google OAuth: 백엔드 /auth/login → 구글 동의 → 콜백(쿠키) → /upload
+  // 실제 Google OAuth: 백엔드 /auth/login → 구글 동의 → 콜백(쿠키) → 메인(/)
   const handleGoogleLogin = () => {
     window.location.href = `${API_BASE_URL}/api/v1/auth/login`;
   };
@@ -49,7 +49,7 @@ export function LoginPanel() {
       loginMock();
     }
     closeLoginModal();
-    navigate(ROUTES.upload);
+    navigate(ROUTES.home);
   };
 
   return (
