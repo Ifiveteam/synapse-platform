@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.curator.constants import CURATOR_AGENT_TYPE, HISTORY_MESSAGE_LIMIT
 from app.agents.curator.engine import CuratorEngine, get_curator_engine
+from app.agents.curator.scope import resolve_analysis_scope
 from app.agents.curator.streaming import format_stream_event
 from app.core.database.session import get_db
 from app.models.chat import AIChatLog
@@ -219,8 +220,18 @@ class CuratorService:
         image_base64: str | None = None,
         image_mime_type: str | None = None,
         persist: bool = True,
+        analysis_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         history = await self._load_history(session_id, user_id) if persist else []
+
+        scope = None
+        analysis_uuid: uuid.UUID | None = None
+        if analysis_id:
+            scope = await resolve_analysis_scope(self.db, user_id, analysis_id)
+            try:
+                analysis_uuid = uuid.UUID(str(analysis_id))
+            except ValueError:
+                analysis_uuid = None
 
         if image_base64 and image_mime_type:
             content: list[dict] = [
@@ -248,7 +259,10 @@ class CuratorService:
         response_tokens: list[str] = []
         try:
             async for event in self.engine.stream(
-                initial_state=initial_state, db=self.db
+                initial_state=initial_state,
+                db=self.db,
+                analysis_id=analysis_uuid,
+                scope=scope,
             ):
                 yield format_stream_event(event)
                 if event.event == "token":

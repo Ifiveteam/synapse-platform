@@ -33,6 +33,7 @@ from app.agents.curator.constants import (
     RECENT_CONTEXT_WINDOW,
     STREAM_ERROR_MESSAGE,
 )
+from app.agents.curator.scope import AnalysisScope
 from app.agents.curator.tools import build_tools
 from app.agents.curator.types import CuratorState, CuratorStreamEvent
 
@@ -65,11 +66,13 @@ _SYSTEM_PROMPT_BASE = """
 - 유저 데이터 질문("내 성향", "많이 본 영상", "구독 채널" 등) → query_db 등 조회 툴 호출.
 - "구독 채널 중 많이 본 거", "구독한 채널 순위" 처럼 구독 채널과 시청 기록을 **같이** 묻는 질문
   → 반드시 get_top_subscribed_channels 호출. query_db로 직접 JOIN 시도하지 마세요(컬럼명 오조인 위험).
-- "OO 채널 뭐야?", "OO는 어떤 채널이야?" 처럼 **유저가 보거나 구독한 채널**에 대해 묻는 질문은
-  일반 지식 질문이 아닙니다. query_db로 그 채널의 시청 영상 제목·카테고리를 조회해서, 실제
-  시청 데이터에 근거해 어떤 성격의 채널로 보이는지 설명하세요. (채널의 공식 소개·구독자 수처럼
-  DB에 없는 정보는 모른다고 솔직히 답하세요. 완전히 낯선 채널명이라 데이터가 없으면 그때만
-  "정보가 없다"고 답하세요.)
+- "OO 채널 뭐야?", "OO는 어떤 채널이야?", "OO 영상은?" 처럼 **채널명(고유명사)으로** 묻는
+  질문은 일반 지식 질문이 아니고, search_videos/search_analysis(의미 검색)로도 답하면 안
+  됩니다 — 채널명은 임베딩 유사도 검색과 안 맞아서 완전히 무관한 결과가 나올 수 있습니다.
+  반드시 query_db로 `channel = '채널명'` 조건으로 직접 조회해서, 실제 시청 데이터에 근거해
+  답하세요. (채널의 공식 소개·구독자 수처럼 DB에 없는 정보는 모른다고 솔직히 답하세요.
+  조회 결과가 0건이면 그 채널 영상을 시청한 기록이 없다고 솔직히 답하세요 — 다른 채널
+  이야기를 그 채널 얘기인 것처럼 지어내면 절대 안 됩니다.)
 - "이 영상 뭐야?", "무슨 내용이야?", "OO 영상 줄거리/내용 알려줘"처럼 **영상 하나의 실제 내용**을
   묻는 질문 → search_analysis를 그 영상 제목으로 호출하세요. query_db로는 답할 수 없습니다
   (영상 내용 요약은 video_analysis 테이블에 있는데, query_db는 이 테이블에 접근할 수 없습니다.
@@ -100,10 +103,15 @@ _SYSTEM_PROMPT_BASE = """
 """.strip()
 
 
-def _current_date_kst() -> str:
-    """한국 시간 기준 오늘 날짜. 안 넣으면 Gemini가 날짜를 지어내 대화마다 다른 '오늘'을 답한다."""
-    now = datetime.now(_KST)
-    return f"{now.year}년 {now.month}월 {now.day}일"
+def _current_date_kst(reference: datetime | None = None) -> tuple[str, str]:
+    """한국 시간 기준 오늘 날짜. 안 넣으면 Gemini가 날짜를 지어내 대화마다 다른 '오늘'을 답한다.
+
+    reference가 있으면(분석 상세 페이지 스코프) 실제 오늘 대신 그 분석 시점을 "오늘"로
+    알려준다 — "지난 일주일" 같은 상대 날짜 표현이 그 분석의 조회 범위와 어긋나지 않도록.
+    (한국어 표기, ISO 날짜) 튜플을 반환한다 — ISO는 SQL 리터럴로 그대로 쓸 수 있게.
+    """
+    now = reference.astimezone(_KST) if reference else datetime.now(_KST)
+    return f"{now.year}년 {now.month}월 {now.day}일", now.date().isoformat()
 
 
 def _message_text(content: Any) -> str:
@@ -179,9 +187,21 @@ def _build_turn_messages(messages: list[BaseMessage]) -> list[BaseMessage]:
     return list(messages[last_human_idx:])
 
 
-def _build_system_prompt(state: CuratorState) -> str:
+def _build_system_prompt(
+    state: CuratorState, reference_date: datetime | None = None
+) -> str:
     messages = state.get("messages", [])
-    instruction = f"{_SYSTEM_PROMPT_BASE}\n\n[오늘 날짜] {_current_date_kst()}"
+    date_kr, date_iso = _current_date_kst(reference_date)
+    instruction = f"{_SYSTEM_PROMPT_BASE}\n\n[오늘 날짜] {date_kr}"
+    if reference_date is not None:
+        # 분석 상세 페이지 스코프 — SQL의 now()/current_date는 실제 현재 시각을 반환해서
+        # 위에서 알려준 "오늘"과 어긋난다. "지난 일주일" 등 상대 날짜를 SQL로 계산할 땐
+        # now() 대신 이 날짜를 리터럴로 써야 조회 범위(그 분석 시점 데이터)와 맞아떨어진다.
+        instruction += (
+            f"\n이 대화는 특정 분석 하나로 한정되어 있습니다. SQL에서 날짜 계산이 "
+            f"필요하면 now()/current_date를 쓰지 말고 반드시 '{date_iso}'::date를 "
+            f"기준으로 계산하세요 (예: '{date_iso}'::date - interval '7 days')."
+        )
 
     recent_context = _build_recent_context(messages, RECENT_CONTEXT_WINDOW)
     if recent_context:
@@ -249,9 +269,15 @@ def _detect_forced_tool(state: CuratorState) -> str | None:
     return None
 
 
-def build_graph(db: AsyncSession, user_id: uuid.UUID):
-    tools = build_tools(db, user_id)
+def build_graph(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    analysis_id: uuid.UUID | None = None,
+    scope: AnalysisScope | None = None,
+):
+    tools = build_tools(db, user_id, analysis_id=analysis_id, scope=scope)
     tools_by_name = {t.name: t for t in tools}
+    reference_date = scope.snapshot_date if scope else None
 
     llm = ChatGoogleGenerativeAI(
         model=GEMINI_MODEL,
@@ -266,7 +292,7 @@ def build_graph(db: AsyncSession, user_id: uuid.UUID):
         writer = get_stream_writer()
         writer({"event": "status", "content": "분석 중..."})
 
-        system_prompt = _build_system_prompt(state)
+        system_prompt = _build_system_prompt(state, reference_date)
         turn_messages = _build_turn_messages(state.get("messages", []))
         messages = [SystemMessage(content=system_prompt), *turn_messages]
 
@@ -370,9 +396,11 @@ class CuratorEngine:
         *,
         initial_state: CuratorState,
         db: AsyncSession,
+        analysis_id: uuid.UUID | None = None,
+        scope: AnalysisScope | None = None,
     ) -> AsyncIterator[CuratorStreamEvent]:
         user_id = initial_state["user_id"]
-        graph = build_graph(db, user_id)
+        graph = build_graph(db, user_id, analysis_id=analysis_id, scope=scope)
 
         async for mode, chunk in graph.astream(
             initial_state,

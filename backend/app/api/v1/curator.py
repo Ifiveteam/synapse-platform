@@ -41,6 +41,7 @@ async def stream_chat(
             image_base64=request.image_base64,
             image_mime_type=request.image_mime_type,
             persist=request.persist,
+            analysis_id=request.analysis_id,
         ),
         media_type="text/event-stream",
         headers={

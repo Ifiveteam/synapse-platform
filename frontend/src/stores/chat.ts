@@ -184,5 +184,17 @@ export function createChatStore(storageKey: string): ChatStoreHook {
 /** 홈 화면 큐레이터 채팅 세션 (사이드바 히스토리와 공유). */
 export const useChatStore = createChatStore("synapse-chat");
 
+const analysisChatStores = new Map<string, ChatStoreHook>();
+
+/** 분석 상세 페이지 전용 큐레이터 세션 — 분석 id마다 독립된 대화. */
+export function getAnalysisChatStore(analysisId: string): ChatStoreHook {
+  let store = analysisChatStores.get(analysisId);
+  if (!store) {
+    store = createChatStore(`synapse-analysis-chat-${analysisId}`);
+    analysisChatStores.set(analysisId, store);
+  }
+  return store;
+}
+
 /** /me 허브 전용 큐레이터 채팅 세션 — 홈과 분리된 독립 대화. */
 export const useHubChatStore = createChatStore("synapse-hub-chat");

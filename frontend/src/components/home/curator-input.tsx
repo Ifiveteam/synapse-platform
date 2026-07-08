@@ -26,12 +26,21 @@ export function CuratorInput({
   useStore = useChatStore,
   persist = true,
   maxWidthClassName = "max-w-2xl",
+  offline = false,
+  placeholder = "큐레이터에게 무엇이든 물어보세요...",
+  analysisId,
 }: {
   useStore?: ChatStoreHook;
   /** false면 대화가 DB에 저장되지 않고, 세션 목록/사이드바 히스토리에도 남지 않는다. */
   persist?: boolean;
   /** 입력창 최대 폭 (Tailwind max-w-* 클래스). ChatMessages와 맞춰서 써야 함. */
   maxWidthClassName?: string;
+  /** true면 백엔드로 전송하지 않고 입력만 막는다 (UI는 그대로 두고 기능만 비활성화). */
+  offline?: boolean;
+  /** 평상시(로그인 O, 스트리밍 X, offline X) 입력창 placeholder. 페이지 맥락에 맞게 바꿀 때 사용. */
+  placeholder?: string;
+  /** 분석 상세 페이지에서 쓸 때 그 분석 id — 있으면 답변이 그 분석 시점 데이터로 한정된다. */
+  analysisId?: string;
 }) {
   const user = useAuthStore((s) => s.user);
   const isStreaming = useStore((s) => s.isStreaming);
@@ -40,7 +49,7 @@ export function CuratorInput({
     useStore();
 
   const loadChats = useSidebarStore((s) => s.loadChats);
-  const disabled = !user || isStreaming;
+  const disabled = !user || isStreaming || offline;
   const [focused, setFocused] = useState(false);
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -119,6 +128,7 @@ export function CuratorInput({
         imageMimeType,
         persist,
         controller.signal,
+        analysisId,
       )) {
         if (chunk.event === "status") {
           setStatus(assistantId, chunk.content);
@@ -156,6 +166,16 @@ export function CuratorInput({
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const file = [...e.clipboardData.items]
+      .find((item) => item.type.startsWith("image/"))
+      ?.getAsFile();
+    if (file) {
+      e.preventDefault();
+      handleFileSelect(file);
     }
   };
 
@@ -206,13 +226,16 @@ export function CuratorInput({
               value={value}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               disabled={disabled}
               placeholder={
                 !user
                   ? "로그인 후 큐레이터와 대화할 수 있습니다."
                   : isStreaming
                     ? "답변 생성 중..."
-                    : "큐레이터에게 무엇이든 물어보세요..."
+                    : offline
+                      ? "지금은 여기서 대화할 수 없어요"
+                      : placeholder
               }
               className="placeholder:text-muted-foreground flex-1 bg-transparent text-sm outline-none focus:outline-none disabled:cursor-not-allowed"
               onFocus={() => setFocused(true)}

@@ -14,8 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.curator.constants import (
     ANALYSIS_SEARCH_LIMIT,
+    SEARCH_SIMILARITY_THRESHOLD,
     VIDEO_SEARCH_LIMIT,
 )
+from app.agents.curator.scope import AnalysisScope
 from app.agents.shared.embedding import embed_texts
 
 logger = logging.getLogger(__name__)
@@ -148,8 +150,37 @@ def _emit_chart(writer, chart_type: str, title: str, items: list) -> None:
     )
 
 
-def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
-    """db·user_id를 클로저로 캡처한 툴 목록을 반환합니다."""
+def _insert_condition(sql: str, clean: str, condition: str) -> str:
+    """clean(대문자 SQL)의 GROUP BY/ORDER BY/LIMIT/HAVING보다 앞에 조건절을 삽입합니다."""
+    clause_positions = [
+        p
+        for p in (
+            clean.find(kw) for kw in (" GROUP BY", " ORDER BY", " LIMIT", " HAVING")
+        )
+        if p != -1
+    ]
+    insert_at = min(clause_positions) if clause_positions else len(sql.rstrip(";"))
+    prefix = "AND" if "WHERE" in clean[:insert_at] else "WHERE"
+    return (
+        sql[:insert_at].rstrip() + f" {prefix} {condition} " + sql[insert_at:].lstrip()
+    )
+
+
+def build_tools(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    analysis_id: uuid.UUID | None = None,
+    scope: AnalysisScope | None = None,
+) -> list:
+    """db·user_id를 클로저로 캡처한 툴 목록을 반환합니다.
+
+    analysis_id/scope가 있으면(분석 상세 페이지 채팅), 시청 기록 조회를 그 분석
+    하나로 한정합니다 — 다른 분석의 데이터가 답변에 섞이지 않도록.
+    scope.catalog_ids가 있으면 정확히 그 영상들만, 없으면(옛날 분석) scope.window
+    기간으로 근사합니다.
+    """
+    watch_catalog_ids = scope.catalog_ids if scope else None
+    watch_window = scope.window if scope else None
 
     # LLM이 한 턴에 툴을 여러 개 동시 호출하면(예: "지난주랑 이번주 비교해줘" → query_db 2회)
     # LangGraph ToolNode가 asyncio.gather로 병렬 실행한다. 그런데 모든 툴이 같은
@@ -243,28 +274,26 @@ def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
                 # user_id 조건 강제 확인 — GROUP BY/ORDER BY/LIMIT/HAVING보다 반드시 앞에 삽입해야
                 # 한다 (끝에 그냥 붙이면 "... LIMIT 5 WHERE user_id = ..." 같은 문법 오류가 난다).
                 if safe_uid not in safe_sql:
-                    clause_positions = [
-                        p
-                        for p in (
-                            clean.find(kw)
-                            for kw in (" GROUP BY", " ORDER BY", " LIMIT", " HAVING")
-                        )
-                        if p != -1
-                    ]
-                    insert_at = (
-                        min(clause_positions)
-                        if clause_positions
-                        else len(safe_sql.rstrip(";"))
+                    safe_sql = _insert_condition(
+                        safe_sql, clean, f"user_id = '{safe_uid}'"
                     )
-                    condition = (
-                        f"AND user_id = '{safe_uid}'"
-                        if "WHERE" in clean[:insert_at]
-                        else f"WHERE user_id = '{safe_uid}'"
+                    clean = safe_sql.strip().upper()
+
+                # 분석 상세 페이지에서 온 요청이면, 시청 기록 조회를 그 분석 하나로 한정.
+                # (LLM이 직접 넣을 수 없는 서버 강제 조건 — user_id와 무관하게 항상 삽입)
+                # catalog_ids가 있으면 정확히 그 영상들만, 없으면 기간으로 근사.
+                if watch_catalog_ids is not None and "USER_WATCH_CATALOG" in referenced:
+                    id_list = ", ".join(f"'{cid}'" for cid in watch_catalog_ids)
+                    safe_sql = _insert_condition(
+                        safe_sql, clean, f"id IN ({id_list or 'NULL'})"
                     )
-                    safe_sql = (
-                        safe_sql[:insert_at].rstrip()
-                        + f" {condition} "
-                        + safe_sql[insert_at:].lstrip()
+                    clean = safe_sql.strip().upper()
+                elif watch_window and "USER_WATCH_CATALOG" in referenced:
+                    win_start, win_end = watch_window
+                    safe_sql = _insert_condition(
+                        safe_sql,
+                        clean,
+                        f"watched_at BETWEEN '{win_start.isoformat()}' AND '{win_end.isoformat()}'",
                     )
                     clean = safe_sql.strip().upper()
 
@@ -324,26 +353,40 @@ def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
                     return "임베딩 생성에 실패했습니다."
                 vec = vecs[0]
 
+                params: dict[str, object] = {
+                    "vec": str(vec),
+                    "uid": str(user_id),
+                    "lim": VIDEO_SEARCH_LIMIT,
+                }
+                if watch_catalog_ids is not None:
+                    window_clause = "AND id = ANY(:catalog_ids)"
+                    params["catalog_ids"] = [str(c) for c in watch_catalog_ids]
+                elif watch_window:
+                    window_clause = "AND watched_at BETWEEN :win_start AND :win_end"
+                    params["win_start"], params["win_end"] = watch_window
+                else:
+                    window_clause = ""
+
                 rows = (
                     await db.execute(
-                        text("""
+                        text(f"""
                             SELECT title, channel, watched_at,
                                    1 - (embedding <=> CAST(:vec AS vector)) AS score
                             FROM user_watch_catalog
-                            WHERE user_id = :uid AND embedding IS NOT NULL
+                            WHERE user_id = :uid AND embedding IS NOT NULL {window_clause}
                             ORDER BY embedding <=> CAST(:vec AS vector)
                             LIMIT :lim
                         """),
-                        {
-                            "vec": str(vec),
-                            "uid": str(user_id),
-                            "lim": VIDEO_SEARCH_LIMIT,
-                        },
+                        params,
                     )
                 ).fetchall()
 
+                rows = [r for r in rows if r.score >= SEARCH_SIMILARITY_THRESHOLD]
                 if not rows:
-                    return f"'{query}' 관련 시청 영상이 없습니다."
+                    return (
+                        f"'{query}'와 관련 있는 시청 영상을 찾지 못했습니다. "
+                        "억지로 무관한 영상을 관련 있는 것처럼 답하지 마세요."
+                    )
 
                 _emit_chart(
                     writer,
@@ -382,27 +425,41 @@ def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
                     return "임베딩 생성에 실패했습니다."
                 vec = vecs[0]
 
+                params: dict[str, object] = {
+                    "vec": str(vec),
+                    "uid": str(user_id),
+                    "lim": ANALYSIS_SEARCH_LIMIT,
+                }
+                if watch_catalog_ids is not None:
+                    window_clause = "AND uwc.id = ANY(:catalog_ids)"
+                    params["catalog_ids"] = [str(c) for c in watch_catalog_ids]
+                elif watch_window:
+                    window_clause = "AND uwc.watched_at BETWEEN :win_start AND :win_end"
+                    params["win_start"], params["win_end"] = watch_window
+                else:
+                    window_clause = ""
+
                 rows = (
                     await db.execute(
-                        text("""
+                        text(f"""
                             SELECT va.summary_kr,
                                    1 - (va.embedding <=> CAST(:vec AS vector)) AS score
                             FROM video_analysis va
                             JOIN user_watch_catalog uwc ON va.catalog_id = uwc.id
-                            WHERE uwc.user_id = :uid AND va.embedding IS NOT NULL
+                            WHERE uwc.user_id = :uid AND va.embedding IS NOT NULL {window_clause}
                             ORDER BY va.embedding <=> CAST(:vec AS vector)
                             LIMIT :lim
                         """),
-                        {
-                            "vec": str(vec),
-                            "uid": str(user_id),
-                            "lim": ANALYSIS_SEARCH_LIMIT,
-                        },
+                        params,
                     )
                 ).fetchall()
 
+                rows = [r for r in rows if r.score >= SEARCH_SIMILARITY_THRESHOLD]
                 if not rows:
-                    return f"'{query}' 관련 영상 분석이 없습니다."
+                    return (
+                        f"'{query}'와 관련 있는 영상 분석을 찾지 못했습니다. "
+                        "억지로 무관한 영상을 관련 있는 것처럼 답하지 마세요."
+                    )
 
                 return f"'{query}' 관련 영상 분석:\n" + "\n".join(
                     f"· {r.summary_kr}" for r in rows
@@ -428,7 +485,15 @@ def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
 
                 params: dict[str, object] = {"uid": str(user_id)}
                 date_filter = ""
-                if days:
+                if watch_catalog_ids is not None:
+                    # 분석 상세 페이지 스코프 — 이 분석 영상들로 고정 (days는 무시).
+                    date_filter = "AND w.id = ANY(:catalog_ids)"
+                    params["catalog_ids"] = [str(c) for c in watch_catalog_ids]
+                elif watch_window:
+                    # 분석 상세 페이지 스코프 — 이 분석 시점 기간으로 고정 (days는 무시).
+                    date_filter = "AND w.watched_at BETWEEN :win_start AND :win_end"
+                    params["win_start"], params["win_end"] = watch_window
+                elif days:
                     date_filter = (
                         "AND w.watched_at >= now() - make_interval(days => :days)"
                     )
@@ -487,14 +552,26 @@ def build_tools(db: AsyncSession, user_id: uuid.UUID) -> list:
                     ("감수성", "sensitivity"),
                 ]
 
-                current_row = (
-                    await db.execute(
-                        select(UserProfileHistory)
-                        .where(UserProfileHistory.user_id == user_id)
-                        .order_by(desc(UserProfileHistory.snapshot_date))
-                        .limit(1)
-                    )
-                ).scalar_one_or_none()
+                current_row = None
+                if analysis_id is not None:
+                    # 분석 상세 페이지 스코프 — "최신"이 아니라 "이 분석"을 기준으로.
+                    current_row = (
+                        await db.execute(
+                            select(UserProfileHistory).where(
+                                UserProfileHistory.id == analysis_id,
+                                UserProfileHistory.user_id == user_id,
+                            )
+                        )
+                    ).scalar_one_or_none()
+                if current_row is None:
+                    current_row = (
+                        await db.execute(
+                            select(UserProfileHistory)
+                            .where(UserProfileHistory.user_id == user_id)
+                            .order_by(desc(UserProfileHistory.snapshot_date))
+                            .limit(1)
+                        )
+                    ).scalar_one_or_none()
 
                 ideal_row = (
                     await db.execute(

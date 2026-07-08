@@ -34,7 +34,7 @@ export function HomePage() {
         )}
       </div>
 
-      <CuratorInput maxWidthClassName="max-w-xl" />
+      <CuratorInput offline maxWidthClassName="max-w-xl" />
     </div>
   );
 }

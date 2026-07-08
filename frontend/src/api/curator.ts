@@ -40,6 +40,7 @@ export async function* streamCurator(
   imageMimeType?: string,
   persist = true,
   signal?: AbortSignal,
+  analysisId?: string,
 ): AsyncGenerator<CuratorSSEEvent> {
   const response = await fetch(`${API_BASE_URL}/api/v1/curator/stream`, {
     method: "POST",
@@ -54,6 +55,7 @@ export async function* streamCurator(
       image_base64: imageBase64,
       image_mime_type: imageMimeType,
       persist,
+      analysis_id: analysisId,
     }),
   });
 

@@ -32,7 +32,7 @@ let analysesInflight: Promise<AnalysisResultItem[]> | null = null;
 let idealsLoadedAt = 0;
 let analysesLoadedAt = 0;
 
-function formatRelativeTime(iso: string): string {
+export function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const min = Math.floor(diff / 60000);
   if (min < 60) return min <= 1 ? "방금 전" : `${min}분 전`;
@@ -52,6 +52,13 @@ interface SidebarStore {
   analyses: AnalysisResultItem[];
   scraps: SidebarScrap[];
   chats: SidebarChat[];
+  /** 분석 상세 페이지별 큐레이터 대화 기록 (분석 id → 마지막 대화 정보).
+   * customTitle이 true면 유저가 직접 이름을 바꾼 것 — 자동 기록(recordAnalysisChat)이
+   * 덮어쓰지 않는다. */
+  analysisChats: Record<
+    string,
+    { title: string; updatedAt: string; customTitle?: boolean }
+  >;
   setActiveIdealLabel: (label: string | null) => void;
   /** 이상향/분석 목록 로드 (동시 호출은 dedupe). 마운트마다 호출해도 안전. */
   loadIdeals: () => Promise<void>;
@@ -68,6 +75,10 @@ interface SidebarStore {
   deleteChat: (id: string) => void;
   clearChats: () => void;
   clearScraps: () => void;
+  /** 분석 상세 페이지에서 대화가 시작/갱신될 때 기록 (사이드바 '채팅 기록'용). */
+  recordAnalysisChat: (analysisId: string, title: string) => void;
+  renameAnalysisChat: (analysisId: string, title: string) => void;
+  removeAnalysisChat: (analysisId: string) => void;
 }
 
 export const useSidebarStore = create<SidebarStore>()(
@@ -78,7 +89,47 @@ export const useSidebarStore = create<SidebarStore>()(
       analyses: [],
       scraps: [],
       chats: [],
+      analysisChats: {},
       setActiveIdealLabel: (activeIdealLabel) => set({ activeIdealLabel }),
+
+      recordAnalysisChat: (analysisId, title) =>
+        set((s) => {
+          const existing = s.analysisChats[analysisId];
+          // 유저가 직접 이름을 바꾼 항목은 자동 기록으로 덮어쓰지 않는다 (시간만 갱신).
+          if (existing?.customTitle) {
+            return {
+              analysisChats: {
+                ...s.analysisChats,
+                [analysisId]: { ...existing, updatedAt: new Date().toISOString() },
+              },
+            };
+          }
+          return {
+            analysisChats: {
+              ...s.analysisChats,
+              [analysisId]: { title, updatedAt: new Date().toISOString() },
+            },
+          };
+        }),
+
+      renameAnalysisChat: (analysisId, title) =>
+        set((s) => {
+          const existing = s.analysisChats[analysisId];
+          if (!existing) return s;
+          return {
+            analysisChats: {
+              ...s.analysisChats,
+              [analysisId]: { ...existing, title, customTitle: true },
+            },
+          };
+        }),
+
+      removeAnalysisChat: (analysisId) =>
+        set((s) => {
+          const next = { ...s.analysisChats };
+          delete next[analysisId];
+          return { analysisChats: next };
+        }),
 
       loadAnalyses: async () => {
         if (analysesInflight) {
@@ -189,6 +240,7 @@ export const useSidebarStore = create<SidebarStore>()(
       partialize: (s) => ({
         activeIdealLabel: s.activeIdealLabel,
         chats: s.chats,
+        analysisChats: s.analysisChats,
         // 목록도 캐시 → /me 재진입 시 즉시 표시 후 백그라운드 갱신(stale-while-revalidate)
         analyses: s.analyses,
         ideals: s.ideals,
