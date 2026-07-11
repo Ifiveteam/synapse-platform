@@ -147,7 +147,9 @@ function rangeLabelFromData(data: KnowledgeGraphData): string | null {
 
 interface KnowledgeGraphPanelProps {
   selectedDate: string;
-  /** 홈 브리핑용 축소 뷰 */
+  /**
+   * 홈 히어로 뷰 — 화면을 크게 채우고, 전체보기와 동일한 범례·토글을 제공한다.
+   */
   compact?: boolean;
   /** 부모가 이미 로드한 데이터 — 있으면 자체 fetch 생략 */
   externalData?: KnowledgeGraphData;
@@ -183,7 +185,7 @@ export function KnowledgeGraphPanel({
   );
   const [dimensions, setDimensions] = useState({
     width: 960,
-    height: compact ? 320 : 520,
+    height: compact ? 640 : 520,
   });
   const [showSemantic, setShowSemantic] = useState(false);
   const [showAllLinks, setShowAllLinks] = useState(false);
@@ -230,7 +232,7 @@ export function KnowledgeGraphPanel({
       if (!rect) return;
       setDimensions({
         width: Math.max(320, Math.floor(rect.width)),
-        height: Math.max(compact ? 280 : 420, Math.floor(rect.height)),
+        height: Math.max(compact ? 480 : 420, Math.floor(rect.height)),
       });
     });
     ro.observe(el);
@@ -243,16 +245,16 @@ export function KnowledgeGraphPanel({
     const topics = [...graphData.nodes]
       .filter((n) => n.group !== DOMAIN_HUB_GROUP)
       .sort((a, b) => b.val - a.val)
-      .slice(0, compact ? 8 : ALWAYS_LABEL_TOP_N);
+      .slice(0, ALWAYS_LABEL_TOP_N);
     for (const n of hubs) ids.add(n.id);
     for (const n of topics) ids.add(n.id);
     return ids;
-  }, [graphData.nodes, compact]);
+  }, [graphData.nodes]);
 
   const displayData = useMemo(() => {
     const links = filterReadableLinks(graphData.links, {
-      showSemantic: compact ? false : showSemantic,
-      showAllLinks: compact ? false : showAllLinks,
+      showSemantic,
+      showAllLinks,
     });
     return {
       nodes: graphData.nodes.map((n) => ({ ...n })),
@@ -262,15 +264,15 @@ export function KnowledgeGraphPanel({
         target: linkEndpointId(l.target),
       })),
     };
-  }, [graphData, showSemantic, showAllLinks, compact]);
+  }, [graphData, showSemantic, showAllLinks]);
 
   const configureForces = useCallback(() => {
     const fg = graphRef.current;
     if (!fg) return;
     const charge = fg.d3Force("charge");
-    if (charge?.strength) charge.strength(compact ? -140 : -180);
+    if (charge?.strength) charge.strength(compact ? -200 : -180);
     const link = fg.d3Force("link");
-    if (link?.distance) link.distance(compact ? 56 : 72);
+    if (link?.distance) link.distance(compact ? 80 : 72);
     const center = fg.d3Force("center");
     if (center?.strength) center.strength(0.05);
   }, [compact]);
@@ -279,7 +281,7 @@ export function KnowledgeGraphPanel({
     if (loading || displayData.nodes.length === 0) return;
     const timer = window.setTimeout(() => {
       configureForces();
-      graphRef.current?.zoomToFit(400, compact ? 48 : 72);
+      graphRef.current?.zoomToFit(400, compact ? 64 : 72);
     }, 700);
     return () => window.clearTimeout(timer);
   }, [displayData, loading, configureForces, compact]);
@@ -418,94 +420,139 @@ export function KnowledgeGraphPanel({
     <div
       className={cn(
         compact
-          ? "overflow-hidden rounded-2xl"
+          ? "flex flex-col gap-3"
           : "border-border bg-card rounded-2xl border p-4 shadow-sm",
       )}
     >
-      {!compact && rangeLabel && (
-        <p className="text-muted-foreground mb-2 text-xs">{rangeLabel}</p>
+      {(rangeLabel || compact) && rangeLabel && (
+        <p
+          className={cn(
+            "text-muted-foreground text-xs",
+            !compact && "mb-2",
+          )}
+        >
+          {rangeLabel}
+        </p>
       )}
 
-      {!compact && (
-        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          {legendItems.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] text-slate-400">
-                큰 원 · 도메인 허브
-              </span>
-              {legendItems.map((item) => (
-                <span
-                  key={item.group}
-                  className="border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px]"
-                >
-                  <span
-                    className="size-2 rounded-full"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  {item.label}
-                </span>
-              ))}
-              <span className="border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] text-slate-400">
-                <span className="h-px w-3 bg-slate-400" />
-                함께 등장
-              </span>
-              {(showSemantic || showAllLinks) && (
-                <span className="border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] text-slate-400">
-                  <span className="h-px w-3 border-t border-dashed border-indigo-400" />
-                  의미 유사
-                </span>
+      <div
+        className={cn(
+          "flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between",
+          !compact && "mb-3",
+        )}
+      >
+        {legendItems.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px]",
+                compact
+                  ? "bg-muted/60 text-muted-foreground"
+                  : "border-border border text-slate-400",
               )}
-            </div>
-          ) : (
-            <div />
-          )}
-
-          {graphData.nodes.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Button
-                type="button"
-                size="sm"
-                variant={showSemantic ? "default" : "outline"}
-                className="h-7 px-2.5 text-[11px]"
-                onClick={() => setShowSemantic((v) => !v)}
+            >
+              큰 원 · 도메인 허브
+            </span>
+            {legendItems.map((item) => (
+              <span
+                key={item.group}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px]",
+                  compact
+                    ? "bg-muted/60 text-muted-foreground"
+                    : "border-border border",
+                )}
               >
+                <span
+                  className="size-2 rounded-full"
+                  style={{ backgroundColor: item.color }}
+                />
+                {item.label}
+              </span>
+            ))}
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px]",
+                compact
+                  ? "bg-muted/60 text-muted-foreground"
+                  : "border-border border text-slate-400",
+              )}
+            >
+              <span className="h-px w-3 bg-slate-400" />
+              함께 등장
+            </span>
+            {(showSemantic || showAllLinks) && (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px]",
+                  compact
+                    ? "bg-muted/60 text-muted-foreground"
+                    : "border-border border text-slate-400",
+                )}
+              >
+                <span className="h-px w-3 border-t border-dashed border-indigo-400" />
                 의미 유사
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={showAllLinks ? "default" : "outline"}
-                className="h-7 px-2.5 text-[11px]"
-                onClick={() => setShowAllLinks((v) => !v)}
-              >
-                모든 연결
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={showAllLabels ? "default" : "outline"}
-                className="h-7 px-2.5 text-[11px]"
-                onClick={() => setShowAllLabels((v) => !v)}
-              >
-                모든 라벨
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+              </span>
+            )}
+          </div>
+        ) : (
+          <div />
+        )}
+
+        {graphData.nodes.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              type="button"
+              size="sm"
+              variant={showSemantic ? "default" : "outline"}
+              className={cn(
+                "h-7 px-2.5 text-[11px]",
+                compact && !showSemantic && "border-border/70 bg-transparent",
+              )}
+              onClick={() => setShowSemantic((v) => !v)}
+            >
+              의미 유사
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={showAllLinks ? "default" : "outline"}
+              className={cn(
+                "h-7 px-2.5 text-[11px]",
+                compact && !showAllLinks && "border-border/70 bg-transparent",
+              )}
+              onClick={() => setShowAllLinks((v) => !v)}
+            >
+              모든 연결
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={showAllLabels ? "default" : "outline"}
+              className={cn(
+                "h-7 px-2.5 text-[11px]",
+                compact && !showAllLabels && "border-border/70 bg-transparent",
+              )}
+              onClick={() => setShowAllLabels((v) => !v)}
+            >
+              모든 라벨
+            </Button>
+          </div>
+        )}
+      </div>
 
       <div
         ref={containerRef}
         className={cn(
           "relative w-full overflow-hidden",
           compact
-            ? "h-[min(420px,52vh)] min-h-[300px] rounded-2xl"
+            ? "h-[min(720px,78vh)] min-h-[520px] rounded-2xl"
             : "h-[min(560px,68vh)] min-h-[420px] rounded-xl border border-slate-800",
         )}
         style={{
           backgroundColor: compact ? "#0a0a0a" : "#03050a",
           backgroundImage: compact
-            ? undefined
+            ? "radial-gradient(ellipse 55% 45% at 50% 45%, rgba(40,48,72,0.45) 0%, transparent 70%)"
             : [
                 "radial-gradient(ellipse 70% 55% at 52% 42%, rgba(56,72,120,0.35) 0%, transparent 72%)",
                 "radial-gradient(ellipse 40% 35% at 18% 78%, rgba(76,29,149,0.2) 0%, transparent 70%)",
@@ -586,31 +633,30 @@ export function KnowledgeGraphPanel({
               }}
               d3AlphaDecay={0.028}
               d3VelocityDecay={0.32}
-              cooldownTicks={compact ? 120 : 160}
+              cooldownTicks={160}
               onEngineStop={() => {
                 configureForces();
-                graphRef.current?.zoomToFit(300, compact ? 48 : 72);
+                graphRef.current?.zoomToFit(300, compact ? 64 : 72);
               }}
             />
           </Suspense>
         )}
       </div>
 
-      {!compact && (
-        <p
-          className={cn(
-            "text-muted-foreground mt-3 text-[11px]",
-            loading && "opacity-60",
-          )}
-        >
-          노드 {graphData.nodes.length} · 표시 연결 {displayData.links.length}
-          {hiddenLinkCount > 0 && ` · 숨김 ${hiddenLinkCount}`}
-          {!loading && graphData.nodes.length > 0 && " · 드래그·줌 지원"}
-          {!showAllLabels &&
-            graphData.nodes.length > 0 &&
-            " · 허브·상위 키워드 라벨 표시 (줌인 시 더 보임)"}
-        </p>
-      )}
+      <p
+        className={cn(
+          "text-muted-foreground text-[11px]",
+          compact ? "mt-1" : "mt-3",
+          loading && "opacity-60",
+        )}
+      >
+        노드 {graphData.nodes.length} · 표시 연결 {displayData.links.length}
+        {hiddenLinkCount > 0 && ` · 숨김 ${hiddenLinkCount}`}
+        {!loading && graphData.nodes.length > 0 && " · 드래그·줌 지원"}
+        {!showAllLabels &&
+          graphData.nodes.length > 0 &&
+          " · 허브·상위 키워드 라벨 표시 (줌인 시 더 보임)"}
+      </p>
     </div>
   );
 }

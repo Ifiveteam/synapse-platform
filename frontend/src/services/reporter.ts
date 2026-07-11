@@ -62,6 +62,24 @@ export interface PipelineRunResult {
   target_date: string;
 }
 
+export interface SnapshotInventoryDay {
+  date: string;
+  present: boolean;
+  snapshot_id: string | null;
+  created_at: string | null;
+  keyword_count: number;
+  top_keywords: string[];
+  domain_keys: string[];
+}
+
+export interface SnapshotInventory {
+  start_date: string;
+  end_date: string;
+  present_count: number;
+  missing_count: number;
+  days: SnapshotInventoryDay[];
+}
+
 const reporterClient = axios.create({
   baseURL: API_BASE_URL,
   headers: { "Content-Type": "application/json" },
@@ -145,6 +163,24 @@ export async function triggerDailyPipeline(
     status: data.status ?? "success",
     message: data.message ?? "파이프라인이 완료되었습니다.",
     target_date: data.target_date ?? dateString,
+  };
+}
+
+/** 관리자 — 기간 내 일별 스냅샷 인벤토리를 조회한다. */
+export async function fetchSnapshotInventory(
+  endDate: string,
+  days: number = 30,
+): Promise<SnapshotInventory> {
+  const { data } = await reporterClient.get<SnapshotInventory>(
+    "/api/v1/reporter/snapshots",
+    { params: { date: endDate, days } },
+  );
+  return {
+    start_date: data.start_date ?? endDate,
+    end_date: data.end_date ?? endDate,
+    present_count: data.present_count ?? 0,
+    missing_count: data.missing_count ?? 0,
+    days: Array.isArray(data.days) ? data.days : [],
   };
 }
 

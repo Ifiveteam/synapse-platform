@@ -18,6 +18,8 @@ from app.schemas.reporter import (
     KnowledgeGraphResponse,
     MarkdownReportResponse,
     RunPipelineResponse,
+    SnapshotInventoryDay,
+    SnapshotInventoryResponse,
     StreamChartResponse,
     StreamSeriesPoint,
 )
@@ -101,6 +103,50 @@ async def run_reporter_pipeline(
             f"report={'ok' if report_ok else 'skipped'})."
         ),
         target_date=target_date,
+    )
+
+
+@router.get("/snapshots", response_model=SnapshotInventoryResponse)
+async def get_snapshot_inventory(
+    end_date: date = Query(
+        default_factory=today_kst,
+        alias="date",
+        description="KST 기준 조회 종료일 (YYYY-MM-DD)",
+    ),
+    days: int = Query(
+        30,
+        ge=1,
+        le=MAX_SIMULATOR_RANGE_DAYS,
+        description="종료일 포함 조회 일수 (기본 30일)",
+    ),
+    session: AsyncSession = Depends(get_db),
+) -> SnapshotInventoryResponse:
+    """관리자용 — 기간 내 일별 global_trends_snapshot 존재 여부와 요약을 반환한다."""
+    start_date = end_date - timedelta(days=days - 1)
+    items = await reporter_repository.fetch_snapshot_inventory(
+        session,
+        start_date,
+        end_date,
+    )
+    days_out = [
+        SnapshotInventoryDay(
+            date=item.date,
+            present=item.present,
+            snapshot_id=item.snapshot_id,
+            created_at=item.created_at,
+            keyword_count=item.keyword_count,
+            top_keywords=list(item.top_keywords),
+            domain_keys=list(item.domain_keys),
+        )
+        for item in items
+    ]
+    present_count = sum(1 for item in days_out if item.present)
+    return SnapshotInventoryResponse(
+        start_date=start_date,
+        end_date=end_date,
+        present_count=present_count,
+        missing_count=len(days_out) - present_count,
+        days=days_out,
     )
 
 

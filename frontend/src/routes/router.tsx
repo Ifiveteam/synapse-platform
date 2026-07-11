@@ -19,6 +19,7 @@ import { SettingsPage } from "@/pages/SettingsPage";
 import { PaymentSuccessPage } from "@/pages/PaymentSuccessPage";
 import { UploadPage } from "@/pages/UploadPage";
 import { TrendGraphDashboard } from "@/pages/reporter/TrendGraphDashboard";
+import { TrendAdminPage } from "@/pages/reporter/TrendAdminPage";
 import { ROUTES } from "@/routes";
 
 export const router = createBrowserRouter([
@@ -51,6 +52,10 @@ export const router = createBrowserRouter([
       {
         path: ROUTES.reporterTrendGraph,
         element: <TrendGraphDashboard />,
+      },
+      {
+        path: ROUTES.reporterAdmin,
+        element: <TrendAdminPage />,
       },
       { path: ROUTES.download, element: <DownloadPage /> },
       { path: ROUTES.login, element: <LoginPage /> },
