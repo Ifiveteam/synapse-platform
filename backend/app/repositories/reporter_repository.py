@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from sqlalchemy import Integer, cast, extract, func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -266,11 +267,11 @@ def build_simulation_snapshot(
             "avg_weight": round(accum["avg_weight"] / samples, 6),
         }
 
-    ranking_rows = sorted(
-        keyword_best.values(),
-        key=lambda item: float(item["score"]),
-        reverse=True,
-    )[:top_keywords_limit]
+    ranking_rows = _select_domain_balanced_keywords(
+        keyword_best,
+        merged_weights,
+        top_keywords_limit=top_keywords_limit,
+    )
     for index, item in enumerate(ranking_rows, start=1):
         item["rank"] = index
 
@@ -284,6 +285,56 @@ def build_simulation_snapshot(
         snapshot_count=len(rows),
         semantic_links=tuple(semantic_best.values()),
     )
+
+
+def _select_domain_balanced_keywords(
+    keyword_best: dict[str, dict[str, Any]],
+    merged_weights: Mapping[str, Mapping[str, float]],
+    *,
+    top_keywords_limit: int,
+) -> list[dict[str, Any]]:
+    """도메인별 최소 쿼터를 보장한 뒤 점수 순으로 TopN을 채운다."""
+    if not keyword_best or top_keywords_limit <= 0:
+        return []
+
+    by_domain: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for keyword, item in keyword_best.items():
+        weights = merged_weights.get(keyword) or {}
+        if weights:
+            domain = max(weights.items(), key=lambda pair: float(pair[1] or 0.0))[0]
+        else:
+            domain = TrendDomain.SOCIAL_CURRENT_AFFAIRS.value
+        by_domain[str(domain)].append(item)
+
+    for rows in by_domain.values():
+        rows.sort(key=lambda row: float(row["score"]), reverse=True)
+
+    domain_list = [domain.value for domain in TrendDomain]
+    per_domain = max(1, top_keywords_limit // len(domain_list))
+    selected: list[dict[str, Any]] = []
+    used: set[str] = set()
+
+    for domain in domain_list:
+        for item in by_domain.get(domain, [])[:per_domain]:
+            keyword = str(item["keyword"])
+            if keyword in used:
+                continue
+            selected.append(item)
+            used.add(keyword)
+
+    leftovers = sorted(
+        (item for item in keyword_best.values() if str(item["keyword"]) not in used),
+        key=lambda row: float(row["score"]),
+        reverse=True,
+    )
+    for item in leftovers:
+        if len(selected) >= top_keywords_limit:
+            break
+        selected.append(item)
+        used.add(str(item["keyword"]))
+
+    selected.sort(key=lambda row: float(row["score"]), reverse=True)
+    return selected[:top_keywords_limit]
 
 
 async def fetch_b2b_report_markdown_by_date(
@@ -516,6 +567,174 @@ async def fetch_snapshot_inventory(
             )
         )
     return items
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotDetail:
+    """관리자용 단일 일자 스냅샷 상세."""
+
+    date: date
+    present: bool
+    snapshot_id: str | None = None
+    snapshot_date: datetime | None = None
+    created_at: datetime | None = None
+    keywords: tuple[dict[str, Any], ...] = ()
+    domains: tuple[dict[str, Any], ...] = ()
+    axes: dict[str, float] | None = None
+    semantic_link_count: int = 0
+    semantic_links: tuple[dict[str, Any], ...] = ()
+    external_keywords: tuple[str, ...] = ()
+    scrap_categories: tuple[str, ...] = ()
+    context_count: int = 0
+    has_cross_domain_insights: bool = False
+
+
+async def fetch_snapshot_detail(
+    session: AsyncSession,
+    target_date: date,
+) -> SnapshotDetail:
+    """단일 일자 스냅샷을 관리자 상세용으로 반환한다."""
+    row = await fetch_snapshot_by_target_date(session, target_date)
+    if row is None:
+        return SnapshotDetail(date=target_date, present=False)
+
+    trending = row.trending_keywords if isinstance(row.trending_keywords, dict) else {}
+    ranking = trending.get("ranking")
+    keywords: list[dict[str, Any]] = []
+    if isinstance(ranking, list):
+        for entry in ranking:
+            if not isinstance(entry, dict):
+                continue
+            kw = str(entry.get("keyword", "")).strip()
+            if not kw:
+                continue
+            keywords.append(
+                {
+                    "keyword": kw,
+                    "score": float(entry.get("score", 0) or 0),
+                    "count_today": int(entry.get("count_today", 0) or 0),
+                    "rank": int(entry.get("rank", 0) or 0),
+                }
+            )
+
+    top_domains = row.top_domains if isinstance(row.top_domains, dict) else {}
+    domains: list[dict[str, Any]] = []
+    for domain, stats in top_domains.items():
+        if not isinstance(stats, dict):
+            continue
+        domains.append(
+            {
+                "domain": str(domain),
+                "user_count": int(stats.get("user_count", 0) or 0),
+                "total_duration": int(stats.get("total_duration", 0) or 0),
+                "avg_weight": float(stats.get("avg_weight", 0) or 0),
+            }
+        )
+    domains.sort(key=lambda item: item["avg_weight"], reverse=True)
+
+    axes_raw = row.global_8_axis_avg if isinstance(row.global_8_axis_avg, dict) else {}
+    axes = {
+        str(key): float(value or 0)
+        for key, value in axes_raw.items()
+        if isinstance(value, (int, float))
+    }
+
+    links_raw = row.semantic_links if isinstance(row.semantic_links, list) else []
+    links: list[dict[str, Any]] = []
+    for link in links_raw:
+        if not isinstance(link, dict):
+            continue
+        source = str(link.get("source", "")).strip()
+        target = str(link.get("target", "")).strip()
+        if not source or not target:
+            continue
+        links.append(
+            {
+                "source": source,
+                "target": target,
+                "similarity": float(link.get("similarity", 0) or 0),
+                "link_type": str(link.get("link_type") or "semantic"),
+            }
+        )
+    links.sort(key=lambda item: item["similarity"], reverse=True)
+
+    external = (
+        row.external_market_keywords
+        if isinstance(row.external_market_keywords, dict)
+        else {}
+    )
+    external_keywords: list[str] = []
+    for key in ("naver", "google", "keywords", "items", "ranking"):
+        bucket = external.get(key)
+        if isinstance(bucket, list):
+            for item in bucket[:10]:
+                if isinstance(item, str) and item.strip():
+                    external_keywords.append(item.strip())
+                elif isinstance(item, dict):
+                    label = str(
+                        item.get("keyword")
+                        or item.get("query")
+                        or item.get("name")
+                        or ""
+                    ).strip()
+                    if label:
+                        external_keywords.append(label)
+    if not external_keywords:
+        for value in external.values():
+            if isinstance(value, list):
+                for item in value[:8]:
+                    if isinstance(item, str) and item.strip():
+                        external_keywords.append(item.strip())
+                    elif isinstance(item, dict):
+                        label = str(item.get("keyword") or "").strip()
+                        if label:
+                            external_keywords.append(label)
+
+    scrap = (
+        row.top_scrap_categories if isinstance(row.top_scrap_categories, dict) else {}
+    )
+    scrap_categories: list[str] = []
+    ranking_scrap = (
+        scrap.get("ranking") or scrap.get("categories") or scrap.get("items")
+    )
+    if isinstance(ranking_scrap, list):
+        for item in ranking_scrap[:10]:
+            if isinstance(item, str) and item.strip():
+                scrap_categories.append(item.strip())
+            elif isinstance(item, dict):
+                label = str(
+                    item.get("category")
+                    or item.get("name")
+                    or item.get("keyword")
+                    or ""
+                ).strip()
+                if label:
+                    scrap_categories.append(label)
+    elif scrap:
+        scrap_categories = [str(key) for key in list(scrap.keys())[:10]]
+
+    context_map = (
+        row.keyword_context_map if isinstance(row.keyword_context_map, dict) else {}
+    )
+    contexts = context_map.get("contexts")
+    context_count = len(contexts) if isinstance(contexts, list) else 0
+
+    return SnapshotDetail(
+        date=target_date,
+        present=True,
+        snapshot_id=str(row.id),
+        snapshot_date=row.snapshot_date,
+        created_at=row.created_at,
+        keywords=tuple(keywords),
+        domains=tuple(domains),
+        axes=axes or None,
+        semantic_link_count=len(links),
+        semantic_links=tuple(links[:15]),
+        external_keywords=tuple(dict.fromkeys(external_keywords)),
+        scrap_categories=tuple(dict.fromkeys(scrap_categories)),
+        context_count=context_count,
+        has_cross_domain_insights=bool(row.cross_domain_insights),
+    )
 
 
 def _iter_dates(start_date: date, end_date: date):

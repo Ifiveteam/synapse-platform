@@ -246,7 +246,8 @@ class KnowledgeGraphMapper:
             if domain_votes:
                 result[keyword] = max(domain_votes.items(), key=lambda x: x[1])[0]
             else:
-                result[keyword] = TrendDomain.TECH_BUSINESS.value
+                # Tech 기본값 금지 — 미분류는 사회/시사로 두어 편향을 줄인다.
+                result[keyword] = TrendDomain.SOCIAL_CURRENT_AFFAIRS.value
 
         return result
 
