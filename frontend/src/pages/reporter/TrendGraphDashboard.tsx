@@ -98,16 +98,19 @@ export function TrendGraphDashboard() {
         <div className="flex flex-wrap items-center gap-2">
           <label className="border-border bg-card flex items-center gap-2 rounded-lg border px-3 py-2 shadow-sm">
             <CalendarDays className="text-muted-foreground size-4 shrink-0" />
-            <span className="text-muted-foreground text-xs">조회 일자</span>
+            <span className="text-muted-foreground text-xs">종료일</span>
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
               disabled={isAnalyzing}
               className="bg-transparent text-sm font-medium outline-none disabled:opacity-60"
-              aria-label="트렌드 대시보드 조회 일자"
+              aria-label="트렌드 대시보드 조회 종료일"
             />
           </label>
+          <span className="text-muted-foreground hidden text-xs sm:inline">
+            지식 그래프는 종료일 포함 최근 7일을 합산합니다
+          </span>
 
           <Button
             type="button"
