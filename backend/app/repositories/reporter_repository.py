@@ -452,6 +452,72 @@ async def upsert_knowledge_graph(
     return row
 
 
+@dataclass(frozen=True, slots=True)
+class SnapshotInventoryItem:
+    """관리자용 일별 스냅샷 존재 여부·요약."""
+
+    date: date
+    present: bool
+    snapshot_id: str | None = None
+    created_at: datetime | None = None
+    keyword_count: int = 0
+    top_keywords: tuple[str, ...] = ()
+    domain_keys: tuple[str, ...] = ()
+
+
+async def fetch_snapshot_inventory(
+    session: AsyncSession,
+    start_date: date,
+    end_date: date,
+) -> list[SnapshotInventoryItem]:
+    """기간 내 일자별 스냅샷 유무와 키워드·도메인 요약을 반환한다."""
+    if end_date < start_date:
+        return []
+
+    full_rows = await fetch_snapshots_by_date_range(session, start_date, end_date)
+    full_by_day = {row.snapshot_date.astimezone(KST).date(): row for row in full_rows}
+
+    items: list[SnapshotInventoryItem] = []
+    for day in _iter_dates(start_date, end_date):
+        full = full_by_day.get(day)
+        if full is None:
+            items.append(SnapshotInventoryItem(date=day, present=False))
+            continue
+
+        trending = (
+            full.trending_keywords if isinstance(full.trending_keywords, dict) else {}
+        )
+        ranking = trending.get("ranking")
+        keywords: list[str] = []
+        if isinstance(ranking, list):
+            for entry in ranking:
+                if not isinstance(entry, dict):
+                    continue
+                kw = str(entry.get("keyword", "")).strip()
+                if kw:
+                    keywords.append(kw)
+
+        top_domains = full.top_domains if isinstance(full.top_domains, dict) else {}
+        domain_keys = [
+            domain
+            for domain, stats in top_domains.items()
+            if isinstance(stats, dict) and float(stats.get("avg_weight", 0) or 0) > 0
+        ]
+
+        items.append(
+            SnapshotInventoryItem(
+                date=day,
+                present=True,
+                snapshot_id=str(full.id),
+                created_at=full.created_at,
+                keyword_count=len(keywords),
+                top_keywords=tuple(keywords[:5]),
+                domain_keys=tuple(domain_keys),
+            )
+        )
+    return items
+
+
 def _iter_dates(start_date: date, end_date: date):
     current = start_date
     while current <= end_date:

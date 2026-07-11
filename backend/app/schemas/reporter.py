@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -111,3 +111,25 @@ class RunPipelineResponse(BaseModel):
     status: str = "success"
     message: str
     target_date: date
+
+
+class SnapshotInventoryDay(BaseModel):
+    """관리자 — 일자별 스냅샷 인벤토리."""
+
+    date: date
+    present: bool
+    snapshot_id: str | None = None
+    created_at: datetime | None = None
+    keyword_count: int = 0
+    top_keywords: list[str] = Field(default_factory=list)
+    domain_keys: list[str] = Field(default_factory=list)
+
+
+class SnapshotInventoryResponse(BaseModel):
+    """관리자 — 기간 스냅샷 인벤토리."""
+
+    start_date: date
+    end_date: date
+    present_count: int
+    missing_count: int
+    days: list[SnapshotInventoryDay] = Field(default_factory=list)

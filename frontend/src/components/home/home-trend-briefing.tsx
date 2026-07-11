@@ -21,39 +21,6 @@ function isHub(node: KnowledgeGraphNode): boolean {
   return node.group === DOMAIN_HUB_GROUP;
 }
 
-function buildInsight(data: KnowledgeGraphData): string {
-  const hubs = data.nodes.filter(isHub).sort((a, b) => b.val - a.val);
-  const keywords = data.nodes
-    .filter((n) => !isHub(n))
-    .sort((a, b) => b.val - a.val);
-
-  if (hubs.length === 0 && keywords.length === 0) {
-    return "아직 합산할 트렌드 스냅샷이 없습니다. 배치가 쌓이면 여기에 브리핑이 표시됩니다.";
-  }
-
-  const topHub = hubs[0];
-  const secondHub = hubs[1];
-  const topKeyword = keywords[0];
-
-  if (topHub && secondHub && topHub.val >= secondHub.val * 1.08) {
-    return `최근 14일 ${domainLabel(topHub.id)} 축이 ${domainLabel(secondHub.id)}보다 강하게 집계되고 있습니다.`;
-  }
-
-  if (topKeyword && topHub) {
-    return `최근 14일 핵심 키워드는 「${topKeyword.id}」이며, ${domainLabel(topHub.id)} 도메인이 두드러집니다.`;
-  }
-
-  if (topKeyword) {
-    return `최근 14일 가장 눈에 띄는 키워드는 「${topKeyword.id}」입니다.`;
-  }
-
-  if (topHub) {
-    return `최근 14일 ${domainLabel(topHub.id)} 도메인 허브가 가장 활발합니다.`;
-  }
-
-  return "거시 트렌드 네트워크를 탐색해 보세요.";
-}
-
 export function HomeTrendBriefing() {
   const selectedDate = todayKstDateString();
   const [graphData, setGraphData] = useState<KnowledgeGraphData>({
@@ -85,8 +52,6 @@ export function HomeTrendBriefing() {
     void load();
   }, [load]);
 
-  const insight = useMemo(() => buildInsight(graphData), [graphData]);
-
   const topKeywords = useMemo(
     () =>
       [...graphData.nodes]
@@ -102,41 +67,33 @@ export function HomeTrendBriefing() {
       : selectedDate;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col px-6 pb-16 pt-10 md:px-8 md:pt-14">
-      <header className="mb-10 flex flex-col gap-4 md:mb-12">
+    <div className="flex w-full flex-col pb-16 pt-10 md:pt-14">
+      <header className="mx-auto mb-8 flex w-full max-w-3xl flex-col gap-3 px-6 md:mb-10 md:px-8">
         <p className="text-muted-foreground/80 text-[13px] tracking-wide">
           Synapse
         </p>
         <h1 className="text-foreground text-[2rem] leading-[1.15] font-semibold tracking-[-0.03em] md:text-[2.75rem]">
           오늘의 트렌드
         </h1>
-        <p className="text-muted-foreground max-w-xl text-[15px] leading-relaxed md:text-base">
-          {loading ? (
-            <span className="inline-flex items-center gap-2">
-              <Loader2 className="size-3.5 animate-spin opacity-60" />
-              준비 중…
-            </span>
-          ) : (
-            insight
-          )}
-        </p>
         <p className="text-muted-foreground/70 text-[12px] tracking-wide">
           {rangeHint}
         </p>
       </header>
 
-      <section className="mb-12 min-w-0 md:mb-14">
-        <KnowledgeGraphPanel
-          selectedDate={selectedDate}
-          compact
-          externalData={graphData}
-          externalLoading={loading}
-          externalError={error}
-          onRetry={() => void load()}
-        />
+      {/* 지식 맵 — 전체보기와 동일한 원본 그래프 뷰 */}
+      <section className="mb-12 w-full px-4 md:mb-14 md:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-7xl">
+          <KnowledgeGraphPanel
+            selectedDate={selectedDate}
+            externalData={graphData}
+            externalLoading={loading}
+            externalError={error}
+            onRetry={() => void load()}
+          />
+        </div>
       </section>
 
-      <section className="mb-12 md:mb-14">
+      <section className="mx-auto mb-12 w-full max-w-3xl px-6 md:mb-14 md:px-8">
         <h2 className="text-muted-foreground mb-5 text-[12px] font-medium tracking-wide">
           Top keywords
         </h2>
@@ -197,7 +154,7 @@ export function HomeTrendBriefing() {
         )}
       </section>
 
-      <footer className="flex flex-col gap-5 border-t border-border/50 pt-8 sm:flex-row sm:items-center sm:justify-between">
+      <footer className="mx-auto flex w-full max-w-3xl flex-col gap-5 border-t border-border/50 px-6 pt-8 sm:flex-row sm:items-center sm:justify-between md:px-8">
         <Button
           asChild
           className="h-10 rounded-full px-5 text-[13px] font-medium shadow-none"
@@ -215,10 +172,10 @@ export function HomeTrendBriefing() {
             리포트
           </Link>
           <Link
-            to={`${ROUTES.reporterTrendGraph}?tab=graph`}
+            to={ROUTES.reporterTrendGraph}
             className="text-muted-foreground hover:text-foreground text-[13px] transition-colors"
           >
-            심화 탐색
+            스트림·히트맵
           </Link>
         </div>
       </footer>

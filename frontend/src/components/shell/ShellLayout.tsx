@@ -20,6 +20,7 @@ function isPublicPath(pathname: string) {
   if (pathname === ROUTES.home || pathname === ROUTES.login) return true;
   if (pathname === ROUTES.download) return true;
   if (pathname === ROUTES.reporterTrendGraph) return true;
+  if (pathname === ROUTES.reporterAdmin) return true;
   return pathname.startsWith("/agents");
 }
 

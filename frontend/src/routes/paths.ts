@@ -24,4 +24,5 @@ export const ROUTES = {
   agentDetail: (slug: AgentId | string) => `/agents/${slug}`,
   paymentSuccess: "/payment/success",
   reporterTrendGraph: "/reporter/trend-graph",
+  reporterAdmin: "/reporter/admin",
 } as const;
