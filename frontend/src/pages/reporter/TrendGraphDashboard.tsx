@@ -7,14 +7,13 @@ import {
   CalendarDays,
   FileText,
   Loader2,
-  Network,
   Sparkles,
+  Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { KnowledgeGraphPanel } from "@/pages/reporter/KnowledgeGraphPanel";
 import { ROUTES } from "@/routes";
 import {
   todayKstDateString,
@@ -37,7 +36,7 @@ const TrendReportViewer = lazy(() =>
   })),
 );
 
-const VALID_TABS = new Set(["graph", "charts", "report"]);
+const VALID_TABS = new Set(["charts", "report"]);
 
 function TabPanelFallback() {
   return (
@@ -64,7 +63,7 @@ export function TrendGraphDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = useMemo(() => {
     const tab = searchParams.get("tab");
-    return tab && VALID_TABS.has(tab) ? tab : "graph";
+    return tab && VALID_TABS.has(tab) ? tab : "charts";
   }, [searchParams]);
 
   const [selectedDate, setSelectedDate] = useState(todayKstDateString);
@@ -82,7 +81,7 @@ export function TrendGraphDashboard() {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
-          if (tab === "graph") next.delete("tab");
+          if (tab === "charts") next.delete("tab");
           else next.set("tab", tab);
           return next;
         },
@@ -128,15 +127,15 @@ export function TrendGraphDashboard() {
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="text-muted-foreground mb-1 flex items-center gap-2 text-xs font-medium uppercase tracking-wider">
-            <Network className="size-3.5" />
+            <BarChart3 className="size-3.5" />
             Trend Intelligence
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">
             트렌드 인텔리전스
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            지식 네트워크, 시계열 스트림, 활동 히트맵, 텍스트 리포트를 한 화면에서
-            탐색합니다.
+            시계열 스트림, 활동 히트맵, 텍스트 리포트를 탐색합니다. 지식 그래프는
+            홈에서 확인할 수 있습니다.
           </p>
         </div>
 
@@ -153,9 +152,6 @@ export function TrendGraphDashboard() {
               aria-label="트렌드 대시보드 조회 종료일"
             />
           </label>
-          <span className="text-muted-foreground hidden text-xs sm:inline">
-            지식 그래프는 종료일 포함 최근 14일을 합산합니다
-          </span>
 
           <Button
             type="button"
@@ -169,6 +165,13 @@ export function TrendGraphDashboard() {
               <Sparkles className="size-4" />
             )}
             실시간 분석 실행
+          </Button>
+
+          <Button asChild variant="outline" className="gap-2 shadow-sm">
+            <Link to={ROUTES.reporterAdmin}>
+              <Wrench className="size-4" />
+              관리자
+            </Link>
           </Button>
         </div>
       </header>
@@ -191,10 +194,6 @@ export function TrendGraphDashboard() {
 
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="h-auto w-full flex-wrap sm:w-fit">
-            <TabsTrigger value="graph" className="gap-1.5">
-              <Network className="size-3.5" />
-              지식 신경망
-            </TabsTrigger>
             <TabsTrigger value="charts" className="gap-1.5">
               <BarChart3 className="size-3.5" />
               스트림 & 히트맵
@@ -204,13 +203,6 @@ export function TrendGraphDashboard() {
               텍스트 리포트
             </TabsTrigger>
           </TabsList>
-
-          <TabsContent value="graph">
-            <KnowledgeGraphPanel
-              key={`graph-${panelKey}`}
-              selectedDate={selectedDate}
-            />
-          </TabsContent>
 
           <TabsContent value="charts">
             <div className="flex flex-col gap-4">

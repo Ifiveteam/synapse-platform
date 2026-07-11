@@ -13,9 +13,13 @@ export interface AggregatorTriggerResult {
 }
 
 /** 로컬 개발·시연용 — 어그리게이터 일별 배치 집계를 즉시 1회 트리거한다. */
-export async function triggerAggregatorBatch(): Promise<AggregatorTriggerResult> {
+export async function triggerAggregatorBatch(
+  dateString?: string,
+): Promise<AggregatorTriggerResult> {
   const { data } = await aggregatorClient.post<AggregatorTriggerResult>(
     "/api/v1/aggregator/trigger",
+    null,
+    dateString ? { params: { date_str: dateString } } : undefined,
   );
   return {
     status: data.status ?? "success",
