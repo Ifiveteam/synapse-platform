@@ -65,8 +65,6 @@ export function ShellLayout() {
     clearScraps,
     setActiveIdealLabel,
   ]);
-  const isHomePage = location.pathname === ROUTES.home;
-
   useEffect(() => {
     let cancelled = false;
 
@@ -154,11 +152,7 @@ export function ShellLayout() {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar />
-      <main
-        className={`flex min-h-0 flex-1 flex-col ${
-          isHomePage ? "overflow-hidden" : "overflow-y-auto"
-        }`}
-      >
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <Outlet />
       </main>
       <LoginModal />

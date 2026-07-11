@@ -37,6 +37,24 @@ function nodeLabel(node: KnowledgeGraphNode): string {
   return `${node.id}\n${role} · score ${node.val.toFixed(2)}`;
 }
 
+function linkLabel(link: KnowledgeGraphLink): string {
+  const source =
+    typeof link.source === "string"
+      ? link.source
+      : ((link.source as KnowledgeGraphNode | undefined)?.id ?? "?");
+  const target =
+    typeof link.target === "string"
+      ? link.target
+      : ((link.target as KnowledgeGraphNode | undefined)?.id ?? "?");
+  if (link.link_type === "semantic" && link.similarity != null) {
+    return `${source} ↔ ${target}\n의미 유사도 ${link.similarity.toFixed(2)}`;
+  }
+  if (link.link_type === "cooccurrence") {
+    return `${source} ↔ ${target}\n공출현 (팩트)`;
+  }
+  return `${source} ↔ ${target}`;
+}
+
 function GraphCanvasFallback() {
   return (
     <div className="flex h-full min-h-[420px] items-center justify-center gap-2 text-sm text-slate-400">
@@ -61,14 +79,24 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [rangeLabel, setRangeLabel] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState({ width: 960, height: 520 });
 
   const loadGraph = useCallback(async (date: string) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchKnowledgeGraph(date);
+      const data = await fetchKnowledgeGraph(date, 7);
       setGraphData(data);
+      if (data.start_date && data.end_date) {
+        const count =
+          typeof data.snapshot_count === "number" ? data.snapshot_count : 0;
+        setRangeLabel(
+          `조회 기간 ${data.start_date} ~ ${data.end_date} (7일) · 실제 합산 스냅샷 ${count}일`,
+        );
+      } else {
+        setRangeLabel(null);
+      }
     } catch (err) {
       const message =
         err instanceof Error
@@ -76,6 +104,7 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
           : "지식 그래프를 불러오지 못했습니다.";
       setError(message);
       setGraphData({ nodes: [], links: [] });
+      setRangeLabel(null);
     } finally {
       setLoading(false);
     }
@@ -172,13 +201,24 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
       }
 
       const width = Math.max(0.3, (l.value ?? 0.5) / globalScale);
+      const isSemantic = l.link_type === "semantic";
       ctx.beginPath();
       ctx.moveTo(source.x, source.y);
       ctx.lineTo(target.x, target.y);
-      ctx.strokeStyle = "rgba(148, 163, 184, 0.42)";
+      if (isSemantic) {
+        ctx.setLineDash([4 / globalScale, 3 / globalScale]);
+        ctx.strokeStyle = "rgba(129, 140, 248, 0.65)";
+      } else if (l.link_type === "domain_hub") {
+        ctx.setLineDash([]);
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.28)";
+      } else {
+        ctx.setLineDash([]);
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.42)";
+      }
       ctx.lineWidth = width;
       ctx.lineCap = "round";
       ctx.stroke();
+      ctx.setLineDash([]);
     },
     [],
   );
@@ -187,6 +227,9 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
 
   return (
     <div className="border-border bg-card rounded-2xl border p-4 shadow-sm">
+      {rangeLabel && (
+        <p className="text-muted-foreground mb-2 text-xs">{rangeLabel}</p>
+      )}
       {legendItems.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-400/30 bg-indigo-500/10 px-2.5 py-0.5 text-[10px] text-indigo-200">
@@ -208,6 +251,14 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
               {item.group}
             </span>
           ))}
+          <span className="border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] text-slate-400">
+            <span className="h-px w-3 border-t border-dashed border-indigo-400" />
+            semantic
+          </span>
+          <span className="border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] text-slate-400">
+            <span className="h-px w-3 bg-slate-400" />
+            cooccurrence
+          </span>
         </div>
       )}
 
@@ -226,7 +277,7 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-[#03050a]/70 backdrop-blur-[1px]">
             <Loader2 className="size-8 animate-spin text-indigo-300" />
             <p className="text-sm text-slate-300">
-              {selectedDate} 지식 그래프 불러오는 중…
+              {selectedDate} 기준 7일 합산 그래프 불러오는 중…
             </p>
           </div>
         )}
@@ -257,11 +308,11 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-6 text-center">
             <Network className="text-muted-foreground size-10" />
             <p className="text-sm font-medium text-slate-200">
-              {selectedDate} 데이터가 아직 없습니다
+              {selectedDate} 기준 최근 7일 데이터가 없습니다
             </p>
             <p className="text-muted-foreground max-w-sm text-xs">
-              해당 일자의 지식 그래프가 생성되면 노드와 연결이 여기에
-              표시됩니다.
+              Aggregator 배치로 스냅샷이 쌓이면, 종료일 포함 7일을 합산한
+              지식 그래프가 여기에 표시됩니다.
             </p>
           </div>
         )}
@@ -278,6 +329,7 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
               nodeVal={(node) => (node as KnowledgeGraphNode).val}
               linkWidth={(link) => (link as KnowledgeGraphLink).value}
               nodeLabel={(node) => nodeLabel(node as KnowledgeGraphNode)}
+              linkLabel={(link) => linkLabel(link as KnowledgeGraphLink)}
               nodeCanvasObject={paintNode}
               linkCanvasObject={paintLink}
               linkCanvasObjectMode={() => "replace"}

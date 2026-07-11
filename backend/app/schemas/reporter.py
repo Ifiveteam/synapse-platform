@@ -21,13 +21,26 @@ class KnowledgeGraphLink(BaseModel):
     source: str
     target: str
     value: float = Field(ge=0)
+    link_type: str | None = Field(
+        default=None,
+        description="cooccurrence | semantic | domain_hub",
+    )
+    similarity: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="semantic 링크 코사인 유사도",
+    )
 
 
 class KnowledgeGraphResponse(BaseModel):
-    """일별 지식 그래프 — 프론트엔드 즉시 바인딩 가능."""
+    """지식 그래프 — 프론트엔드 즉시 바인딩 가능."""
 
     nodes: list[KnowledgeGraphNode] = Field(default_factory=list)
     links: list[KnowledgeGraphLink] = Field(default_factory=list)
+    start_date: date | None = None
+    end_date: date | None = None
+    snapshot_count: int | None = None
 
 
 class MarkdownReportResponse(BaseModel):

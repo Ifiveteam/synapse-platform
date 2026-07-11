@@ -44,27 +44,25 @@ _CATEGORY_LABELS: dict[str, str] = {
 }
 
 _SHORTCUT_CATEGORY_MAP: dict[str, TrendDomain] = {
-    "28": TrendDomain.TECH_BUSINESS,
+    "1": TrendDomain.CONTENT_MEDIA,
+    "2": TrendDomain.LIFESTYLE_WELLNESS,
+    "10": TrendDomain.CONTENT_MEDIA,
+    "15": TrendDomain.LIFESTYLE_WELLNESS,
+    "17": TrendDomain.LIFESTYLE_WELLNESS,
+    "19": TrendDomain.LIFESTYLE_WELLNESS,
+    "20": TrendDomain.CONTENT_MEDIA,
+    "22": TrendDomain.CONTENT_MEDIA,
+    "23": TrendDomain.CONTENT_MEDIA,
+    "24": TrendDomain.CONTENT_MEDIA,
     "25": TrendDomain.SOCIAL_CURRENT_AFFAIRS,
+    "26": TrendDomain.LIFESTYLE_WELLNESS,
     "27": TrendDomain.KNOWLEDGE_EDUCATION,
+    "28": TrendDomain.TECH_BUSINESS,
+    "29": TrendDomain.SOCIAL_CURRENT_AFFAIRS,
 }
 
-_LLM_CATEGORY_IDS: frozenset[str] = frozenset(
-    {
-        "1",
-        "2",
-        "10",
-        "15",
-        "17",
-        "19",
-        "20",
-        "22",
-        "23",
-        "24",
-        "26",
-        "29",
-    }
-)
+# 숏컷으로 처리되지 않는 categoryId만 LLM (현재는 거의 없음)
+_LLM_CATEGORY_IDS: frozenset[str] = frozenset()
 
 
 class YoutubeDomainAgent(BaseTrendAgent):

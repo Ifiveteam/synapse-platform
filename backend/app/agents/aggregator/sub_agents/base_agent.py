@@ -131,7 +131,8 @@ class BaseTrendAgent(ABC):
                 schema=TrendDomainLLMOutput,
                 temperature=0.2,
                 model=model,
-                max_output_tokens=1024,
+                max_output_tokens=4096,
+                thinking=False,
                 fallback_factory=lambda: TrendDomainLLMOutput(
                     confidence=0.0,
                     domains=[

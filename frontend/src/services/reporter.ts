@@ -10,16 +10,26 @@ export interface KnowledgeGraphNode {
 }
 
 /** react-force-graph 링크 — 백엔드 graph_data.links 항목 */
+export type KnowledgeGraphLinkType =
+  | "cooccurrence"
+  | "semantic"
+  | "domain_hub";
+
 export interface KnowledgeGraphLink {
   source: string;
   target: string;
   value: number;
+  link_type?: KnowledgeGraphLinkType;
+  similarity?: number;
 }
 
 /** 지식 그래프 API 응답 본문 */
 export interface KnowledgeGraphData {
   nodes: KnowledgeGraphNode[];
   links: KnowledgeGraphLink[];
+  start_date?: string | null;
+  end_date?: string | null;
+  snapshot_count?: number | null;
 }
 
 export interface MarkdownReportData {
@@ -64,7 +74,7 @@ export function todayKstDateString(): string {
   );
 }
 
-function shiftKstDateString(base: string, deltaDays: number): string {
+export function shiftKstDateString(base: string, deltaDays: number): string {
   const [year, month, day] = base.split("-").map(Number);
   const utc = Date.UTC(year, month - 1, day);
   const shifted = new Date(utc + deltaDays * 86_400_000);
@@ -73,17 +83,21 @@ function shiftKstDateString(base: string, deltaDays: number): string {
   );
 }
 
-/** 특정 일자의 지식 그래프(nodes/links)를 조회한다. */
+/** 종료일 기준 N일(기본 7일) 스냅샷을 롤업한 지식 그래프를 조회한다. */
 export async function fetchKnowledgeGraph(
-  date: string,
+  endDate: string,
+  days: number = 7,
 ): Promise<KnowledgeGraphData> {
   const { data } = await reporterClient.get<KnowledgeGraphData>(
     "/api/v1/reporter/graph",
-    { params: { date } },
+    { params: { date: endDate, days } },
   );
   return {
     nodes: Array.isArray(data.nodes) ? data.nodes : [],
     links: Array.isArray(data.links) ? data.links : [],
+    start_date: data.start_date ?? null,
+    end_date: data.end_date ?? endDate,
+    snapshot_count: data.snapshot_count ?? 0,
   };
 }
 
