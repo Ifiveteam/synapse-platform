@@ -71,6 +71,15 @@ class GlobalTrendsSnapshot(Base):
         server_default=text("'{}'::jsonb"),
         comment="에이전트 소스별 동시 출현 키워드 맥락·도메인 가중치",
     )
+    semantic_links: Mapped[list] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+        comment=(
+            "당일 키워드 semantic edges: "
+            "[{source,target,similarity,link_type,left_hint,right_hint}]"
+        ),
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -13,10 +13,11 @@ from app.models.trend_domain import TrendDomain
 
 # react-force-graph 바인딩용 노드·링크 타입
 GraphNode = dict[str, str | float]
-GraphLink = dict[str, str | float]
+GraphLink = dict[str, str | float | bool]
 ForceGraphData = dict[str, list[GraphNode] | list[GraphLink]]
 
 SourceType = Literal["scrap", "youtube", "behavior", "external", "user_daily"]
+LinkType = Literal["cooccurrence", "semantic", "domain_hub"]
 
 
 class AgentKeywordContext(TypedDict):
@@ -51,6 +52,9 @@ class KnowledgeGraphMapper:
     LINK_VAL_MIN = 0.15
     LINK_VAL_MAX = 4.0
     DOMAIN_HUB_BASE_VAL = 22.0
+    SEMANTIC_LINK_VAL_MIN = 0.4
+    SEMANTIC_LINK_VAL_MAX = 3.2
+    ALGORITHM_VERSION = "cross_domain_cooccurrence_semantic_v1"
 
     def map(
         self,
@@ -86,6 +90,7 @@ class KnowledgeGraphMapper:
             co_matrix=co_matrix,
             domain_affinity=domain_affinity,
             domain_stats=domain_stats,
+            semantic_links=self._semantic_links_from_snapshot(snapshot),
         )
 
         return {"nodes": nodes, "links": links}
@@ -100,7 +105,7 @@ class KnowledgeGraphMapper:
         nodes = graph["nodes"]
         links = graph["links"]
         meta = {
-            "algorithm": "cross_domain_cooccurrence_v1",
+            "algorithm": self.ALGORITHM_VERSION,
             "node_count": len(nodes),
             "link_count": len(links),
             "domain_hub_count": sum(
@@ -109,8 +114,26 @@ class KnowledgeGraphMapper:
             "keyword_node_count": sum(
                 1 for node in nodes if node.get("group") != self.DOMAIN_HUB_GROUP
             ),
+            "semantic_link_count": sum(
+                1 for link in links if link.get("link_type") == "semantic"
+            ),
+            "cooccurrence_link_count": sum(
+                1 for link in links if link.get("link_type") == "cooccurrence"
+            ),
         }
         return graph, meta
+
+    @staticmethod
+    def _semantic_links_from_snapshot(
+        snapshot: GlobalTrendsSnapshot | Any,
+    ) -> list[dict[str, Any]]:
+        raw = getattr(snapshot, "semantic_links", None) or []
+        if isinstance(raw, dict):
+            edges = raw.get("edges")
+            return edges if isinstance(edges, list) else []
+        if isinstance(raw, (list, tuple)):
+            return [row for row in raw if isinstance(row, dict)]
+        return []
 
     @staticmethod
     def _keyword_map_from_snapshot(
@@ -360,26 +383,39 @@ class KnowledgeGraphMapper:
         co_matrix: Mapping[tuple[str, str], float],
         domain_affinity: Mapping[tuple[str, str], float],
         domain_stats: Mapping[str, Mapping[str, float]],
+        semantic_links: Sequence[Mapping[str, Any]] | None = None,
         active_domains: frozenset[str] | None = None,
     ) -> list[GraphLink]:
-        """키워드↔키워드·키워드↔도메인·도메인↔도메인 링크를 생성한다."""
+        """키워드↔키워드·키워드↔도메인·semantic 링크를 생성한다."""
         links: list[GraphLink] = []
-        seen: set[tuple[str, str]] = set()
+        # (a, b) — 팩트/구조 엣지. semantic은 동일 쌍이 있으면 생략
+        seen_pairs: set[tuple[str, str]] = set()
 
-        def _append_link(source: str, target: str, raw_value: float) -> None:
+        def _append_link(
+            source: str,
+            target: str,
+            *,
+            raw_value: float,
+            link_type: LinkType,
+            similarity: float | None = None,
+        ) -> None:
             if source == target:
                 return
             edge = tuple(sorted((source, target)))
-            if edge in seen:
+            if link_type == "semantic" and edge in seen_pairs:
                 return
-            seen.add(edge)
-            links.append(
-                {
-                    "source": edge[0],
-                    "target": edge[1],
-                    "value": raw_value,
-                }
-            )
+            if link_type != "semantic" and edge in seen_pairs:
+                return
+            seen_pairs.add(edge)
+            item: GraphLink = {
+                "source": edge[0],
+                "target": edge[1],
+                "value": raw_value,
+                "link_type": link_type,
+            }
+            if similarity is not None:
+                item["similarity"] = similarity
+            links.append(item)
 
         # 1) 키워드 간 co-occurrence
         co_values = list(co_matrix.values())
@@ -394,7 +430,12 @@ class KnowledgeGraphMapper:
                 continue
             if scaled_co[index] < cls.LINK_VAL_MIN:
                 continue
-            _append_link(left, right, scaled_co[index])
+            _append_link(
+                left,
+                right,
+                raw_value=scaled_co[index],
+                link_type="cooccurrence",
+            )
 
         # 2) 키워드 → 도메인 허브
         affinity_values = list(domain_affinity.values())
@@ -407,7 +448,12 @@ class KnowledgeGraphMapper:
         for index, ((keyword, domain), _raw) in enumerate(domain_affinity.items()):
             if keyword not in top_keyword_ids:
                 continue
-            _append_link(keyword, domain, scaled_affinity[index])
+            _append_link(
+                keyword,
+                domain,
+                raw_value=scaled_affinity[index],
+                link_type="domain_hub",
+            )
 
         # 3) 도메인 허브 간 약한 상호 연결 (플랫폼 거시 흐름)
         domain_ids = (
@@ -433,11 +479,41 @@ class KnowledgeGraphMapper:
             fallback=cls.LINK_VAL_MIN * 0.6,
         )
         for index, (left, right) in enumerate(domain_pairs):
-            _append_link(left, right, scaled_domain[index])
+            _append_link(
+                left,
+                right,
+                raw_value=scaled_domain[index],
+                link_type="domain_hub",
+            )
 
-        # value 필드 최종 반올림
+        # 4) snapshot semantic_links (배치 사전계산 — 런타임 임베딩 없음)
+        sem_rows = [
+            row
+            for row in (semantic_links or [])
+            if isinstance(row, Mapping)
+            and str(row.get("source", "")).strip() in top_keyword_ids
+            and str(row.get("target", "")).strip() in top_keyword_ids
+        ]
+        sims = [float(row.get("similarity", 0.0) or 0.0) for row in sem_rows]
+        scaled_sem = cls._min_max_scale(
+            sims,
+            cls.SEMANTIC_LINK_VAL_MIN,
+            cls.SEMANTIC_LINK_VAL_MAX,
+            fallback=1.0,
+        )
+        for index, row in enumerate(sem_rows):
+            _append_link(
+                str(row["source"]).strip(),
+                str(row["target"]).strip(),
+                raw_value=scaled_sem[index],
+                link_type="semantic",
+                similarity=float(row.get("similarity", 0.0) or 0.0),
+            )
+
         for link in links:
             link["value"] = round(float(link["value"]), 4)
+            if "similarity" in link:
+                link["similarity"] = round(float(link["similarity"]), 4)
 
         return links
 
@@ -527,6 +603,7 @@ class KnowledgeGraphMapper:
             co_matrix=co_matrix,
             domain_affinity=domain_affinity,
             domain_stats=domain_stats,
+            semantic_links=self._semantic_links_from_snapshot(snapshot_like),
             active_domains=active_domains,
         )
         graph: ForceGraphData = {"nodes": nodes, "links": links}
@@ -539,6 +616,12 @@ class KnowledgeGraphMapper:
             ),
             "keyword_node_count": sum(
                 1 for node in nodes if node.get("group") != self.DOMAIN_HUB_GROUP
+            ),
+            "semantic_link_count": sum(
+                1 for link in links if link.get("link_type") == "semantic"
+            ),
+            "cooccurrence_link_count": sum(
+                1 for link in links if link.get("link_type") == "cooccurrence"
             ),
             "min_score_threshold": min_score_threshold,
             "target_domains": list(active_domains) if active_domains else [],

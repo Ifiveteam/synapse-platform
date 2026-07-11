@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import traceback
@@ -17,10 +18,19 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agents.aggregator.orchestrator import AggregatorOrchestrator
 from app.agents.aggregator.schemas import DomainScoreMap
+from app.agents.aggregator.semantic import (
+    build_semantic_edges,
+    collect_keyword_hints,
+)
 from app.agents.aggregator.utils.aggregator_logger import AggregatorLogger
-from app.agents.reporter.graph_mapper import build_keyword_context_map
+from app.agents.reporter.graph_mapper import (
+    KnowledgeGraphMapper,
+    build_keyword_context_map,
+)
+from app.agents.shared.embedding import EMBEDDING_MODEL, embed_texts
 from app.models.trend_domain import TrendDomain
 from app.repositories import aggregator_repository as agg_repo
+from app.repositories import trend_keyword_embedding_repository as tke_repo
 from app.services.external_trend_service import ExternalTrendService
 from app.utils.trend_nlp_engine import TrendNLPEngine
 
@@ -116,12 +126,22 @@ class AggregatorWorker:
 
                     top_domains = self._build_top_domains(accumulator)
                     top_scrap_categories = self._build_scrap_categories(accumulator)
-                    external_market_keywords = (
-                        await self._fetch_external_market_keywords(batch_date)
-                    )
-                    self._append_external_keywords(
-                        accumulator, external_market_keywords
-                    )
+                    has_internal = accumulator.mapped_row_count > 0
+                    # 내부 매핑이 없으면 외부 키워드를 trending/공출현에 넣지 않는다.
+                    # (빈 일자 스냅샷이 Google RSS만으로 주간 그래프를 오염시키는 것 방지)
+                    if has_internal:
+                        external_market_keywords = (
+                            await self._fetch_external_market_keywords(batch_date)
+                        )
+                        self._append_external_keywords(
+                            accumulator, external_market_keywords
+                        )
+                    else:
+                        external_market_keywords = {}
+                        _logger.info(
+                            "[aggregator][batch] 내부 매핑 0건 — "
+                            "외부 수집·trending 병합 스킵"
+                        )
 
                     trending_keywords = await agg_repo.build_trending_keywords_payload(
                         session,
@@ -134,6 +154,12 @@ class AggregatorWorker:
                         accumulator,
                         external_market_keywords,
                     )
+                    semantic_links = await self._build_semantic_links(
+                        session,
+                        trending_keywords=trending_keywords,
+                        keyword_context_map=keyword_context_map,
+                        external_market_keywords=external_market_keywords,
+                    )
 
                     await agg_repo.insert_global_trends_snapshot(
                         session,
@@ -144,6 +170,7 @@ class AggregatorWorker:
                         global_8_axis_avg=global_8_axis_avg,
                         trending_keywords=trending_keywords,
                         keyword_context_map=keyword_context_map,
+                        semantic_links=semantic_links,
                     )
                     await session.commit()
                 except Exception:
@@ -183,6 +210,90 @@ class AggregatorWorker:
 
     def _open_session(self) -> AbstractAsyncContextManager[AsyncSession]:
         return self._session_factory()
+
+    async def _build_semantic_links(
+        self,
+        session: AsyncSession,
+        *,
+        trending_keywords: dict[str, Any],
+        keyword_context_map: dict[str, Any],
+        external_market_keywords: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """힌트 결합 임베딩 → Top-K semantic edges.
+
+        임베딩·유사도 연산은 이벤트 루프 블로킹 방지를 위해 to_thread.
+        실패 시 [] 로 degrade (스냅샷·공출현 그래프는 유지).
+        """
+        try:
+            hints = collect_keyword_hints(
+                trending_keywords=trending_keywords,
+                keyword_context_map=keyword_context_map,
+                external_market_keywords=external_market_keywords,
+            )
+            if len(hints) < 2:
+                _logger.info(
+                    "[aggregator][semantic] 후보 부족 hints=%d — skip",
+                    len(hints),
+                )
+                return []
+
+            texts = [hint.embedding_text for hint in hints]
+            cached = await tke_repo.fetch_by_embedding_texts(session, texts)
+            missing = [hint for hint in hints if hint.embedding_text not in cached]
+
+            if missing:
+                miss_texts = [hint.embedding_text for hint in missing]
+                vectors = await asyncio.to_thread(embed_texts, miss_texts)
+                await tke_repo.upsert_many(
+                    session,
+                    [
+                        {
+                            "keyword": hint.keyword,
+                            "hint_source": hint.hint_source,
+                            "hint_domain": hint.hint_domain,
+                            "embedding_text": hint.embedding_text,
+                            "embedding": vector,
+                            "model": EMBEDDING_MODEL,
+                        }
+                        for hint, vector in zip(missing, vectors, strict=True)
+                    ],
+                )
+                for hint, vector in zip(missing, vectors, strict=True):
+                    cached[hint.embedding_text] = vector
+
+            keyword_set = {hint.keyword for hint in hints}
+            co_matrix = KnowledgeGraphMapper._build_cooccurrence_matrix(
+                {
+                    "target_date": str(keyword_context_map.get("target_date", "")),
+                    "contexts": list(keyword_context_map.get("contexts") or []),
+                    "keyword_domain_weights": dict(
+                        keyword_context_map.get("keyword_domain_weights") or {}
+                    ),
+                },
+                keyword_set=keyword_set,
+            )
+
+            edges = await asyncio.to_thread(
+                build_semantic_edges,
+                hints=hints,
+                vectors=cached,
+                co_matrix=co_matrix,
+            )
+            payload = [edge.to_json() for edge in edges]
+            _logger.info(
+                "[aggregator][semantic] 완료 hints=%d cache_hit=%d "
+                "embedded=%d edges=%d",
+                len(hints),
+                len(hints) - len(missing),
+                len(missing),
+                len(payload),
+            )
+            return payload
+        except Exception:
+            _logger.exception(
+                "[aggregator][semantic] 실패 — semantic_links=[] 로 degrade"
+            )
+            return []
 
     async def _fetch_external_market_keywords(self, batch_date: date) -> dict[str, Any]:
         """외부 트렌드 수집 — 장애 시 {} 반환하여 내부 집계만 저장."""

@@ -9,7 +9,6 @@ import { triggerAggregatorBatch } from "@/services/aggregator";
 
 const DEMO_ROUTES = [
   { label: "Archiver", href: ROUTES.agentDetail("archiver") },
-  { label: "트렌드 대시보드", href: ROUTES.reporterTrendGraph },
 ] as const;
 
 export function DemoMenu() {

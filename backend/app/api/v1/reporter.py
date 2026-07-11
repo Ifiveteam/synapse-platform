@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database.session import get_db
 from app.repositories import reporter_repository
+from app.repositories.reporter_repository import MAX_SIMULATOR_RANGE_DAYS
 from app.schemas.reporter import (
     GraphSimulatorRequest,
     GraphSimulatorResponse,
@@ -108,24 +109,39 @@ async def get_knowledge_graph(
     graph_date: date = Query(
         default_factory=today_kst,
         alias="date",
-        description="KST 기준 조회 일자 (YYYY-MM-DD)",
+        description="KST 기준 조회 종료일 (YYYY-MM-DD)",
+    ),
+    days: int = Query(
+        7,
+        ge=1,
+        le=MAX_SIMULATOR_RANGE_DAYS,
+        description="종료일 포함 롤업 일수 (기본 7일)",
     ),
     session: AsyncSession = Depends(get_db),
 ) -> KnowledgeGraphResponse:
-    """특정 일자의 교차 도메인 지식 그래프를 반환한다."""
-    row = await reporter_repository.fetch_knowledge_graph_by_date(
-        session,
-        graph_date,
-    )
-    if row is None:
-        return KnowledgeGraphResponse()
+    """종료일 기준 N일 스냅샷을 롤업한 교차 도메인 지식 그래프를 반환한다.
 
-    graph_data = row.graph_data or {}
-    raw_nodes = graph_data.get("nodes")
-    raw_links = graph_data.get("links")
-    nodes = raw_nodes if isinstance(raw_nodes, list) else []
-    links = raw_links if isinstance(raw_links, list) else []
-    return KnowledgeGraphResponse(nodes=nodes, links=links)
+    기본은 7일 합산. ``days=1`` 이면 해당 일자만 사용한다.
+    """
+    end_date = graph_date
+    start_date = end_date - timedelta(days=days - 1)
+    top_limit = 30 if days >= 7 else 20
+
+    service = GraphSimulatorService(session)
+    result = await service.simulate(
+        GraphSimulatorRequest(
+            start_date=start_date,
+            end_date=end_date,
+            top_keywords_limit=top_limit,
+        )
+    )
+    return KnowledgeGraphResponse(
+        nodes=result.nodes,
+        links=result.links,
+        start_date=start_date,
+        end_date=end_date,
+        snapshot_count=int(result.meta.get("snapshot_count") or 0),
+    )
 
 
 @router.get("/report", response_model=MarkdownReportResponse)
