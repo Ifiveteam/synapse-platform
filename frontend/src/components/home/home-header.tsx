@@ -13,41 +13,38 @@ export function HomeHeader() {
   const openLoginModal = useShellStore((s) => s.openLoginModal);
 
   return (
-    <header className="flex shrink-0 items-center justify-between gap-4 px-6 pt-4 pb-2">
-      <p className="text-muted-foreground text-xs">
-        {user
-          ? `${user.name}님, 오늘의 트렌드를 확인해 보세요.`
-          : "로그인이 필요합니다. 시작하려면 로그인해 주세요."}
-      </p>
-
-      <div className="flex shrink-0 items-center gap-1.5">
-        <DemoMenu />
+    <header className="flex shrink-0 items-center justify-end gap-1 px-6 pt-5 pb-0 md:px-8">
+      <DemoMenu />
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-muted-foreground hover:text-foreground h-8 gap-1.5 rounded-full px-3 text-[12px] font-normal"
+        asChild
+      >
+        <Link to={ROUTES.download}>
+          <Download size={13} className="opacity-70" />
+          Download
+        </Link>
+      </Button>
+      {user ? (
         <Button
-          variant="ghost"
           size="sm"
-          className="text-muted-foreground hover:text-foreground h-7 gap-1.5 px-2.5 text-xs"
-          asChild
+          variant="ghost"
+          className="text-muted-foreground hover:text-foreground h-8 rounded-full px-3 text-[12px] font-normal"
+          onClick={logout}
         >
-          <Link to={ROUTES.download}>
-            <Download size={13} />
-            Download
-          </Link>
+          로그아웃
         </Button>
-        {user ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-muted-foreground hover:text-foreground h-7 px-2.5 text-xs"
-            onClick={logout}
-          >
-            로그아웃
-          </Button>
-        ) : (
-          <Button size="sm" className="h-7 px-3 text-xs" onClick={openLoginModal}>
-            로그인
-          </Button>
-        )}
-      </div>
+      ) : (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-foreground h-8 rounded-full px-3 text-[12px] font-medium"
+          onClick={openLoginModal}
+        >
+          로그인
+        </Button>
+      )}
     </header>
   );
 }

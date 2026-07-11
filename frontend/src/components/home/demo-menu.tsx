@@ -33,7 +33,7 @@ export function DemoMenu() {
     try {
       const result = await triggerAggregatorBatch();
       toast.success(
-        `${result.message} · 집계 완료 후 트렌드 대시보드에서 [실시간 분석 실행]을 눌러주세요.`,
+        `${result.message} · 집계 완료 후 인텔리전스에서 [실시간 분석 실행]을 눌러주세요.`,
       );
       setOpen(false);
     } catch (err) {

@@ -112,16 +112,16 @@ async def get_knowledge_graph(
         description="KST 기준 조회 종료일 (YYYY-MM-DD)",
     ),
     days: int = Query(
-        7,
+        14,
         ge=1,
         le=MAX_SIMULATOR_RANGE_DAYS,
-        description="종료일 포함 롤업 일수 (기본 7일)",
+        description="종료일 포함 롤업 일수 (기본 14일)",
     ),
     session: AsyncSession = Depends(get_db),
 ) -> KnowledgeGraphResponse:
     """종료일 기준 N일 스냅샷을 롤업한 교차 도메인 지식 그래프를 반환한다.
 
-    기본은 7일 합산. ``days=1`` 이면 해당 일자만 사용한다.
+    기본은 14일 합산. ``days=1`` 이면 해당 일자만 사용한다.
     """
     end_date = graph_date
     start_date = end_date - timedelta(days=days - 1)

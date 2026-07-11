@@ -83,10 +83,10 @@ export function shiftKstDateString(base: string, deltaDays: number): string {
   );
 }
 
-/** 종료일 기준 N일(기본 7일) 스냅샷을 롤업한 지식 그래프를 조회한다. */
+/** 종료일 기준 N일(기본 14일) 스냅샷을 롤업한 지식 그래프를 조회한다. */
 export async function fetchKnowledgeGraph(
   endDate: string,
-  days: number = 7,
+  days: number = 14,
 ): Promise<KnowledgeGraphData> {
   const { data } = await reporterClient.get<KnowledgeGraphData>(
     "/api/v1/reporter/graph",

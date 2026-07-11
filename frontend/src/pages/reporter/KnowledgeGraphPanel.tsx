@@ -2,6 +2,12 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { AlertCircle, Loader2, Network } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DOMAIN_HUB_GROUP,
+  DOMAIN_COLORS,
+  DOMAIN_LABELS,
+  domainLabel,
+} from "@/lib/trend-domains";
 import { cn } from "@/lib/utils";
 import {
   fetchKnowledgeGraph,
@@ -12,8 +18,6 @@ import {
 
 const ForceGraph2D = lazy(() => import("react-force-graph-2d"));
 
-const DOMAIN_HUB_GROUP = "domain_hub";
-
 /** 기본 뷰에서 유지할 공출현 엣지 상한 — 헤어볼 완화 */
 const MAX_COOCCURRENCE_EDGES = 48;
 /** 항상 라벨을 그릴 비허브 노드 수 (점수 상위) */
@@ -21,35 +25,30 @@ const ALWAYS_LABEL_TOP_N = 12;
 /** 줌인 시 추가 라벨을 그릴 임계 globalScale */
 const ZOOM_LABEL_SCALE = 1.35;
 
-const DOMAIN_COLORS: Record<string, string> = {
-  "Tech/Business": "#38bdf8",
-  "Content/Media": "#f472b6",
-  "Lifestyle/Wellness": "#4ade80",
-  "Social/Current Affairs": "#fb923c",
-  "Knowledge/Education": "#a78bfa",
-  "Economy/TechFin": "#facc15",
-};
+const HUB_FALLBACK_COLOR = "#94a3b8";
 
-const DOMAIN_LABELS: Record<string, string> = {
-  "Tech/Business": "테크/비즈니스",
-  "Content/Media": "콘텐츠/미디어",
-  "Lifestyle/Wellness": "라이프/웰니스",
-  "Social/Current Affairs": "사회/시사",
-  "Knowledge/Education": "지식/교육",
-  "Economy/TechFin": "경제/테크핀",
-};
-
-const HUB_NODE_COLOR = "#818cf8";
-const HUB_GLOW_COLOR = "rgba(129, 140, 248, 0.45)";
-
-function nodeColor(node: KnowledgeGraphNode): string {
-  if (node.group === DOMAIN_HUB_GROUP) return HUB_NODE_COLOR;
-  return DOMAIN_COLORS[node.group] ?? "#94a3b8";
+function hexToRgba(hex: string, alpha: number): string {
+  const raw = hex.replace("#", "");
+  if (raw.length !== 6) return `rgba(148, 163, 184, ${alpha})`;
+  const r = Number.parseInt(raw.slice(0, 2), 16);
+  const g = Number.parseInt(raw.slice(2, 4), 16);
+  const b = Number.parseInt(raw.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function groupDisplayName(group: string): string {
-  if (group === DOMAIN_HUB_GROUP) return "도메인 허브";
-  return DOMAIN_LABELS[group] ?? group;
+function nodeColor(node: KnowledgeGraphNode): string {
+  // 허브는 group이 domain_hub이고 id가 도메인명(Tech/Business 등)
+  if (node.group === DOMAIN_HUB_GROUP) {
+    return DOMAIN_COLORS[node.id] ?? HUB_FALLBACK_COLOR;
+  }
+  return DOMAIN_COLORS[node.group] ?? HUB_FALLBACK_COLOR;
+}
+
+function nodeDisplayLabel(node: KnowledgeGraphNode): string {
+  if (node.group === DOMAIN_HUB_GROUP) {
+    return DOMAIN_LABELS[node.id] ?? node.id;
+  }
+  return node.id;
 }
 
 function truncateLabel(text: string, maxChars: number): string {
@@ -58,8 +57,11 @@ function truncateLabel(text: string, maxChars: number): string {
 }
 
 function nodeHoverLabel(node: KnowledgeGraphNode): string {
-  const role = groupDisplayName(node.group);
-  return `${node.id}\n${role} · score ${node.val.toFixed(2)}`;
+  const role =
+    node.group === DOMAIN_HUB_GROUP
+      ? "도메인 허브"
+      : domainLabel(node.group);
+  return `${nodeDisplayLabel(node)}\n${role} · score ${node.val.toFixed(2)}`;
 }
 
 function linkHoverLabel(link: KnowledgeGraphLink): string {
@@ -137,23 +139,52 @@ function GraphCanvasFallback() {
   );
 }
 
-interface KnowledgeGraphPanelProps {
-  selectedDate: string;
+function rangeLabelFromData(data: KnowledgeGraphData): string | null {
+  if (!data.start_date || !data.end_date) return null;
+  const count = typeof data.snapshot_count === "number" ? data.snapshot_count : 0;
+  return `조회 기간 ${data.start_date} ~ ${data.end_date} (14일) · 실제 합산 스냅샷 ${count}일`;
 }
 
-export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) {
+interface KnowledgeGraphPanelProps {
+  selectedDate: string;
+  /** 홈 브리핑용 축소 뷰 */
+  compact?: boolean;
+  /** 부모가 이미 로드한 데이터 — 있으면 자체 fetch 생략 */
+  externalData?: KnowledgeGraphData;
+  externalLoading?: boolean;
+  externalError?: string | null;
+  onRetry?: () => void;
+}
+
+export function KnowledgeGraphPanel({
+  selectedDate,
+  compact = false,
+  externalData,
+  externalLoading,
+  externalError,
+  onRetry,
+}: KnowledgeGraphPanelProps) {
+  const isControlled = externalData !== undefined;
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graphRef = useRef<any>(undefined);
 
-  const [graphData, setGraphData] = useState<KnowledgeGraphData>({
-    nodes: [],
-    links: [],
+  const [graphData, setGraphData] = useState<KnowledgeGraphData>(
+    externalData ?? { nodes: [], links: [] },
+  );
+  const [loading, setLoading] = useState(
+    isControlled ? Boolean(externalLoading) : true,
+  );
+  const [error, setError] = useState<string | null>(
+    isControlled ? (externalError ?? null) : null,
+  );
+  const [rangeLabel, setRangeLabel] = useState<string | null>(
+    externalData ? rangeLabelFromData(externalData) : null,
+  );
+  const [dimensions, setDimensions] = useState({
+    width: 960,
+    height: compact ? 320 : 520,
   });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [rangeLabel, setRangeLabel] = useState<string | null>(null);
-  const [dimensions, setDimensions] = useState({ width: 960, height: 520 });
   const [showSemantic, setShowSemantic] = useState(false);
   const [showAllLinks, setShowAllLinks] = useState(false);
   const [showAllLabels, setShowAllLabels] = useState(false);
@@ -162,17 +193,9 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchKnowledgeGraph(date, 7);
+      const data = await fetchKnowledgeGraph(date, 14);
       setGraphData(data);
-      if (data.start_date && data.end_date) {
-        const count =
-          typeof data.snapshot_count === "number" ? data.snapshot_count : 0;
-        setRangeLabel(
-          `조회 기간 ${data.start_date} ~ ${data.end_date} (7일) · 실제 합산 스냅샷 ${count}일`,
-        );
-      } else {
-        setRangeLabel(null);
-      }
+      setRangeLabel(rangeLabelFromData(data));
     } catch (err) {
       const message =
         err instanceof Error
@@ -187,8 +210,17 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
   }, []);
 
   useEffect(() => {
+    if (!isControlled) return;
+    setGraphData(externalData);
+    setLoading(Boolean(externalLoading));
+    setError(externalError ?? null);
+    setRangeLabel(rangeLabelFromData(externalData));
+  }, [isControlled, externalData, externalLoading, externalError]);
+
+  useEffect(() => {
+    if (isControlled) return;
     void loadGraph(selectedDate);
-  }, [selectedDate, loadGraph]);
+  }, [selectedDate, loadGraph, isControlled]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -198,12 +230,12 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
       if (!rect) return;
       setDimensions({
         width: Math.max(320, Math.floor(rect.width)),
-        height: Math.max(420, Math.floor(rect.height)),
+        height: Math.max(compact ? 280 : 420, Math.floor(rect.height)),
       });
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [compact]);
 
   const labeledNodeIds = useMemo(() => {
     const ids = new Set<string>();
@@ -211,18 +243,17 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
     const topics = [...graphData.nodes]
       .filter((n) => n.group !== DOMAIN_HUB_GROUP)
       .sort((a, b) => b.val - a.val)
-      .slice(0, ALWAYS_LABEL_TOP_N);
+      .slice(0, compact ? 8 : ALWAYS_LABEL_TOP_N);
     for (const n of hubs) ids.add(n.id);
     for (const n of topics) ids.add(n.id);
     return ids;
-  }, [graphData.nodes]);
+  }, [graphData.nodes, compact]);
 
   const displayData = useMemo(() => {
     const links = filterReadableLinks(graphData.links, {
-      showSemantic,
-      showAllLinks,
+      showSemantic: compact ? false : showSemantic,
+      showAllLinks: compact ? false : showAllLinks,
     });
-    // force-graph가 source/target을 객체로 mutate하므로 매번 복제
     return {
       nodes: graphData.nodes.map((n) => ({ ...n })),
       links: links.map((l) => ({
@@ -231,27 +262,27 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
         target: linkEndpointId(l.target),
       })),
     };
-  }, [graphData, showSemantic, showAllLinks]);
+  }, [graphData, showSemantic, showAllLinks, compact]);
 
   const configureForces = useCallback(() => {
     const fg = graphRef.current;
     if (!fg) return;
     const charge = fg.d3Force("charge");
-    if (charge?.strength) charge.strength(-180);
+    if (charge?.strength) charge.strength(compact ? -140 : -180);
     const link = fg.d3Force("link");
-    if (link?.distance) link.distance(72);
+    if (link?.distance) link.distance(compact ? 56 : 72);
     const center = fg.d3Force("center");
     if (center?.strength) center.strength(0.05);
-  }, []);
+  }, [compact]);
 
   useEffect(() => {
     if (loading || displayData.nodes.length === 0) return;
     const timer = window.setTimeout(() => {
       configureForces();
-      graphRef.current?.zoomToFit(400, 72);
+      graphRef.current?.zoomToFit(400, compact ? 48 : 72);
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [displayData, loading, configureForces]);
+  }, [displayData, loading, configureForces, compact]);
 
   const legendItems = useMemo(() => {
     const groups = new Set(
@@ -261,7 +292,7 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
     );
     return [...groups].map((group) => ({
       group,
-      label: groupDisplayName(group),
+      label: domainLabel(group),
       color: DOMAIN_COLORS[group] ?? "#94a3b8",
     }));
   }, [graphData.nodes]);
@@ -278,7 +309,7 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
       if (isHub) {
         ctx.beginPath();
         ctx.arc(x, y, radius + 3 / globalScale, 0, Math.PI * 2);
-        ctx.fillStyle = HUB_GLOW_COLOR;
+        ctx.fillStyle = hexToRgba(fill, 0.4);
         ctx.fill();
       }
 
@@ -292,7 +323,7 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
       if (isHub) {
         ctx.beginPath();
         ctx.arc(x, y, radius + 1.5 / globalScale, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(199, 210, 254, 0.85)";
+        ctx.strokeStyle = hexToRgba(fill, 0.9);
         ctx.lineWidth = 1.2 / globalScale;
         ctx.stroke();
       }
@@ -303,24 +334,27 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
         globalScale >= ZOOM_LABEL_SCALE;
       if (!shouldLabel) return;
 
-      const fontSize = Math.max(11, 12 / Math.min(globalScale, 2.2));
-      const maxChars = isHub ? 18 : globalScale >= ZOOM_LABEL_SCALE ? 16 : 14;
-      const label = truncateLabel(n.id, maxChars);
+      const fontSize = Math.max(
+        7.5,
+        (isHub ? 8.5 : 8) / Math.min(globalScale, 2.2),
+      );
+      const maxChars = isHub ? 14 : globalScale >= ZOOM_LABEL_SCALE ? 14 : 12;
+      const label = truncateLabel(nodeDisplayLabel(n), maxChars);
       ctx.font = `${isHub ? "600" : "500"} ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
 
-      const textY = y + radius + 3 / globalScale;
+      const textY = y + radius + 2.5 / globalScale;
       const metrics = ctx.measureText(label);
-      const padX = 4 / globalScale;
-      const padY = 2 / globalScale;
+      const padX = 3 / globalScale;
+      const padY = 1.5 / globalScale;
       const boxW = metrics.width + padX * 2;
       const boxH = fontSize + padY * 2;
 
-      ctx.fillStyle = "rgba(3, 5, 10, 0.72)";
+      ctx.fillStyle = "rgba(3, 5, 10, 0.7)";
       ctx.fillRect(x - boxW / 2, textY - padY, boxW, boxH);
 
-      ctx.fillStyle = isHub ? "#e0e7ff" : "#e2e8f0";
+      ctx.fillStyle = isHub ? "#f8fafc" : "#cbd5e1";
       ctx.fillText(label, x, textY);
     },
     [labeledNodeIds, showAllLabels],
@@ -343,7 +377,10 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
         return;
       }
 
-      const width = Math.max(0.35, Math.min(2.2, (l.value ?? 0.5) * 1.1) / globalScale);
+      const width = Math.max(
+        0.35,
+        Math.min(2.2, (l.value ?? 0.5) * 1.1) / globalScale,
+      );
       const isSemantic = l.link_type === "semantic";
       ctx.beginPath();
       ctx.moveTo(source.x, source.y);
@@ -372,98 +409,114 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
     graphData.links.length - displayData.links.length,
   );
 
+  const handleRetry = () => {
+    if (onRetry) onRetry();
+    else void loadGraph(selectedDate);
+  };
+
   return (
-    <div className="border-border bg-card rounded-2xl border p-4 shadow-sm">
-      {rangeLabel && (
+    <div
+      className={cn(
+        compact
+          ? "overflow-hidden rounded-2xl"
+          : "border-border bg-card rounded-2xl border p-4 shadow-sm",
+      )}
+    >
+      {!compact && rangeLabel && (
         <p className="text-muted-foreground mb-2 text-xs">{rangeLabel}</p>
       )}
 
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        {legendItems.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-400/30 bg-indigo-500/10 px-2.5 py-0.5 text-[10px] text-indigo-200">
-              <span
-                className="size-2 rounded-full"
-                style={{ backgroundColor: HUB_NODE_COLOR }}
-              />
-              도메인 허브
-            </span>
-            {legendItems.map((item) => (
-              <span
-                key={item.group}
-                className="border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px]"
-              >
-                <span
-                  className="size-2 rounded-full"
-                  style={{ backgroundColor: item.color }}
-                />
-                {item.label}
-              </span>
-            ))}
-            <span className="border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] text-slate-400">
-              <span className="h-px w-3 bg-slate-400" />
-              함께 등장
-            </span>
-            {(showSemantic || showAllLinks) && (
+      {!compact && (
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          {legendItems.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
               <span className="border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] text-slate-400">
-                <span className="h-px w-3 border-t border-dashed border-indigo-400" />
-                의미 유사
+                큰 원 · 도메인 허브
               </span>
-            )}
-          </div>
-        ) : (
-          <div />
-        )}
+              {legendItems.map((item) => (
+                <span
+                  key={item.group}
+                  className="border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px]"
+                >
+                  <span
+                    className="size-2 rounded-full"
+                    style={{ backgroundColor: item.color }}
+                  />
+                  {item.label}
+                </span>
+              ))}
+              <span className="border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] text-slate-400">
+                <span className="h-px w-3 bg-slate-400" />
+                함께 등장
+              </span>
+              {(showSemantic || showAllLinks) && (
+                <span className="border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] text-slate-400">
+                  <span className="h-px w-3 border-t border-dashed border-indigo-400" />
+                  의미 유사
+                </span>
+              )}
+            </div>
+          ) : (
+            <div />
+          )}
 
-        {graphData.nodes.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Button
-              type="button"
-              size="sm"
-              variant={showSemantic ? "default" : "outline"}
-              className="h-7 px-2.5 text-[11px]"
-              onClick={() => setShowSemantic((v) => !v)}
-            >
-              의미 유사
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={showAllLinks ? "default" : "outline"}
-              className="h-7 px-2.5 text-[11px]"
-              onClick={() => setShowAllLinks((v) => !v)}
-            >
-              모든 연결
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={showAllLabels ? "default" : "outline"}
-              className="h-7 px-2.5 text-[11px]"
-              onClick={() => setShowAllLabels((v) => !v)}
-            >
-              모든 라벨
-            </Button>
-          </div>
-        )}
-      </div>
+          {graphData.nodes.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button
+                type="button"
+                size="sm"
+                variant={showSemantic ? "default" : "outline"}
+                className="h-7 px-2.5 text-[11px]"
+                onClick={() => setShowSemantic((v) => !v)}
+              >
+                의미 유사
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={showAllLinks ? "default" : "outline"}
+                className="h-7 px-2.5 text-[11px]"
+                onClick={() => setShowAllLinks((v) => !v)}
+              >
+                모든 연결
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={showAllLabels ? "default" : "outline"}
+                className="h-7 px-2.5 text-[11px]"
+                onClick={() => setShowAllLabels((v) => !v)}
+              >
+                모든 라벨
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div
         ref={containerRef}
-        className="relative h-[min(560px,68vh)] min-h-[420px] w-full overflow-hidden rounded-xl border border-slate-800"
+        className={cn(
+          "relative w-full overflow-hidden",
+          compact
+            ? "h-[min(420px,52vh)] min-h-[300px] rounded-2xl"
+            : "h-[min(560px,68vh)] min-h-[420px] rounded-xl border border-slate-800",
+        )}
         style={{
-          backgroundColor: "#03050a",
-          backgroundImage: [
-            "radial-gradient(ellipse 70% 55% at 52% 42%, rgba(56,72,120,0.35) 0%, transparent 72%)",
-            "radial-gradient(ellipse 40% 35% at 18% 78%, rgba(76,29,149,0.2) 0%, transparent 70%)",
-          ].join(", "),
+          backgroundColor: compact ? "#0a0a0a" : "#03050a",
+          backgroundImage: compact
+            ? undefined
+            : [
+                "radial-gradient(ellipse 70% 55% at 52% 42%, rgba(56,72,120,0.35) 0%, transparent 72%)",
+                "radial-gradient(ellipse 40% 35% at 18% 78%, rgba(76,29,149,0.2) 0%, transparent 70%)",
+              ].join(", "),
         }}
       >
         {loading && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-[#03050a]/70 backdrop-blur-[1px]">
             <Loader2 className="size-8 animate-spin text-indigo-300" />
             <p className="text-sm text-slate-300">
-              {selectedDate} 기준 7일 합산 그래프 불러오는 중…
+              {selectedDate} 기준 14일 합산 그래프 불러오는 중…
             </p>
           </div>
         )}
@@ -479,12 +532,7 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
                 {error}
               </p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void loadGraph(selectedDate)}
-            >
+            <Button type="button" variant="outline" size="sm" onClick={handleRetry}>
               다시 시도
             </Button>
           </div>
@@ -494,10 +542,10 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-6 text-center">
             <Network className="text-muted-foreground size-10" />
             <p className="text-sm font-medium text-slate-200">
-              {selectedDate} 기준 최근 7일 데이터가 없습니다
+              {selectedDate} 기준 최근 14일 데이터가 없습니다
             </p>
             <p className="text-muted-foreground max-w-sm text-xs">
-              Aggregator 배치로 스냅샷이 쌓이면, 종료일 포함 7일을 합산한
+              Aggregator 배치로 스냅샷이 쌓이면, 종료일 포함 14일을 합산한
               지식 그래프가 여기에 표시됩니다.
             </p>
           </div>
@@ -538,29 +586,31 @@ export function KnowledgeGraphPanel({ selectedDate }: KnowledgeGraphPanelProps) 
               }}
               d3AlphaDecay={0.028}
               d3VelocityDecay={0.32}
-              cooldownTicks={160}
+              cooldownTicks={compact ? 120 : 160}
               onEngineStop={() => {
                 configureForces();
-                graphRef.current?.zoomToFit(300, 72);
+                graphRef.current?.zoomToFit(300, compact ? 48 : 72);
               }}
             />
           </Suspense>
         )}
       </div>
 
-      <p
-        className={cn(
-          "text-muted-foreground mt-3 text-[11px]",
-          loading && "opacity-60",
-        )}
-      >
-        노드 {graphData.nodes.length} · 표시 연결 {displayData.links.length}
-        {hiddenLinkCount > 0 && ` · 숨김 ${hiddenLinkCount}`}
-        {!loading && graphData.nodes.length > 0 && " · 드래그·줌 지원"}
-        {!showAllLabels &&
-          graphData.nodes.length > 0 &&
-          " · 허브·상위 키워드 라벨 표시 (줌인 시 더 보임)"}
-      </p>
+      {!compact && (
+        <p
+          className={cn(
+            "text-muted-foreground mt-3 text-[11px]",
+            loading && "opacity-60",
+          )}
+        >
+          노드 {graphData.nodes.length} · 표시 연결 {displayData.links.length}
+          {hiddenLinkCount > 0 && ` · 숨김 ${hiddenLinkCount}`}
+          {!loading && graphData.nodes.length > 0 && " · 드래그·줌 지원"}
+          {!showAllLabels &&
+            graphData.nodes.length > 0 &&
+            " · 허브·상위 키워드 라벨 표시 (줌인 시 더 보임)"}
+        </p>
+      )}
     </div>
   );
 }
