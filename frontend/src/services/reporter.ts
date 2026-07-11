@@ -80,6 +80,48 @@ export interface SnapshotInventory {
   days: SnapshotInventoryDay[];
 }
 
+export interface SnapshotKeywordRow {
+  keyword: string;
+  score: number;
+  count_today: number;
+  rank: number;
+}
+
+export interface SnapshotDomainRow {
+  domain: string;
+  user_count: number;
+  total_duration: number;
+  avg_weight: number;
+}
+
+export interface SnapshotSemanticLinkRow {
+  source: string;
+  target: string;
+  similarity: number;
+  link_type: string;
+}
+
+export interface SnapshotDetail {
+  date: string;
+  present: boolean;
+  snapshot_id: string | null;
+  snapshot_date: string | null;
+  created_at: string | null;
+  keywords: SnapshotKeywordRow[];
+  domains: SnapshotDomainRow[];
+  axes: Record<string, number>;
+  semantic_link_count: number;
+  semantic_links: SnapshotSemanticLinkRow[];
+  external_keywords: string[];
+  scrap_categories: string[];
+  context_count: number;
+  has_cross_domain_insights: boolean;
+  report_source: string | null;
+  report_preview: string | null;
+  day_graph_nodes: number | null;
+  day_graph_links: number | null;
+}
+
 const reporterClient = axios.create({
   baseURL: API_BASE_URL,
   headers: { "Content-Type": "application/json" },
@@ -181,6 +223,42 @@ export async function fetchSnapshotInventory(
     present_count: data.present_count ?? 0,
     missing_count: data.missing_count ?? 0,
     days: Array.isArray(data.days) ? data.days : [],
+  };
+}
+
+/** 관리자 — 단일 일자 스냅샷·리포트·당일 그래프 상세를 조회한다. */
+export async function fetchSnapshotDetail(
+  dateString: string,
+): Promise<SnapshotDetail> {
+  const { data } = await reporterClient.get<SnapshotDetail>(
+    "/api/v1/reporter/snapshots/detail",
+    { params: { date: dateString } },
+  );
+  return {
+    date: data.date ?? dateString,
+    present: Boolean(data.present),
+    snapshot_id: data.snapshot_id ?? null,
+    snapshot_date: data.snapshot_date ?? null,
+    created_at: data.created_at ?? null,
+    keywords: Array.isArray(data.keywords) ? data.keywords : [],
+    domains: Array.isArray(data.domains) ? data.domains : [],
+    axes: data.axes && typeof data.axes === "object" ? data.axes : {},
+    semantic_link_count: data.semantic_link_count ?? 0,
+    semantic_links: Array.isArray(data.semantic_links)
+      ? data.semantic_links
+      : [],
+    external_keywords: Array.isArray(data.external_keywords)
+      ? data.external_keywords
+      : [],
+    scrap_categories: Array.isArray(data.scrap_categories)
+      ? data.scrap_categories
+      : [],
+    context_count: data.context_count ?? 0,
+    has_cross_domain_insights: Boolean(data.has_cross_domain_insights),
+    report_source: data.report_source ?? null,
+    report_preview: data.report_preview ?? null,
+    day_graph_nodes: data.day_graph_nodes ?? null,
+    day_graph_links: data.day_graph_links ?? null,
   };
 }
 

@@ -127,20 +127,23 @@ class AggregatorWorker:
                     top_domains = self._build_top_domains(accumulator)
                     top_scrap_categories = self._build_scrap_categories(accumulator)
                     has_internal = accumulator.mapped_row_count > 0
-                    # 내부 매핑이 없으면 외부 키워드를 trending/공출현에 넣지 않는다.
-                    # (빈 일자 스냅샷이 Google RSS만으로 주간 그래프를 오염시키는 것 방지)
-                    if has_internal:
-                        external_market_keywords = (
-                            await self._fetch_external_market_keywords(batch_date)
-                        )
+
+                    # 내부 유무와 무관하게 외부를 수집한다.
+                    # (과거일·내부 공백일이라도 네이버/구글 시장 신호를 남기기 위함)
+                    external_market_keywords = (
+                        await self._fetch_external_market_keywords(batch_date)
+                    )
+                    if external_market_keywords:
                         self._append_external_keywords(
                             accumulator, external_market_keywords
                         )
-                    else:
-                        external_market_keywords = {}
+                        top_domains = self._merge_external_into_top_domains(
+                            top_domains,
+                            external_market_keywords,
+                        )
+                    elif not has_internal:
                         _logger.info(
-                            "[aggregator][batch] 내부 매핑 0건 — "
-                            "외부 수집·trending 병합 스킵"
+                            "[aggregator][batch] 내부 매핑 0건 + 외부 수집 실패/빈 결과"
                         )
 
                     trending_keywords = await agg_repo.build_trending_keywords_payload(
@@ -526,44 +529,99 @@ class AggregatorWorker:
         accumulator: _BatchAccumulator,
         external_payload: dict[str, Any],
     ) -> None:
-        """외부 API(네이버·구글 RSS) 키워드를 코퍼스에 병합."""
+        """외부 API(네이버·구글) 키워드를 코퍼스·도메인 가중치에 병합."""
         if not external_payload:
             return
 
-        raw = external_payload.get("raw")
-        if isinstance(raw, dict):
-            for item in raw.get("naver_datalab", []):
-                if isinstance(item, dict):
-                    AggregatorWorker._split_and_append_keywords(
-                        accumulator,
-                        item.get("keywords"),
-                        item.get("group_name"),
+        by_domain = external_payload.get("by_domain")
+        if not isinstance(by_domain, dict):
+            return
+
+        for domain_key, bucket in by_domain.items():
+            if not isinstance(bucket, dict):
+                continue
+            domain_weight = max(float(bucket.get("domain_score") or 0.0), 1.0)
+
+            for entry in bucket.get("google", []):
+                if not isinstance(entry, dict) or not entry.get("keyword"):
+                    continue
+                keyword = str(entry["keyword"]).strip()
+                if not keyword:
+                    continue
+                traffic = float(entry.get("approx_traffic") or domain_weight)
+                AggregatorWorker._append_keywords(accumulator, [keyword])
+                accumulator.keyword_domain_totals[keyword][str(domain_key)] += max(
+                    traffic / 100.0,
+                    0.5,
+                )
+
+            for entry in bucket.get("naver", []):
+                if not isinstance(entry, dict):
+                    continue
+                score = float(entry.get("score") or domain_weight)
+                parts: list[str] = []
+                for value in (entry.get("keywords"), entry.get("group_name")):
+                    if not value or not str(value).strip():
+                        continue
+                    parts.extend(
+                        piece.strip()
+                        for piece in str(value).replace("/", ",").split(",")
+                        if piece.strip()
                     )
-            for item in raw.get("google_trends", []):
-                if isinstance(item, dict) and item.get("keyword"):
-                    AggregatorWorker._append_keywords(
-                        accumulator,
-                        [str(item["keyword"])],
+                if not parts:
+                    continue
+                AggregatorWorker._append_keywords(accumulator, parts)
+                for keyword in parts:
+                    accumulator.keyword_domain_totals[keyword][str(domain_key)] += max(
+                        score / 10.0,
+                        0.5,
                     )
 
+    @staticmethod
+    def _merge_external_into_top_domains(
+        top_domains: dict[str, Any],
+        external_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """외부 domain_score로 비어 있는/약한 도메인 허브 가중치를 보강한다."""
         by_domain = external_payload.get("by_domain")
-        if isinstance(by_domain, dict):
-            for bucket in by_domain.values():
-                if not isinstance(bucket, dict):
-                    continue
-                for entry in bucket.get("google", []):
-                    if isinstance(entry, dict) and entry.get("keyword"):
-                        AggregatorWorker._append_keywords(
-                            accumulator,
-                            [str(entry["keyword"])],
-                        )
-                for entry in bucket.get("naver", []):
-                    if isinstance(entry, dict):
-                        AggregatorWorker._split_and_append_keywords(
-                            accumulator,
-                            entry.get("keywords"),
-                            entry.get("group_name"),
-                        )
+        if not isinstance(by_domain, dict):
+            return top_domains
+
+        merged = dict(top_domains)
+        for domain in TrendDomain:
+            key = domain.value
+            bucket = by_domain.get(key)
+            if not isinstance(bucket, dict):
+                continue
+            score = float(bucket.get("domain_score") or 0.0)
+            if score <= 0:
+                continue
+
+            entry = dict(
+                merged.get(key)
+                or {
+                    "user_count": 0,
+                    "total_duration": 0,
+                    "main_category": key,
+                    "avg_weight": 0.0,
+                }
+            )
+            external_weight = min(score / 50.0, 8.0)
+            current_weight = float(entry.get("avg_weight") or 0.0)
+            user_count = int(entry.get("user_count") or 0)
+
+            if user_count <= 0:
+                entry["avg_weight"] = round(max(current_weight, external_weight), 6)
+                entry["user_count"] = 1
+            else:
+                entry["avg_weight"] = round(
+                    current_weight + min(external_weight * 0.25, 2.0),
+                    6,
+                )
+            entry["main_category"] = key
+            merged[key] = entry
+
+        return merged
 
     @staticmethod
     def _split_and_append_keywords(
