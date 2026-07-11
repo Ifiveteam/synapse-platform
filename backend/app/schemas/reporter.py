@@ -133,3 +133,47 @@ class SnapshotInventoryResponse(BaseModel):
     present_count: int
     missing_count: int
     days: list[SnapshotInventoryDay] = Field(default_factory=list)
+
+
+class SnapshotKeywordRow(BaseModel):
+    keyword: str
+    score: float = 0
+    count_today: int = 0
+    rank: int = 0
+
+
+class SnapshotDomainRow(BaseModel):
+    domain: str
+    user_count: int = 0
+    total_duration: int = 0
+    avg_weight: float = 0
+
+
+class SnapshotSemanticLinkRow(BaseModel):
+    source: str
+    target: str
+    similarity: float = 0
+    link_type: str = "semantic"
+
+
+class SnapshotDetailResponse(BaseModel):
+    """관리자 — 단일 일자 스냅샷 상세."""
+
+    date: date
+    present: bool
+    snapshot_id: str | None = None
+    snapshot_date: datetime | None = None
+    created_at: datetime | None = None
+    keywords: list[SnapshotKeywordRow] = Field(default_factory=list)
+    domains: list[SnapshotDomainRow] = Field(default_factory=list)
+    axes: dict[str, float] = Field(default_factory=dict)
+    semantic_link_count: int = 0
+    semantic_links: list[SnapshotSemanticLinkRow] = Field(default_factory=list)
+    external_keywords: list[str] = Field(default_factory=list)
+    scrap_categories: list[str] = Field(default_factory=list)
+    context_count: int = 0
+    has_cross_domain_insights: bool = False
+    report_source: str | None = None
+    report_preview: str | None = None
+    day_graph_nodes: int | None = None
+    day_graph_links: int | None = None

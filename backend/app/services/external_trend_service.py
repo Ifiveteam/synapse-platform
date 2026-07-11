@@ -38,39 +38,49 @@ NAVER_LOOKBACK_DAYS = int(os.getenv("EXTERNAL_TREND_NAVER_LOOKBACK_DAYS", "7"))
 
 # 네이버 데이터랩 keywordGroups — 도메인당 대표 주제어 (최대 5그룹/요청)
 _DOMAIN_NAVER_KEYWORDS: dict[TrendDomain, list[str]] = {
-    TrendDomain.TECH_BUSINESS: ["인공지능", "스타트업", "반도체", "빅테크"],
-    TrendDomain.CONTENT_MEDIA: ["넷플릭스", "유튜브", "KPOP", "드라마"],
-    TrendDomain.LIFESTYLE_WELLNESS: ["다이어트", "운동", "뷰티", "건강"],
-    TrendDomain.SOCIAL_CURRENT_AFFAIRS: ["정치", "사회", "선거", "국회"],
-    TrendDomain.KNOWLEDGE_EDUCATION: ["자격증", "온라인강의", "영어공부", "수능"],
-    TrendDomain.ECONOMY_TECHFIN: ["주식", "비트코인", "금리", "부동산"],
+    TrendDomain.TECH_BUSINESS: ["인공지능", "스타트업", "반도체", "클라우드"],
+    TrendDomain.CONTENT_MEDIA: ["넷플릭스", "유튜브", "케이팝", "드라마"],
+    TrendDomain.LIFESTYLE_WELLNESS: ["다이어트", "운동", "뷰티", "여행"],
+    TrendDomain.SOCIAL_CURRENT_AFFAIRS: ["정치", "사회", "선거", "외교"],
+    TrendDomain.KNOWLEDGE_EDUCATION: ["자격증", "온라인강의", "수능", "취업"],
+    TrendDomain.ECONOMY_TECHFIN: ["주식", "금리", "부동산", "환율"],
 }
 
 # 구글 RSS 키워드 → 도메인 휴리스틱 분류용 시드
+# 짧은 영문(ai/it 등)은 부분일치로 Tech에 과도 편향되므로 제외한다.
 _DOMAIN_CLASSIFY_SEEDS: dict[TrendDomain, tuple[str, ...]] = {
     TrendDomain.TECH_BUSINESS: (
-        "ai",
         "인공지능",
         "스타트업",
         "반도체",
         "테크",
-        "it",
-        "앱",
-        "개발",
-        "삼성",
-        "애플",
         "chatgpt",
+        "openai",
+        "개발자",
+        "소프트웨어",
+        "클라우드",
+        "빅테크",
+        "삼성전자",
+        "애플",
+        "플랫폼",
+        "해커톤",
+        "saas",
     ),
     TrendDomain.CONTENT_MEDIA: (
         "넷플릭스",
         "유튜브",
         "kpop",
+        "케이팝",
         "드라마",
         "영화",
         "예능",
         "아이돌",
         "방송",
         "음악",
+        "웹툰",
+        "게임",
+        "스트리밍",
+        "콘서트",
     ),
     TrendDomain.LIFESTYLE_WELLNESS: (
         "다이어트",
@@ -81,6 +91,11 @@ _DOMAIN_CLASSIFY_SEEDS: dict[TrendDomain, tuple[str, ...]] = {
         "맛집",
         "패션",
         "웰니스",
+        "헬스",
+        "요가",
+        "카페",
+        "육아",
+        "반려동물",
     ),
     TrendDomain.SOCIAL_CURRENT_AFFAIRS: (
         "정치",
@@ -91,6 +106,12 @@ _DOMAIN_CLASSIFY_SEEDS: dict[TrendDomain, tuple[str, ...]] = {
         "뉴스",
         "사건",
         "재판",
+        "정부",
+        "외교",
+        "전쟁",
+        "노동",
+        "파업",
+        "경찰",
     ),
     TrendDomain.KNOWLEDGE_EDUCATION: (
         "자격증",
@@ -101,6 +122,11 @@ _DOMAIN_CLASSIFY_SEEDS: dict[TrendDomain, tuple[str, ...]] = {
         "공부",
         "대학",
         "채용",
+        "논문",
+        "학습",
+        "입시",
+        "취업",
+        "온라인강의",
     ),
     TrendDomain.ECONOMY_TECHFIN: (
         "주식",
@@ -112,6 +138,11 @@ _DOMAIN_CLASSIFY_SEEDS: dict[TrendDomain, tuple[str, ...]] = {
         "코인",
         "etf",
         "투자",
+        "증시",
+        "물가",
+        "금융",
+        "은행",
+        "채권",
     ),
 }
 
@@ -150,19 +181,62 @@ def _parse_approx_traffic(traffic: str | None) -> int:
     return int(match.group(1))
 
 
-def _classify_google_keyword(keyword: str) -> TrendDomain:
-    """급상승 키워드를 6대 TrendDomain 중 하나로 휴리스틱 분류."""
+def _seed_match_score(keyword: str, seeds: tuple[str, ...]) -> int:
+    """시드 매칭 점수 — 짧은 시드는 단어 경계에 가깝게만 인정."""
     lowered = keyword.lower()
-    best_domain = TrendDomain.SOCIAL_CURRENT_AFFAIRS
+    score = 0
+    for seed in seeds:
+        seed_l = seed.lower()
+        if len(seed_l) <= 2:
+            if re.search(rf"(?<!\w){re.escape(seed_l)}(?!\w)", lowered):
+                score += 1
+        elif seed_l in lowered:
+            score += 1
+    return score
+
+
+def _classify_google_keyword(keyword: str) -> TrendDomain | None:
+    """급상승 키워드를 6대 TrendDomain 중 하나로 휴리스틱 분류.
+
+    시드 매칭이 없으면 None — 이후 도메인 균형 재배치에 맡긴다.
+    """
+    best_domain: TrendDomain | None = None
     best_score = 0
 
     for domain, seeds in _DOMAIN_CLASSIFY_SEEDS.items():
-        score = sum(1 for seed in seeds if seed in lowered)
+        score = _seed_match_score(keyword, seeds)
         if score > best_score:
             best_score = score
             best_domain = domain
 
-    return best_domain
+    return best_domain if best_score > 0 else None
+
+
+def _rebalance_unassigned_google_items(
+    items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """미분류 구글 키워드를 상대적으로 빈 도메인에 순환 배정한다."""
+    counts = {domain: 0 for domain in TrendDomain}
+    for item in items:
+        domain_key = item.get("domain")
+        for domain in TrendDomain:
+            if domain.value == domain_key:
+                counts[domain] += 1
+                break
+
+    unassigned = [item for item in items if not item.get("domain")]
+    assigned = [item for item in items if item.get("domain")]
+
+    domain_cycle = list(TrendDomain)
+    for item in unassigned:
+        # 현재까지 가장 적은 도메인에 우선 배정
+        target = min(domain_cycle, key=lambda domain: counts[domain])
+        item["domain"] = target.value
+        item["domain_assigned"] = "balanced"
+        counts[target] += 1
+        domain_cycle = domain_cycle[1:] + domain_cycle[:1]
+
+    return assigned + unassigned
 
 
 def _datalab_date_range(target: date) -> tuple[str, str]:
@@ -281,7 +355,7 @@ def _parse_google_daily_rss(xml_text: str) -> list[dict[str, Any]]:
 
         items.append(
             {
-                "domain": domain.value,
+                "domain": domain.value if domain else None,
                 "keyword": title,
                 "rank": rank,
                 "approx_traffic": approx_traffic,
@@ -289,7 +363,7 @@ def _parse_google_daily_rss(xml_text: str) -> list[dict[str, Any]]:
             }
         )
 
-    return items
+    return _rebalance_unassigned_google_items(items)
 
 
 def _merge_into_domain_buckets(

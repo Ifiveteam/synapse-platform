@@ -18,8 +18,12 @@ from app.schemas.reporter import (
     KnowledgeGraphResponse,
     MarkdownReportResponse,
     RunPipelineResponse,
+    SnapshotDetailResponse,
+    SnapshotDomainRow,
     SnapshotInventoryDay,
     SnapshotInventoryResponse,
+    SnapshotKeywordRow,
+    SnapshotSemanticLinkRow,
     StreamChartResponse,
     StreamSeriesPoint,
 )
@@ -147,6 +151,74 @@ async def get_snapshot_inventory(
         present_count=present_count,
         missing_count=len(days_out) - present_count,
         days=days_out,
+    )
+
+
+@router.get("/snapshots/detail", response_model=SnapshotDetailResponse)
+async def get_snapshot_detail(
+    target_date: date = Query(
+        default_factory=today_kst,
+        alias="date",
+        description="KST 기준 조회 일자 (YYYY-MM-DD)",
+    ),
+    session: AsyncSession = Depends(get_db),
+) -> SnapshotDetailResponse:
+    """관리자용 — 단일 일자 스냅샷·리포트·당일 그래프 요약을 반환한다."""
+    detail = await reporter_repository.fetch_snapshot_detail(session, target_date)
+
+    report_source: str | None = None
+    report_preview: str | None = None
+    filer = ReportFiler()
+    file_md = await filer.read_report(target_date)
+    if file_md and file_md.strip():
+        report_source = "file"
+        report_preview = " ".join(file_md.split())[:240]
+    else:
+        db_md = await reporter_repository.fetch_b2b_report_markdown_by_date(
+            session,
+            target_date,
+        )
+        if db_md and db_md.strip():
+            report_source = "db"
+            report_preview = " ".join(db_md.split())[:240]
+        else:
+            report_source = "fallback"
+
+    day_graph_nodes: int | None = None
+    day_graph_links: int | None = None
+    if detail.present:
+        service = GraphSimulatorService(session)
+        graph = await service.simulate(
+            GraphSimulatorRequest(
+                start_date=target_date,
+                end_date=target_date,
+                top_keywords_limit=30,
+            )
+        )
+        day_graph_nodes = len(graph.nodes)
+        day_graph_links = len(graph.links)
+
+    return SnapshotDetailResponse(
+        date=detail.date,
+        present=detail.present,
+        snapshot_id=detail.snapshot_id,
+        snapshot_date=detail.snapshot_date,
+        created_at=detail.created_at,
+        keywords=[SnapshotKeywordRow(**row) for row in detail.keywords],
+        domains=[SnapshotDomainRow(**row) for row in detail.domains],
+        axes=detail.axes or {},
+        semantic_link_count=detail.semantic_link_count,
+        semantic_links=[
+            SnapshotSemanticLinkRow(**row) for row in detail.semantic_links
+        ],
+        external_keywords=list(detail.external_keywords),
+        scrap_categories=list(detail.scrap_categories),
+        context_count=detail.context_count,
+        has_cross_domain_insights=detail.has_cross_domain_insights,
+        report_source=report_source,
+        report_preview=report_preview,
+        day_graph_nodes=day_graph_nodes,
+        day_graph_links=day_graph_links,
     )
 
 
