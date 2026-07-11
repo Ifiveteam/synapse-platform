@@ -1,6 +1,8 @@
-import { lazy, Suspense, useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import {
+  ArrowLeft,
   BarChart3,
   CalendarDays,
   FileText,
@@ -13,6 +15,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KnowledgeGraphPanel } from "@/pages/reporter/KnowledgeGraphPanel";
+import { ROUTES } from "@/routes";
 import {
   todayKstDateString,
   triggerDailyPipeline,
@@ -33,6 +36,8 @@ const TrendReportViewer = lazy(() =>
     default: m.TrendReportViewer,
   })),
 );
+
+const VALID_TABS = new Set(["graph", "charts", "report"]);
 
 function TabPanelFallback() {
   return (
@@ -56,10 +61,36 @@ function pipelineErrorMessage(err: unknown): string {
 }
 
 export function TrendGraphDashboard() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = useMemo(() => {
+    const tab = searchParams.get("tab");
+    return tab && VALID_TABS.has(tab) ? tab : "graph";
+  }, [searchParams]);
+
   const [selectedDate, setSelectedDate] = useState(todayKstDateString);
-  const [activeTab, setActiveTab] = useState("graph");
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
+  const handleTabChange = useCallback(
+    (tab: string) => {
+      setActiveTab(tab);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (tab === "graph") next.delete("tab");
+          else next.set("tab", tab);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
 
   const handleRunPipeline = useCallback(async () => {
     if (isAnalyzing) return;
@@ -80,14 +111,28 @@ export function TrendGraphDashboard() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-8 md:px-6">
+      <div>
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground hover:text-foreground -ml-2 mb-2 h-8 gap-1.5 px-2 text-xs"
+        >
+          <Link to={ROUTES.home}>
+            <ArrowLeft className="size-3.5" />
+            오늘의 트렌드로
+          </Link>
+        </Button>
+      </div>
+
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="text-muted-foreground mb-1 flex items-center gap-2 text-xs font-medium uppercase tracking-wider">
             <Network className="size-3.5" />
-            Phase 4 · Trend Intelligence
+            Trend Intelligence
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            트렌드 인텔리전스 대시보드
+            트렌드 인텔리전스
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
             지식 네트워크, 시계열 스트림, 활동 히트맵, 텍스트 리포트를 한 화면에서
@@ -109,7 +154,7 @@ export function TrendGraphDashboard() {
             />
           </label>
           <span className="text-muted-foreground hidden text-xs sm:inline">
-            지식 그래프는 종료일 포함 최근 7일을 합산합니다
+            지식 그래프는 종료일 포함 최근 14일을 합산합니다
           </span>
 
           <Button
@@ -144,7 +189,7 @@ export function TrendGraphDashboard() {
           </div>
         )}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="h-auto w-full flex-wrap sm:w-fit">
             <TabsTrigger value="graph" className="gap-1.5">
               <Network className="size-3.5" />

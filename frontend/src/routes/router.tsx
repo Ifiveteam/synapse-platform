@@ -18,6 +18,7 @@ import { ScrapPage } from "@/pages/ScrapPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { PaymentSuccessPage } from "@/pages/PaymentSuccessPage";
 import { UploadPage } from "@/pages/UploadPage";
+import { TrendGraphDashboard } from "@/pages/reporter/TrendGraphDashboard";
 import { ROUTES } from "@/routes";
 
 export const router = createBrowserRouter([
@@ -46,10 +47,10 @@ export const router = createBrowserRouter([
       { path: "/me/scraps/:id", element: <ScrapDetailPage /> },
       { path: ROUTES.settings, element: <SettingsPage /> },
       { path: ROUTES.paymentSuccess, element: <PaymentSuccessPage /> },
-      // 트렌드 대시보드는 홈(`/`)으로 통합 — 옛 경로 호환
+      // 전체 트렌드 인텔리전스 (홈 브리핑에서 진입)
       {
         path: ROUTES.reporterTrendGraph,
-        element: <Navigate to={ROUTES.home} replace />,
+        element: <TrendGraphDashboard />,
       },
       { path: ROUTES.download, element: <DownloadPage /> },
       { path: ROUTES.login, element: <LoginPage /> },
