@@ -9,11 +9,11 @@
 
 | 폴더 | 에이전트 |
 |------|----------|
-| `frontend/` | [개요](./frontend/OVERVIEW.md), [폴더 구조](./frontend/FOLDER_STRUCTURE.md) |
+| `frontend/` | [README](./frontend/README.md) — 라우트·폴더 구조·배치 규칙 |
 | `backend/` | [개요](./backend/OVERVIEW.md) — 로컬 dev: `docker compose -f docker-compose.dev.yml up` |
-| `indexer/` | Indexer — [README](./indexer/README.md), [ARCHITECTURE](./indexer/ARCHITECTURE.md), [PIPELINE](./indexer/PIPELINE.md), [DATA](./indexer/DATA.md), [API](./indexer/API.md), [IMPLEMENTATION](./indexer/IMPLEMENTATION.md) |
-| `profile/` | Profiler — [README](./profile/README.md), [PIPELINE](./profile/PIPELINE.md) |
-| `navigator/` | Navigator |
+| `indexer/` | Indexer — [README](./indexer/README.md) (파이프라인·데이터·API 통합) |
+| `profile/` | Profiler — [README](./profile/README.md) (파이프라인·portrait·API 통합) |
+| `navigator/` | Navigator — [README](./navigator/README.md) (설계·그래프·재생목록 통합) |
 | `aggregator/` | Aggregator |
 | `archiver/` | Archiver — [README](./archiver/README.md), [ARCHITECTURE](./archiver/ARCHITECTURE.md) |
 | `curator/` | Curator — [README](./curator/README.md) |

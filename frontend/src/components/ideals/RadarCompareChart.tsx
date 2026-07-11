@@ -9,6 +9,12 @@ interface Props {
   size?: number;
   /** 라벨용 바깥 여백(px). 작게 줄이면 다각형이 커진다 (라벨은 overflow-visible로 표시). */
   labelMargin?: number;
+  /** current(기준) 선 색 — 지정 시 인라인 색, 미지정 시 muted-foreground 테마색. */
+  currentColor?: string;
+  /** ideal(비교) 선 색 — 지정 시 인라인 색, 미지정 시 primary 테마색. */
+  idealColor?: string;
+  /** 점선으로 그릴 축 — 기본은 "ideal"(비교). "current"면 기준을 점선으로. */
+  dashed?: "current" | "ideal";
 }
 
 function polar(cx: number, cy: number, radius: number, angle: number, value: number) {
@@ -20,7 +26,14 @@ function polar(cx: number, cy: number, radius: number, angle: number, value: num
  * 현재 vs 이상향 8축 스파이더(레이더) 비교 차트.
  * 색은 shadcn 테마 토큰을 따른다 — 현재=muted-foreground, 이상향=primary.
  */
-export function RadarCompareChart({ axes, size = 300, labelMargin = 52 }: Props) {
+export function RadarCompareChart({
+  axes,
+  size = 300,
+  labelMargin = 52,
+  currentColor,
+  idealColor,
+  dashed = "ideal",
+}: Props) {
   const n = axes.length;
   const cx = size / 2;
   const cy = size / 2;
@@ -89,18 +102,29 @@ export function RadarCompareChart({ axes, size = 300, labelMargin = 52 }: Props)
         );
       })}
 
-      {/* 현재 */}
+      {/* 현재(기준) */}
       <polygon
         points={toPoints("current")}
-        className="fill-muted-foreground/10 stroke-muted-foreground"
+        className={
+          currentColor ? undefined : "fill-muted-foreground/10 stroke-muted-foreground"
+        }
+        style={
+          currentColor
+            ? { fill: `${currentColor}1a`, stroke: currentColor }
+            : undefined
+        }
         strokeWidth={2}
+        strokeDasharray={dashed === "current" ? "5 3" : undefined}
       />
-      {/* 이상향 */}
+      {/* 이상향(비교) */}
       <polygon
         points={toPoints("ideal")}
-        className="fill-primary/10 stroke-primary"
+        className={idealColor ? undefined : "fill-primary/10 stroke-primary"}
+        style={
+          idealColor ? { fill: `${idealColor}1a`, stroke: idealColor } : undefined
+        }
         strokeWidth={2}
-        strokeDasharray="5 3"
+        strokeDasharray={dashed === "ideal" ? "5 3" : undefined}
       />
     </svg>
   );

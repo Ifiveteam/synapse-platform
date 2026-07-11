@@ -33,6 +33,7 @@ from app.agents.curator.constants import (
     RECENT_CONTEXT_WINDOW,
     STREAM_ERROR_MESSAGE,
 )
+from app.agents.curator.scope import AnalysisScope
 from app.agents.curator.tools import build_tools
 from app.agents.curator.types import CuratorState, CuratorStreamEvent
 
@@ -63,6 +64,21 @@ _SYSTEM_PROMPT_BASE = """
 - 재생목록 요청("재생목록 만들어줘", "플레이리스트 만들어줘", "영상 목록 만들어줘") → create_playlist 즉시 호출.
 - URL 저장 요청("저장해줘", "북마크해줘", "스크랩해줘" + URL) → save_scrap 즉시 호출.
 - 유저 데이터 질문("내 성향", "많이 본 영상", "구독 채널" 등) → query_db 등 조회 툴 호출.
+- "구독 채널 중 많이 본 거", "구독한 채널 순위" 처럼 구독 채널과 시청 기록을 **같이** 묻는 질문
+  → 반드시 get_top_subscribed_channels 호출. query_db로 직접 JOIN 시도하지 마세요(컬럼명 오조인 위험).
+- "OO 채널 뭐야?", "OO는 어떤 채널이야?", "OO 영상은?" 처럼 **채널명(고유명사)으로** 묻는
+  질문은 일반 지식 질문이 아니고, search_videos/search_analysis(의미 검색)로도 답하면 안
+  됩니다 — 채널명은 임베딩 유사도 검색과 안 맞아서 완전히 무관한 결과가 나올 수 있습니다.
+  반드시 query_db로 `channel = '채널명'` 조건으로 직접 조회해서, 실제 시청 데이터에 근거해
+  답하세요. (채널의 공식 소개·구독자 수처럼 DB에 없는 정보는 모른다고 솔직히 답하세요.
+  조회 결과가 0건이면 그 채널 영상을 시청한 기록이 없다고 솔직히 답하세요 — 다른 채널
+  이야기를 그 채널 얘기인 것처럼 지어내면 절대 안 됩니다.)
+- "이 영상 뭐야?", "무슨 내용이야?", "OO 영상 줄거리/내용 알려줘"처럼 **영상 하나의 실제 내용**을
+  묻는 질문 → search_analysis를 그 영상 제목으로 호출하세요. query_db로는 답할 수 없습니다
+  (영상 내용 요약은 video_analysis 테이블에 있는데, query_db는 이 테이블에 접근할 수 없습니다.
+  user_watch_catalog에는 제목·채널·카테고리ID만 있고 내용 요약이 없습니다).
+  search_analysis도 결과가 없으면, 그 영상은 아직 분석되지 않았다고 솔직히 답하세요(전체 시청
+  영상 중 일부만 분석 대상으로 선별됩니다).
 - Synapse와 무관한 일반 지식 질문(오늘 점심, 날씨, 시사, 상식 등)에는 툴을 호출하지 말고, 아래 "답변 원칙"의 거절 규칙을 따르세요.
 - "지원하지 않습니다", "제공되지 않습니다", "직접 만들어 드릴 수 없습니다"라고 말하지 마세요.
 - 툴이 있는데 거절하지 마세요. 이미 조회된 데이터가 있으면 "업로드하세요"로 회피하지 말고 그 데이터로 답하세요.
@@ -79,15 +95,23 @@ _SYSTEM_PROMPT_BASE = """
 - 핵심만 간결하게 전달하고, 불필요한 서론·결론은 생략하세요.
 - 유저를 판단하거나 평가하지 마세요.
 - <유저_데이터>가 있으면 그 데이터만 근거로 답하세요. 데이터에 없는 내용은 절대 지어내지 마세요.
+- 유저가 "5개", "TOP 5" 처럼 개수를 요청했는데 조회 결과가 그보다 적으면, 있는 만큼만 답하세요.
+  나머지를 "채널명 2", "채널 A" 같은 placeholder나 그럴듯한 가짜 값으로 채워서 개수를 맞추지 마세요.
+  조회 자체가 실패했다면 (재시도해도 실패) 지어내지 말고 실패했다고 사실대로 답하세요.
 - Synapse(유저의 유튜브 시청 데이터, 성향·이상향, 재생목록, 스크랩, 플랫폼 기능·페이지 안내)와 무관한 일반 지식 질문(오늘 점심, 날씨, 시사, 상식, 추천 등)에는 답변하지 말고, Synapse 관련 질문만 답변할 수 있다는 취지로 정중히 안내하세요. 문구는 매번 자연스럽게 표현하되 의미는 유지하세요.
 - 단, 인사나 짧은 스몰토크("안녕", "고마워" 등)는 위 거절 대상이 아니며 기존처럼 자연스럽고 짧게 응대하세요.
 """.strip()
 
 
-def _current_date_kst() -> str:
-    """한국 시간 기준 오늘 날짜. 안 넣으면 Gemini가 날짜를 지어내 대화마다 다른 '오늘'을 답한다."""
-    now = datetime.now(_KST)
-    return f"{now.year}년 {now.month}월 {now.day}일"
+def _current_date_kst(reference: datetime | None = None) -> tuple[str, str]:
+    """한국 시간 기준 오늘 날짜. 안 넣으면 Gemini가 날짜를 지어내 대화마다 다른 '오늘'을 답한다.
+
+    reference가 있으면(분석 상세 페이지 스코프) 실제 오늘 대신 그 분석 시점을 "오늘"로
+    알려준다 — "지난 일주일" 같은 상대 날짜 표현이 그 분석의 조회 범위와 어긋나지 않도록.
+    (한국어 표기, ISO 날짜) 튜플을 반환한다 — ISO는 SQL 리터럴로 그대로 쓸 수 있게.
+    """
+    now = reference.astimezone(_KST) if reference else datetime.now(_KST)
+    return f"{now.year}년 {now.month}월 {now.day}일", now.date().isoformat()
 
 
 def _message_text(content: Any) -> str:
@@ -163,9 +187,21 @@ def _build_turn_messages(messages: list[BaseMessage]) -> list[BaseMessage]:
     return list(messages[last_human_idx:])
 
 
-def _build_system_prompt(state: CuratorState) -> str:
+def _build_system_prompt(
+    state: CuratorState, reference_date: datetime | None = None
+) -> str:
     messages = state.get("messages", [])
-    instruction = f"{_SYSTEM_PROMPT_BASE}\n\n[오늘 날짜] {_current_date_kst()}"
+    date_kr, date_iso = _current_date_kst(reference_date)
+    instruction = f"{_SYSTEM_PROMPT_BASE}\n\n[오늘 날짜] {date_kr}"
+    if reference_date is not None:
+        # 분석 상세 페이지 스코프 — SQL의 now()/current_date는 실제 현재 시각을 반환해서
+        # 위에서 알려준 "오늘"과 어긋난다. "지난 일주일" 등 상대 날짜를 SQL로 계산할 땐
+        # now() 대신 이 날짜를 리터럴로 써야 조회 범위(그 분석 시점 데이터)와 맞아떨어진다.
+        instruction += (
+            f"\n이 대화는 특정 분석 하나로 한정되어 있습니다. SQL에서 날짜 계산이 "
+            f"필요하면 now()/current_date를 쓰지 말고 반드시 '{date_iso}'::date를 "
+            f"기준으로 계산하세요 (예: '{date_iso}'::date - interval '7 days')."
+        )
 
     recent_context = _build_recent_context(messages, RECENT_CONTEXT_WINDOW)
     if recent_context:
@@ -233,9 +269,15 @@ def _detect_forced_tool(state: CuratorState) -> str | None:
     return None
 
 
-def build_graph(db: AsyncSession, user_id: uuid.UUID):
-    tools = build_tools(db, user_id)
+def build_graph(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    analysis_id: uuid.UUID | None = None,
+    scope: AnalysisScope | None = None,
+):
+    tools = build_tools(db, user_id, analysis_id=analysis_id, scope=scope)
     tools_by_name = {t.name: t for t in tools}
+    reference_date = scope.snapshot_date if scope else None
 
     llm = ChatGoogleGenerativeAI(
         model=GEMINI_MODEL,
@@ -248,11 +290,17 @@ def build_graph(db: AsyncSession, user_id: uuid.UUID):
         from langgraph.config import get_stream_writer
 
         writer = get_stream_writer()
-        writer({"event": "status", "content": "🤔 분석 중..."})
+        writer({"event": "status", "content": "분석 중..."})
 
-        system_prompt = _build_system_prompt(state)
+        system_prompt = _build_system_prompt(state, reference_date)
         turn_messages = _build_turn_messages(state.get("messages", []))
         messages = [SystemMessage(content=system_prompt), *turn_messages]
+
+        # 이번 턴에 이미 ToolMessage가 있다면(=툴 재시도/후속 호출) 지금 나오는 텍스트는
+        # "컬럼명이 없어 재시도합니다" 같은 내부 자기설명일 수 있다. 이런 턴은 텍스트를
+        # 바로 스트리밍하지 않고 버퍼링했다가, 이번 턴이 결국 툴을 또 부르지 않을 때만
+        # (=진짜 최종 답변일 때만) 한꺼번에 흘려보낸다. 첫 호출은 기존대로 실시간 스트리밍.
+        is_continuation = any(isinstance(m, ToolMessage) for m in turn_messages)
 
         forced = _detect_forced_tool(state)
         if forced and forced in tools_by_name:
@@ -261,13 +309,17 @@ def build_graph(db: AsyncSession, user_id: uuid.UUID):
             invoke_llm = llm_with_tools
 
         full = None
+        buffered_text: list[str] = []
         try:
             async for chunk in invoke_llm.astream(messages):
                 full = chunk if full is None else full + chunk
                 if not getattr(chunk, "tool_call_chunks", None):
                     text = _message_text(chunk.content)
                     if text:
-                        writer({"event": "token", "content": text})
+                        if is_continuation:
+                            buffered_text.append(text)
+                        else:
+                            writer({"event": "token", "content": text})
         except Exception:
             logger.exception("Curator agent_node streaming failed")
             writer({"event": "token", "content": STREAM_ERROR_MESSAGE})
@@ -275,6 +327,9 @@ def build_graph(db: AsyncSession, user_id: uuid.UUID):
 
         tool_calls = getattr(full, "tool_calls", None) or []
         text = _message_text(full.content if full is not None else "").strip()
+
+        if is_continuation and not tool_calls and buffered_text:
+            writer({"event": "token", "content": "".join(buffered_text)})
 
         if not tool_calls and not text:
             fallback = "죄송해요, 답변을 생성하지 못했습니다. 다시 질문해 주세요."
@@ -341,9 +396,11 @@ class CuratorEngine:
         *,
         initial_state: CuratorState,
         db: AsyncSession,
+        analysis_id: uuid.UUID | None = None,
+        scope: AnalysisScope | None = None,
     ) -> AsyncIterator[CuratorStreamEvent]:
         user_id = initial_state["user_id"]
-        graph = build_graph(db, user_id)
+        graph = build_graph(db, user_id, analysis_id=analysis_id, scope=scope)
 
         async for mode, chunk in graph.astream(
             initial_state,

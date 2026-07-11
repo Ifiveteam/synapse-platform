@@ -18,16 +18,53 @@ def _json_default(value: Any) -> str:
     raise TypeError(f"not serializable: {type(value)}")
 
 
+def _axis_change_list(
+    from_map: dict[str, Any],
+    to_map: dict[str, Any],
+    delta_map: dict[str, Any],
+    limit: int,
+) -> list[dict[str, Any]]:
+    """{axis: value} 3종을 변화 큰 순으로 [{axis, from, to, delta}]로."""
+    rows = [
+        {
+            "axis": key,
+            "from": from_map.get(key),
+            "to": to_map.get(key),
+            "delta": value,
+        }
+        for key, value in delta_map.items()
+    ]
+    rows.sort(key=lambda r: abs(float(r["delta"] or 0.0)), reverse=True)
+    return rows[:limit]
+
+
 def _compact_diff_for_llm(diff: dict[str, Any]) -> dict[str, Any]:
     scores_delta = diff.get("scores_delta") or {}
     top_scores = sorted(
         scores_delta.items(),
         key=lambda item: abs(float(item[1])),
         reverse=True,
-    )[:8]
+    )[:6]
     habits_delta = diff.get("habits_delta") or {}
 
     return {
+        # ── 1순위: 화면에서 보여주는 축 (성향 6축·관심 도메인·상위 채널) ──
+        "disposition_delta": _axis_change_list(
+            diff.get("disposition_from") or {},
+            diff.get("disposition_to") or {},
+            diff.get("disposition_delta") or {},
+            limit=6,
+        ),
+        "interest_delta": _axis_change_list(
+            diff.get("interest_from") or {},
+            diff.get("interest_to") or {},
+            diff.get("interest_delta") or {},
+            limit=6,
+        ),
+        "from_top_channels": diff.get("from_top_channels") or [],
+        "to_top_channels": diff.get("to_top_channels") or [],
+        "shorts_ratio_delta": diff.get("shorts_ratio_delta"),
+        # ── 2순위(보조): 세부 점수·습관·태그 ──
         "top_score_changes": [
             {
                 "axis": key,
@@ -43,7 +80,6 @@ def _compact_diff_for_llm(diff: dict[str, Any]) -> dict[str, Any]:
             }
             for key, value in habits_delta.items()
         },
-        "shorts_ratio_delta": diff.get("shorts_ratio_delta"),
         "traits_added": diff.get("traits_added") or [],
         "traits_removed": diff.get("traits_removed") or [],
         "channels_added": diff.get("channels_added") or [],
