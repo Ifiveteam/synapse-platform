@@ -50,8 +50,13 @@ async def invoke_structured(
     model: str | None = None,
     max_output_tokens: int | None = None,
     fallback_factory: Callable[[], TSchema] | None = None,
+    thinking: bool = False,
 ) -> TSchema:
-    """Gemini Structured Output(Pydantic)을 반환한다."""
+    """Gemini Structured Output(Pydantic)을 반환한다.
+
+    Gemini 2.5는 thinking 토큰이 max_output_tokens를 先소비해 JSON이 잘릴 수 있다.
+    Structured Output 기본은 thinking=False 로 둔다.
+    """
     client = get_client()
     config_kwargs: dict[str, object] = {
         "system_instruction": system_instruction,
@@ -61,6 +66,8 @@ async def invoke_structured(
     }
     if max_output_tokens is not None:
         config_kwargs["max_output_tokens"] = max_output_tokens
+    if not thinking:
+        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
 
     response = await client.aio.models.generate_content(
         model=model or GEMINI_MODEL,
@@ -93,6 +100,7 @@ async def invoke_structured_safe(
     model: str | None = None,
     max_output_tokens: int | None = None,
     fallback_factory: Callable[[], TSchema] | None = None,
+    thinking: bool = False,
 ) -> TSchema | None:
     """Structured Output 호출. JSON/검증 실패 시 1회 재시도 후 fallback_factory 또는 None."""
     max_attempts = 1 + STRUCTURED_OUTPUT_MAX_RETRIES
@@ -108,6 +116,7 @@ async def invoke_structured_safe(
                 model=model,
                 max_output_tokens=max_output_tokens,
                 fallback_factory=None,
+                thinking=thinking,
             )
         except Exception as exc:
             last_error = exc

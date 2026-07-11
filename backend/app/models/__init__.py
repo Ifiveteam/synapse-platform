@@ -17,6 +17,7 @@ from app.models.trend_domain import (
     TrendDomain,
     trend_domain_pg_enum,
 )
+from app.models.trend_keyword_embedding import TrendKeywordEmbedding
 from app.models.user import User
 from app.models.user_analysis_source import UserAnalysisSource
 from app.models.user_ideal_persona import UserIdealPersona
@@ -41,6 +42,7 @@ __all__ = [
     "ScrapEmbedding",
     "TREND_DOMAIN_VALUES",
     "TrendDomain",
+    "TrendKeywordEmbedding",
     "User",
     "UserBehaviorLog",
     "UserAnalysisSource",

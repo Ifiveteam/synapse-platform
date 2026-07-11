@@ -202,6 +202,7 @@ async def insert_global_trends_snapshot(
     global_8_axis_avg: dict,
     trending_keywords: dict | None = None,
     keyword_context_map: dict | None = None,
+    semantic_links: list | None = None,
     cross_domain_insights: dict | None = None,
 ) -> GlobalTrendsSnapshot:
     row = GlobalTrendsSnapshot(
@@ -212,6 +213,7 @@ async def insert_global_trends_snapshot(
         global_8_axis_avg=global_8_axis_avg,
         trending_keywords=trending_keywords or {},
         keyword_context_map=keyword_context_map or {},
+        semantic_links=semantic_links if semantic_links is not None else [],
         cross_domain_insights=cross_domain_insights,
     )
     session.add(row)

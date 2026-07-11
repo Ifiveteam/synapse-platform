@@ -34,6 +34,7 @@ class SimulationSnapshot:
     top_domains: dict[str, Any]
     keyword_context_map: dict[str, Any]
     snapshot_count: int
+    semantic_links: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +45,7 @@ class SimulationRollupRow:
     trending_keywords: dict[str, Any]
     top_domains: dict[str, Any]
     keyword_context_map: dict[str, Any]
+    semantic_links: tuple[dict[str, Any], ...]
 
 
 async def fetch_snapshot_by_target_date(
@@ -111,6 +113,7 @@ async def fetch_simulation_rollup_rows(
             GlobalTrendsSnapshot.trending_keywords,
             GlobalTrendsSnapshot.top_domains,
             GlobalTrendsSnapshot.keyword_context_map,
+            GlobalTrendsSnapshot.semantic_links,
         )
         .where(
             GlobalTrendsSnapshot.snapshot_date >= range_start,
@@ -123,10 +126,17 @@ async def fetch_simulation_rollup_rows(
     )
     rows = result.all()
     by_day: dict[date, SimulationRollupRow] = {}
-    for snapshot_date, trending_keywords, top_domains, keyword_context_map in rows:
+    for (
+        snapshot_date,
+        trending_keywords,
+        top_domains,
+        keyword_context_map,
+        semantic_links,
+    ) in rows:
         day = snapshot_date.astimezone(KST).date()
         if day in by_day:
             continue
+        links_raw = semantic_links if isinstance(semantic_links, list) else []
         by_day[day] = SimulationRollupRow(
             snapshot_date=snapshot_date,
             trending_keywords=trending_keywords
@@ -136,6 +146,7 @@ async def fetch_simulation_rollup_rows(
             keyword_context_map=(
                 keyword_context_map if isinstance(keyword_context_map, dict) else {}
             ),
+            semantic_links=tuple(link for link in links_raw if isinstance(link, dict)),
         )
     return [by_day[day] for day in _iter_dates(start_date, end_date) if day in by_day]
 
@@ -153,6 +164,7 @@ def build_simulation_snapshot(
     keyword_best: dict[str, dict[str, Any]] = {}
     merged_contexts: list[dict[str, Any]] = []
     merged_weights: dict[str, dict[str, float]] = {}
+    semantic_best: dict[tuple[str, str], dict[str, Any]] = {}
     domain_accum: dict[str, dict[str, float]] = {
         domain.value: {
             "user_count": 0.0,
@@ -175,14 +187,19 @@ def build_simulation_snapshot(
                 score = float(item.get("score", 0.0) or 0.0)
                 if score < min_score_threshold:
                     continue
+                count_today = int(item.get("count_today", 0) or 0)
                 current = keyword_best.get(keyword)
-                if current is None or score > float(current.get("score", 0.0) or 0.0):
+                if current is None:
                     keyword_best[keyword] = {
                         "keyword": keyword,
                         "score": score,
-                        "count_today": int(item.get("count_today", 0) or 0),
+                        "count_today": count_today,
                         "rank": int(item.get("rank", 0) or 0),
                     }
+                else:
+                    # 주간 롤업: 점수·출현 횟수 누적
+                    current["score"] = float(current["score"]) + score
+                    current["count_today"] = int(current["count_today"]) + count_today
 
         keyword_map = row.keyword_context_map or {}
         contexts = keyword_map.get("contexts")
@@ -204,6 +221,29 @@ def build_simulation_snapshot(
                     bucket[domain_key] = bucket.get(domain_key, 0.0) + float(
                         weight or 0.0
                     )
+
+        for link in row.semantic_links:
+            left = str(link.get("source", "")).strip()
+            right = str(link.get("target", "")).strip()
+            if not left or not right or left == right:
+                continue
+            edge_key = tuple(sorted((left, right)))
+            similarity = float(link.get("similarity", 0.0) or 0.0)
+            existing = semantic_best.get(edge_key)
+            if existing is None or similarity > float(
+                existing.get("similarity", 0.0) or 0.0
+            ):
+                semantic_best[edge_key] = {
+                    "source": edge_key[0],
+                    "target": edge_key[1],
+                    "similarity": similarity,
+                    "link_type": "semantic",
+                    "left_hint": link.get("left_hint"),
+                    "right_hint": link.get("right_hint"),
+                    "boosted_cooccurrence": bool(
+                        link.get("boosted_cooccurrence", False)
+                    ),
+                }
 
         for domain in TrendDomain:
             stats = row.top_domains.get(domain.value)
@@ -242,6 +282,7 @@ def build_simulation_snapshot(
             "keyword_domain_weights": merged_weights,
         },
         snapshot_count=len(rows),
+        semantic_links=tuple(semantic_best.values()),
     )
 
 
